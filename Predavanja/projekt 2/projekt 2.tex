@@ -1,0 +1,361 @@
+% !TeX program = lualatex
+% !TeX root = projekt 2.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija \\ Projekt 2 - Frontend}
+\date{23.11.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ==============================
+% DIO 1: KONTEKST I TEHNOLOGIJE
+% ==============================
+
+% ------------------------------
+\begin{frame}{Plan prezentacije}
+\begin{enumerate}
+  \item Što se traži u 2. dijelu projekta
+  \item Tehnologije i instalacija
+  \item Detaljni zahtjevi za frontend
+  \item Bodovna raspodjela 2. dijela
+  \item Što vas čeka na 2. obrani
+\end{enumerate}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Gdje smo: backend je obranjen}
+Iza vas je 1. obrana - imate funkcionalan API s autentikacijom, autorizacijom i poslovnim pravilima. Sada gradite \textbf{SPA frontend koji komunicira s vašim API-jem}.
+
+\vspace{0.6em}
+\begin{tabular}{@{}lp{5.2cm}lr@{}}
+  \toprule
+  \textbf{Dio} & \textbf{Što se predaje} & \textbf{Obrana} & \textbf{Bodovi} \\
+  \midrule
+  1. dio & Backend: API, baza, testovi & 16.11. & 45 \\
+  2. dio & Frontend SPA + deploy & 18.01. & 45 \\
+  \multicolumn{2}{@{}l}{Dolasci na predavanja} & & 10 \\
+  \midrule
+  \multicolumn{3}{@{}l}{\textbf{Ukupno}} & \textbf{100} \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Frontend se predaje kao \codefile{web/} folder u istom monorepou, a cijela aplikacija mora biti \textbf{deployana na javni URL}.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Tehnologije}
+\begin{tabular}{@{}lp{7cm}@{}}
+  \toprule
+  \textbf{Tehnologija} & \textbf{Uloga} \\
+  \midrule
+  Vue 3 & UI framework, Composition API \\
+  TypeScript & jezik frontenda \\
+  Vite & dev server i build tool \\
+  Vue Router & routing i guardovi \\
+  Pinia & state management \\
+  Axios & HTTP komunikacija s API-jem \\
+  Vitest + @vue/test-utils & unit i component testovi \\
+  Playwright & E2E testovi \\
+  Railway ili Render & deploy \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Kao i za backend: drugi stack nije dopušten. React, Angular ili čisti JavaScript nisu opcija.
+\end{frame}
+
+% ------------------------------
+\begin{frame}[fragile,shrink=5]{Instalacija: Node.js i ekstenzije}
+\begin{lstlisting}[language=bash]
+# Node.js - preuzmite LTS sa https://nodejs.org
+node --version   # 22+
+npm --version
+
+# Scaffold projekta (radimo zajedno na predavanju)
+npm create vue@latest
+# odaberite: TypeScript = Yes, Router = Yes, Pinia = Yes
+\end{lstlisting}
+
+\vspace{0.6em}
+Preporučene VS Code ekstenzije za frontend:
+\begin{itemize}
+  \item \textbf{Vue - Official} - syntax highlighting, TypeScript podrška u .vue datotekama
+  \item \textbf{ESLint} + \textbf{Prettier} - lint i formatiranje
+\end{itemize}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Struktura frontenda}
+\begin{tabular}{@{}lp{7.5cm}@{}}
+  \toprule
+  \textbf{Folder} & \textbf{Sadržaj} \\
+  \midrule
+  \codefile{web/src/views/} & stranice - jedna po ruti \\
+  \codefile{web/src/components/} & reusable UI komponente \\
+  \codefile{web/src/stores/} & Pinia storeovi \\
+  \codefile{web/src/router/} & rute i guardovi \\
+  \codefile{web/src/api/} & Axios client i API pozivi \\
+  \codefile{web/src/types/} & TypeScript tipovi, 1:1 s Pydantic schemama \\
+  \codefile{web/src/utils/} & pomoćne funkcije \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Ista disciplina kao na backendu: svaki folder ima jednu odgovornost. API pozivi ne žive po komponentama, nego u \codefile{api/} sloju.
+\end{frame}
+
+% ==============================
+% DIO 2: DETALJNI ZAHTJEVI
+% ==============================
+
+% ------------------------------
+\begin{frame}{Zahtjev 1: SPA s routingom}
+\begin{itemize}
+  \item \textbf{Najmanje 5 stranica}: login, lista glavnog entiteta, forma za unos ili uređivanje, detalji, admin pregled
+  \item Vue Router s \codefile{createWebHistory} - navigacija bez refresha stranice
+  \item Zajednički \textbf{layout}: navigacija s linkovima ovisnim o roli, logout gumb, prikaz prijavljenog korisnika
+  \item Dinamičke rute s parametrima: \codefile{/lifters/:id/edit} ili ekvivalent u vašoj domeni
+\end{itemize}
+
+\vspace{0.4em}
+Na obrani otvaram DevTools i klikćem po aplikaciji: ako se stranica refresha na svaku navigaciju, to nije SPA.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 2: auth flow}
+\begin{itemize}
+  \item \textbf{Login forma} koja poziva vaš \codefile{/auth/login} i sprema tokene
+  \item Access token se šalje na svaki request kroz \textbf{Axios request interceptor}
+  \item \textbf{Automatski refresh}: na 401 interceptor tiho zove \codefile{/auth/refresh} i ponavlja originalni request
+  \item Kad refresh ne uspije: logout i redirect na login
+  \item Auth stanje preživljava refresh stranice - \codefile{/auth/me} pri startu aplikacije
+\end{itemize}
+
+\vspace{0.4em}
+Ovo testiram tako da ostavim aplikaciju otvorenu dok access token ne istekne - korisnik ne smije primijetiti ništa.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 3: route guardovi i permission-aware UI}
+\begin{itemize}
+  \item \codefile{router.beforeEach} guard: neprijavljeni korisnik ide na login
+  \item Admin rute nedostupne običnom korisniku - direktan unos URL-a preusmjerava
+  \item UI poštuje rolu: korisnik ne vidi admin akcije, admin vidi sve
+  \item UI poštuje \textbf{poslovna pravila}: gumbi disabled kad pravilo zabranjuje akciju, npr. nakon isteka roka
+\end{itemize}
+
+\vspace{0.6em}
+Guard je UX, ne sigurnost - backend i dalje mora zabraniti. Očekujte pitanje: \enquote{Što se dogodi ako korisnik ručno upiše admin URL? A ako pošalje request curlom?}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 4: UX stanja}
+Svaki view koji dohvaća podatke mora hendlati tri stanja:
+
+\vspace{0.4em}
+\begin{tabular}{@{}llp{5.5cm}@{}}
+  \toprule
+  \textbf{Stanje} & \textbf{Uvjet} & \textbf{Što korisnik vidi} \\
+  \midrule
+  Loading & čeka se API & spinner ili skeleton \\
+  Error & request pao & poruka s retry gumbom \\
+  Empty & nema podataka & jasna poruka i CTA za prvi unos \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Prazna bijela stranica dok se čeka API, ili tablica bez retka i bez objašnjenja - to su stanja za koja skidam bodove. Retry nudite samo za mrežne i 5xx greške, ne za 4xx.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 5: forme i validacija}
+\begin{itemize}
+  \item \textbf{Klijentska validacija} prije slanja: obavezna polja, formati, rasponi
+  \item \textbf{Serverske greške} prikazane na pravom mjestu:
+  \begin{itemize}
+    \item 422 - greška ispod odgovarajućeg polja, parsirana iz FastAPI \codefile{detail} formata
+    \item 409 i 400 - globalna poruka iznad forme, npr. \enquote{Rok za prijave je istekao}
+  \end{itemize}
+  \item Submit gumb disabled dok request traje - nema duplih klikova
+  \item Nakon uspjeha: redirect ili jasna potvrda, ne tiho ništa
+\end{itemize}
+
+\vspace{0.4em}
+Pri pregledu namjerno šaljem nevažeće podatke i duplikat - forma mora reagirati smisleno na oba slučaja.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 6: state management}
+\begin{itemize}
+  \item \textbf{Pinia auth store}: user, token, \codefile{isAuthenticated}, \codefile{isAdmin}, login i logout akcije
+  \item \textbf{Barem jedan store za poslovni entitet} s loading i error stateom
+  \item Store za podatke koje dijeli više viewova; lokalni \codefile{ref()} za ono što živi u jednoj komponenti
+  \item Pesimistički update: čekaj odgovor API-ja, pa ažuriraj state
+\end{itemize}
+
+\vspace{0.4em}
+Pitanje koje sigurno dolazi: \enquote{Zašto je ovo u storeu, a ono lokalno?} Odgovor \enquote{tako je bilo u tutorialu} ne prolazi.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 7: TypeScript}
+\begin{itemize}
+  \item Cijeli frontend u TypeScriptu: \codefile{lang="ts"} u svim komponentama
+  \item \textbf{Tipovi u \codefile{src/types/}} preslikavaju vaše Pydantic Response scheme 1:1
+  \item Tipizirani API pozivi: \codefile{api.get<Lifter[]>(...)}, tipizirani propsi i emitovi
+  \item \codefile{vue-tsc} prolazi \textbf{bez grešaka} - to je uvjet, ne preporuka
+  \item \codefile{any} koristite samo gdje imate obrazloženje koje možete izgovoriti naglas
+\end{itemize}
+
+\vspace{0.4em}
+TypeScript vam je saveznik protiv tipfelera u nazivima polja - greška se vidi u editoru, ne na obrani.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 8: testovi}
+\begin{tabular}{@{}lp{6.8cm}@{}}
+  \toprule
+  \textbf{Tip} & \textbf{Minimum} \\
+  \midrule
+  Vitest unit & barem jedna utility funkcija i jedan store s mockanim API-jem \\
+  Component test & barem jedna komponenta: renderiranje propsa i emitani event \\
+  Playwright E2E & barem login flow: uspješna prijava i pogrešna lozinka \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Testovi se pokreću s \codefile{npm run test} i moraju biti zeleni pri predaji. E2E test poslovne zabrane, npr. disabled gumb nakon roka, nosi dodatnu težinu na obrani.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 9: deploy}
+\begin{itemize}
+  \item Aplikacija dostupna na \textbf{javnom URL-u}: Railway, Render ili slična platforma
+  \item Backend i frontend deployani zasebno; baza je managed PostgreSQL
+  \item \textbf{Env varijable}: \codefile{VITE\_API\_URL} za frontend; \codefile{DATABASE\_URL}, \codefile{JWT\_SECRET} i \codefile{CORS\_ORIGINS} za backend
+  \item \textbf{CORS} ograničen na domenu vašeg frontenda, ne \codefile{*}
+  \item \textbf{SPA fallback}: direktan URL bilo koje rute servira \codefile{index.html}
+  \item Migracije se pokreću automatski pri deployu
+\end{itemize}
+
+\vspace{0.4em}
+Deploy radimo zajedno na Predavanju 12 - ne ostavljajte ga za zadnji dan.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Bodovna raspodjela 2. dijela (45 bodova)}
+\begin{tabular}{@{}lr@{}}
+  \toprule
+  \textbf{Komponenta} & \textbf{Bodovi} \\
+  \midrule
+  Routing, layout i guardovi & 6 \\
+  Auth flow: login, refresh, 401 handling & 7 \\
+  CRUD viewovi s UX stanjima & 8 \\
+  Forme i prikaz serverskih grešaka & 5 \\
+  State management (Pinia) & 5 \\
+  TypeScript kvaliteta & 4 \\
+  Testovi: Vitest + Playwright & 5 \\
+  Deploy & 5 \\
+  \midrule
+  \textbf{Ukupno} & \textbf{45} \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Isto pravilo kao u 1. dijelu: dio koji na usmenom ne znate objasniti ne nosi bodove.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Checklist za predaju 2. dijela}
+\begin{enumerate}
+  \item \codefile{npm install} i \codefile{npm run dev} rade na svježem cloneu
+  \item \codefile{vue-tsc} prolazi bez grešaka
+  \item \codefile{npm run test} je zelen
+  \item \codefile{npm run build} prolazi bez grešaka
+  \item Javni URL radi: login, CRUD, pravila - sve na deployanoj verziji
+  \item README dopunjen: pokretanje frontenda i link na deploy
+\end{enumerate}
+
+\vspace{0.4em}
+Na obrani radimo na \textbf{deployanoj} aplikaciji, ne na localhost verziji. Ako deploy ne radi, obrana staje na tome.
+\end{frame}
+
+% ==============================
+% DIO 3: OBRANA
+% ==============================
+
+% ------------------------------
+\begin{frame}{AI alati: ista pravila kao u 1. dijelu}
+Sve iz prezentacije \enquote{Projekt 1} i dalje vrijedi: AI smijete koristiti, ali na obrani morate razumjeti i objasniti svaki dio svog koda.
+
+\vspace{0.6em}
+Za frontend posebno: AI rado generira komponente koje rade, ali s \codefile{any} tipovima, logikom u templateu i copy-paste stilom. Prođite kroz generirano i dovedite ga na razinu zahtjeva - to je dio posla, ne opcija.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{2. obrana (18.01.): kako izgleda}
+Demonstracija deployane aplikacije, pregled koda, pitanja.
+
+\vspace{0.4em}
+\textbf{Tipična pitanja:}
+\begin{itemize}
+  \item Kako frontend hendla 401 odgovor? Gdje je interceptor?
+  \item Što se dogodi kad korisnik ručno upiše URL admin stranice?
+  \item Gdje držiš stanje i zašto baš tu?
+  \item Što se dogodi kad token istekne dok korisnik radi?
+  \item Kako si konfigurirao CORS i koje env varijable si postavio?
+  \item Što testira ovaj Vitest test? Što pokriva E2E, a unit ne može?
+\end{itemize}
+
+\vspace{0.4em}
+Na kraju: \textbf{mini promjena uživo} - dodaj polje u formu, prikaži novi podatak, prilagodi tip.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Što je dovoljan odgovor na usmenom}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Prolazi}
+\begin{itemize}
+  \item \enquote{Interceptor uhvati 401, pozove refresh, ponovi originalni request s \_retry flagom}
+  \item \enquote{Guard čita meta.requiresAdmin i rolu iz storea pa preusmjerava}
+  \item \enquote{Store jer listu koriste dva viewa - forma je lokalni state}
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Ne prolazi}
+\begin{itemize}
+  \item \enquote{To mi je AI napisao, ne znam točno}
+  \item \enquote{Mislim da router to nekako sredi}
+  \item \enquote{Radi na localhostu, ne znam zašto na deployu ne radi}
+\end{itemize}
+\end{columns}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Rokovi i sljedeći koraci}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Što} & \textbf{Kada} \\
+  \midrule
+  Scaffold frontenda u \codefile{web/} & ovaj tjedan \\
+  Predavanja 7-11: frontend gradivo & 23.11. - 21.12. \\
+  Predavanje 12: deploy zajedno & 11.01. \\
+  2. obrana: full-stack na javnom URL-u & 18.01. \\
+  Rezervni termin predaje & veljački rokovi \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Ritam je isti kao u 1. dijelu: svako predavanje reproducirajte na svom projektu isti tjedan. Između zadnjeg predavanja i obrane je samo tjedan dana - tko sve ostavi za praznike, ne stigne.
+
+\vspace{0.6em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}

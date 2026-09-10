@@ -1,0 +1,503 @@
+% !TeX program = lualatex
+% !TeX root = pred1.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija - Predavanje 1 \\ Backend arhitektura i skeleton projekta}
+\date{05.10.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Što znači \enquote{backend arhitektura} (i što je \emph{loša} arhitektura)
+  \item Kako izgleda tipičan request: frontend $\rightarrow$ API $\rightarrow$ DB
+  \item Skeleton projekta: struktura repozitorija i moduli
+  \item Dev okruženje: Docker Compose, env varovi, konfiguracija
+  \item FastAPI: app factory, routeri, dependencies, health endpoint
+  \item Git workflow: commitovi, tagovi i \texttt{git diff} kao alat za učenje
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja imate \textbf{pokrenut} projekt: baza + API + dokumentiran način pokretanja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja (što morate znati objasniti)}
+Nakon ovog predavanja student može:
+\begin{itemize}
+  \item objasniti tok HTTP zahtjeva kroz slojeve backend aplikacije
+  \item razlikovati \textbf{router}, \textbf{service} i \textbf{DB layer}
+  \item postaviti razvojno okruženje: Docker Compose + env varovi
+  \item objasniti zašto koristimo \textbf{app factory} i modularnu strukturu
+  \item koristiti \texttt{git diff} za razumijevanje promjena u kodu
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto se uopće bavimo arhitekturom?}
+\begin{itemize}
+  \item Jer \enquote{radi mi} nije isto što i \enquote{održivo je}
+  \item Jer na obrani ispitujem \textbf{razumijevanje}, ne copy/paste
+  \item Jer se problemi pojavljuju kad projekt naraste:
+  \begin{itemize}
+    \item više endpointa, više pravila, više korisnika
+    \item više developera (vi u timu)
+    \item više bugova i edge caseova
+  \end{itemize}
+\end{itemize}
+
+\vspace{0.6em}
+\textbf{Arhitektura} = kako je sustav organiziran i gdje živi odgovornost.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Najčešći anti-pattern: \enquote{Sve u routeru}}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Sve u routeru}
+\begin{itemize}
+  \item jedna velika datoteka: HTTP + validacija + DB upiti + poslovna pravila + errori
+  \item ne možeš testirati bez HTTP-a
+  \item svaka promjena razbije nešto drugo
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Slojevi}
+\begin{itemize}
+  \item router je tanak: samo HTTP
+  \item poslovna logika u service-u
+  \item DB detalji u repository/DB layeru
+\end{itemize}
+\end{columns}
+
+\vspace{0.8em}
+Na obrani: tko ima sve u routeru, ne zna objasniti \emph{što je gdje} i \emph{zašto}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Request flow (mentalni model)}
+\begin{enumerate}
+  \item Frontend šalje HTTP request (npr. \texttt{POST /auth/login})
+  \item Router parsira request + provjerava auth dependency
+  \item Service provodi poslovna pravila (npr. rokovi, ownership)
+  \item Repository/DB layer radi upit (transakcija)
+  \item Service vraća rezultat (ili baca domain error)
+  \item Router mapira rezultat u HTTP response (status code + JSON)
+\end{enumerate}
+
+\vspace{0.6em}
+HTTP (router) je samo \textbf{transport}. Business pravila su \textbf{domena}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{REST u praksi (minimum koji tražim)}
+Resource-oriented URL-ovi: \texttt{GET /lifters}, \texttt{POST /lifters}, \texttt{GET /lifters/\{id\}}, \texttt{PATCH /lifters/\{id\}}, \texttt{DELETE /lifters/\{id\}}.
+
+\vspace{0.6em}
+Status codeovi nisu dekoracija:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{7.5cm}@{}}
+  \toprule
+  \textbf{Kod} & \textbf{Kada} \\
+  \midrule
+  200 / 201 & uspjeh / resurs kreiran \\
+  400 / 422 & neispravan zahtjev / validacija inputa pala \\
+  401 / 403 & nisi prijavljen / nemaš ovlasti \\
+  404 & resurs ne postoji \\
+  409 & konflikt, npr. duplikat prijave \\
+  500 & greška servera \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+\texttt{GET}, \texttt{PUT} i \texttt{DELETE} su u pravilu idempotentni.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{DTO i validacija (zašto Pydantic)}
+Backend mora validirati input - frontend se ne računa kao zaštita. DTO, odnosno schema, je ugovor API-ja: definira što točno ulazi i što izlazi.
+
+\vspace{0.6em}
+Pydantic taj ugovor provodi automatski: nevaljan input dobije jasan 422 s opisom greške, a iz istih schema se generiraju OpenAPI modeli.
+
+\vspace{0.8em}
+\begin{block}{Na obrani pitam}
+Gdje je schema, što validira, koji error vraća i zašto.
+\end{block}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Konfiguracija: 12-factor i env varovi}
+\begin{itemize}
+  \item Konfiguracija ne smije biti hardkodirana
+  \item Tajne ne idu u git:
+  \begin{itemize}
+    \item DB password, JWT secret, API base URL
+  \end{itemize}
+  \item \codefile{.env} je za lokalno, \codefile{.env.example} je za repo
+  \item U produkciji: env varovi dolaze iz platforme (Railway/Render)
+\end{itemize}
+
+\vspace{0.6em}
+Ako promijeniš okruženje (lokalno $\rightarrow$ produkcija), ne smiješ mijenjati kod.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Docker Compose: zašto ga koristimo?}
+Standardizira PostgreSQL za sve studente, uklanja \enquote{meni ne radi na Windowsu/Macu} i omogućava brzo resetiranje okruženja.
+
+\vspace{0.8em}
+\begin{tabular}{@{}p{5.2cm}p{5.2cm}@{}}
+  \toprule
+  \textbf{U Composeu} & \textbf{Lokalno} \\
+  \midrule
+  \texttt{db} - Postgres + volume & backend - \texttt{uvicorn --reload} \\
+   & frontend - Vite dev server \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Backend i frontend ne dockeriziramo radi brzine razvoja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Repo struktura (monorepo)}
+\begin{lstlisting}[language=bash]
+repo/
+  api/              # FastAPI backend
+  web/              # Vue frontend
+  docker-compose.yml
+  .gitignore
+  README.md
+  .env.example
+\end{lstlisting}
+
+\vspace{0.6em}
+Jedan repo = lakša integracija, jedan README, jedna priča na obrani.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=15]{Backend struktura (minimalno, ali ozbiljno)}
+\begin{lstlisting}[language=bash]
+api/
+  app/
+    main.py            # app factory + include routers
+    core/
+      config.py        # env config
+      deps.py          # dependencies (auth, db)
+      errors.py        # custom errors / handlers
+      logging.py       # logging config
+    routers/
+      health.py
+    schemas/
+    models/
+    services/
+    repositories/
+  tests/
+  pyproject.toml (ili requirements.txt)
+  alembic/ (kasnije)
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{App factory: zašto?}
+\begin{itemize}
+  \item Omogućava:
+  \begin{itemize}
+    \item testiranje bez pokretanja servera
+    \item konfiguraciju ovisno o okruženju
+    \item modularno dodavanje routera/middlewarea
+  \end{itemize}
+  \item Smanjuje \enquote{global state} probleme
+\end{itemize}
+
+\vspace{0.6em}
+\texttt{create\_app()} napravi aplikaciju. \texttt{uvicorn} samo \textbf{servira}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Primjer: minimalni \texttt{main.py}}
+\begin{lstlisting}[language=python]
+from fastapi import FastAPI
+from app.routers.health import router as health_router
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Powerlifting Registrations API")
+    app.include_router(health_router, prefix="/health", tags=["health"])
+    return app
+
+app = create_app()
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Health endpoint (zašto je bitan?)}
+\begin{itemize}
+  \item Najjednostavniji endpoint koji potvrđuje:
+  \begin{itemize}
+    \item da se aplikacija diže
+    \item da routing radi
+    \item (kasnije) da DB konekcija radi
+  \end{itemize}
+  \item U produkciji se često koristi kao readiness/liveness check
+\end{itemize}
+
+\vspace{0.6em}
+\texttt{GET /health} $\rightarrow$ \texttt{\{ "status": "ok" \}}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Primjer: \texttt{routers/health.py}}
+\begin{lstlisting}[language=python]
+from fastapi import APIRouter
+
+router = APIRouter()
+
+@router.get("/")
+def health():
+    return {"status": "ok"}
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Konfiguracija: \texttt{core/config.py}}
+\begin{itemize}
+  \item Čitamo env varove na jednom mjestu
+  \item Ne razbacujemo \texttt{os.getenv} po kodu
+\end{itemize}
+
+\begin{lstlisting}[language=python]
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    ENV: str = "dev"
+    DATABASE_URL: str
+    JWT_SECRET: str = "change-me"
+    JWT_ISSUER: str = "sit-unizd"
+
+settings = Settings()
+\end{lstlisting}
+
+\vspace{0.4em}
+Pydantic settings je najčišći put za konfiguraciju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Logging (što logiramo, što ne?)}
+\begin{tabular}{@{}p{5.2cm}p{5.2cm}@{}}
+  \toprule
+  \textbf{Logiramo} & \textbf{Ne logiramo} \\
+  \midrule
+  request metadata: ruta, status code & lozinke, tokene, osobne identifikatore \\
+  \midrule
+  error stack trace u dev okruženju & kompletan request body ako sadrži osjetljive podatke \\
+  \midrule
+  ključne domenske događaje, npr. \enquote{registration withdrawn} & \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Log nije baza. Log je trag za debugging.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Logging: minimalna konfiguracija}
+\begin{lstlisting}[language=python]
+# app/core/logging.py
+import logging
+
+def setup_logging(debug: bool = False) -> None:
+    logging.basicConfig(
+        level=logging.DEBUG if debug else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+# u servisu:
+logger = logging.getLogger(__name__)
+logger.info("club created: id=%s", club.id)
+\end{lstlisting}
+
+\vspace{0.4em}
+Logger se dohvaća po modulu preko \texttt{\_\_name\_\_} pa svaki zapis kaže odakle dolazi. U produkciji sve ide na stdout, a platforma skuplja logove - detalji u Predavanju 12.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Error handling (na razini arhitekture)}
+\begin{itemize}
+  \item Dosljedan format errora:
+  \begin{itemize}
+    \item \texttt{code}, \texttt{message}, (opc.) \texttt{fields}
+  \end{itemize}
+  \item Razdvajamo:
+  \begin{itemize}
+    \item \textbf{domain error} (poslovno pravilo) vs \textbf{HTTP error}
+  \end{itemize}
+  \item Kasnije: global exception handler mapira domain error u status code
+\end{itemize}
+
+\vspace{0.6em}
+Ako to ne dogovorite odmah, poslije je kaos.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Tooling: lint i format (zašto Ruff?)}
+\begin{itemize}
+  \item \textbf{Ruff} je danas i linter i formatter, jedan alat za oboje:
+  \begin{itemize}
+    \item \texttt{ruff check .} - lint: importi, greške, stil
+    \item \texttt{ruff format .} - formatiranje, jedan stil bez rasprave
+  \end{itemize}
+  \item Formatter je naslijedio Black i drži isti stil koda
+  \item Smanjuje code review overhead i olakšava timski rad
+\end{itemize}
+
+\vspace{0.6em}
+Ako u repou vidim nered, na obrani se prvo bavimo time i gubite vrijeme.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Testiranje: što znači \enquote{testabilna arhitektura}?}
+\begin{itemize}
+  \item Ako je sva logika u routeru, testiraš sve preko HTTP-a $\Rightarrow$ sporo i krhko
+  \item Ako je logika u service-u, možeš testirati:
+  \begin{itemize}
+    \item pravila (rokovi, ownership) bez HTTP sloja
+  \end{itemize}
+  \item FastAPI omogućava i integration testove (TestClient/httpx)
+\end{itemize}
+
+\vspace{0.6em}
+Danas postavljamo skeleton tako da se testovi kasnije pišu bez muke.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Git kao nastavna metoda: commitovi i diff}
+\begin{center}
+\Large Svaki commit je mala lekcija. \\[0.3em] Veliki commit = loša lekcija.
+\end{center}
+
+\vspace{0.8em}
+Ne live-codeam: pokazujem unaprijed pripremljen projekt kroz commitove. Vi učite gledajući \textbf{što se promijenilo} i \textbf{zašto} - \texttt{git diff} je alat za razumijevanje, ne samo za rješavanje konflikata.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kako čitati diff (brza pravila)}
+\begin{itemize}
+  \item Prvo razumij \textbf{što} je cilj promjene (commit message)
+  \item Onda gledaj:
+  \begin{itemize}
+    \item novi fileovi vs izmjene postojećih
+    \item javne API promjene (npr. novi endpoint)
+    \item promjene u configu (env, compose)
+  \end{itemize}
+  \item Tek na kraju detalji implementacije
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Korisne git naredbe}
+\begin{lstlisting}[language=bash]
+# pregled povijesti
+git log --oneline --decorate
+
+# diff izmedu commitova
+git diff <commit1>..<commit2>
+
+# diff u konkretnom commitu
+git show <commit>
+
+# promjena na konkretan tag
+git checkout lecture-01-end
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Commitovi za Predavanje 1 (što obrađujemo danas)}
+\begin{itemize}
+  \item \texttt{chore: init monorepo (api, web) with tooling configs}
+  \item \texttt{chore: add docker-compose postgres and env example files}
+  \item \texttt{feat(api): bootstrap FastAPI app with health check and version}
+  \item \texttt{refactor(api): add app factory and basic module structure}
+  \item \texttt{docs: add local dev guide and project conventions}
+\end{itemize}
+
+\vspace{0.6em}
+\textbf{Na satu:} prolazimo diffeve i objašnjavamo \emph{zašto} je to u toj datoteci.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Demo: \texttt{docker-compose.yml} (minimalno)}
+\begin{lstlisting}[language=bash]
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: pl_reg
+      POSTGRES_USER: pl_user
+      POSTGRES_PASSWORD: pl_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+\end{lstlisting}
+
+\vspace{0.4em}
+Lozinke su demo - u praksi se stavljaju u \codefile{.env}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Pokretanje baze i API-ja (danas)}
+\begin{lstlisting}[language=bash]
+# baza
+docker compose up -d db
+
+# backend
+cd api
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+uvicorn app.main:app --reload
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{uv} objedinjuje venv i pip, brži je i danas je standard za nove projekte - \codefile{requirements.txt} ostaje isti.
+
+\vspace{0.4em}
+Checkpoint: otvorite \texttt{http://127.0.0.1:8000/health} i dobijte \texttt{"ok"}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Swagger / OpenAPI (zašto je bitno od prvog dana?)}
+\begin{itemize}
+  \item API dokumentacija se generira automatski
+  \item Olakšava testiranje endpointa
+  \item Frontend se oslanja na ugovor API-ja
+\end{itemize}
+
+\vspace{0.6em}
+\texttt{/docs} i \texttt{/openapi.json} su vaši prijatelji.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što ide sljedeće (Predavanje 2)}
+\begin{itemize}
+  \item Modeliranje podataka: Club i User
+  \item SQLAlchemy engine + session
+  \item Alembic migracije (inicijalno)
+  \item Seed admina i demo kluba
+\end{itemize}
+
+\vspace{0.8em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}

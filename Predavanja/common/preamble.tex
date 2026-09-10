@@ -1,0 +1,82 @@
+% ============================================================
+% Zajednički preamble za sva predavanja RWA kolegija
+% Uključiti s: \input{../common/preamble.tex}
+% ============================================================
+
+\documentclass[aspectratio=149,11pt]{beamer}
+\usetheme{CambridgeUS}
+
+\usepackage{fontspec}              % radi samo sa XeLaTeX/LuaLaTeX
+\setsansfont{Latin Modern Sans}    % sans-serif font
+\setmonofont{Latin Modern Mono}    % monospace font za kod
+\usepackage[croatian]{babel}
+\usepackage{csquotes}              % \enquote{} → hrvatski navodnici „..."
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% ---------- Autor i logo ----------
+\author{mag.ing. Josip Torić (SIT UNIZD)}
+\titlegraphic{\includegraphics[height=2.5cm]{../common/SIT_logo_tekst1.pdf}}
+
+% ---------- Listings ----------
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codeframeclr}{RGB}{220,220,220}
+\lstdefinelanguage{bash}{
+  morekeywords={sudo,apt,brew,pip,pipx,uv,winget,python,git,flask,source,deactivate,code,gunicorn,docker,compose,heroku,render,railway,node,npm,pnpm,yarn,uvicorn,alembic,pytest,ruff,black,precommit},
+  sensitive=false,
+  morecomment=[l]{\#}
+}
+\lstdefinelanguage{python}{
+  morekeywords={from,import,def,class,return,if,elif,else,for,in,while,try,except,raise,with,as,not,and,or,is,lambda,yield,True,False,None,await,async},
+  sensitive=true,
+  morecomment=[l]{\#},
+  morestring=[b]',
+  morestring=[b]"
+}
+\lstdefinelanguage{sql}{
+  morekeywords={SELECT,FROM,WHERE,INSERT,INTO,VALUES,UPDATE,SET,DELETE,CREATE,TABLE,PRIMARY,KEY,FOREIGN,REFERENCES,UNIQUE,NOT,NULL,INDEX,ON,ALTER,DROP,CONSTRAINT},
+  sensitive=false,
+  morecomment=[l]{--}
+}
+\lstdefinelanguage{json}{
+  morecomment=[l]{//},
+  morestring=[b]",
+  showstringspaces=false
+}
+\lstdefinelanguage{typescript}{
+  morekeywords={import,export,from,const,let,var,function,return,if,else,for,of,in,while,switch,case,break,async,await,try,catch,finally,throw,new,class,this,extends,implements,interface,type,enum,readonly,public,private,protected,static,get,set,true,false,null,undefined,void,string,number,boolean,any,unknown,never,typeof,keyof,as},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]',
+  morestring=[b]",
+  morestring=[b]`
+}
+\lstalias{javascript}{typescript}
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\footnotesize,
+  frame=single,
+  rulecolor=\color{codeframeclr},
+  frameround=tttt,
+  breaklines=true,
+  tabsize=2,
+  showstringspaces=false,
+  upquote=true,
+  columns=fullflexible
+}
+
+% ---------- Helper macros ----------
+\newcommand{\codefile}[1]{\texttt{#1}}
+\newcommand{\kbd}[1]{\texttt{#1}}
+
+% ---------- Code frame environment ----------
+% Automatski dodaje fragile i shrink=5, koristi se umjesto \begin{frame}
+% Primjer: \begin{codeframe}{Naslov} ... \end{codeframe}
+% Primjer s opcijama: \begin{codeframe}[shrink=15]{Naslov} ... \end{codeframe}
+\newenvironment{codeframe}[2][]
+  {\begin{frame}[fragile,shrink=5,#1]{#2}}
+  {\end{frame}}

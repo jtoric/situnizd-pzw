@@ -1,0 +1,660 @@
+% !TeX program = lualatex
+% !TeX root = projekt 1.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija \\ Projekt 1 - Backend}
+\date{05.10.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ==============================
+% DIO 1: PROJEKT I BODOVANJE
+% ==============================
+
+% ------------------------------
+\begin{frame}{Plan prezentacije}
+\begin{enumerate}
+  \item Što gradite i kako se boduje
+  \item Detaljni zahtjevi za backend
+  \item Bodovna raspodjela 1. dijela
+  \item Instalacija razvojnog okruženja
+  \item GitHub Education, Copilot i Claude Code
+  \item Kako koristiti AI da stvarno naučite
+  \item Što vas čeka na 1. obrani
+\end{enumerate}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Projekt kroz semestar}
+Tijekom semestra izrađujete \textbf{vlastitu full-stack web aplikaciju}. Tema je vaš izbor, ali mora zadovoljiti zahtjeve iz ove prezentacije.
+
+\vspace{0.6em}
+\begin{tabular}{@{}lp{5.2cm}lr@{}}
+  \toprule
+  \textbf{Dio} & \textbf{Što se predaje} & \textbf{Obrana} & \textbf{Bodovi} \\
+  \midrule
+  1. dio & Backend: API, baza, testovi & 16.11. & 45 \\
+  2. dio & Frontend SPA + deploy & 18.01. & 45 \\
+  \multicolumn{2}{@{}l}{Dolasci na predavanja} & & 10 \\
+  \midrule
+  \multicolumn{3}{@{}l}{\textbf{Ukupno}} & \textbf{100} \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Svaki dio se brani zasebno, usmeno, uz demonstraciju i pitanja o kodu. Danas govorimo o 1. dijelu - zahtjevi za frontend dolaze u prezentaciji \enquote{Projekt 2} na početku frontend bloka.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Tema projekta: kako odabrati}
+Dobra tema ima \textbf{uloge, pravila i statuse} - ne samo tablice koje se pune i čitaju.
+
+\vspace{0.4em}
+\begin{itemize}
+  \item Najmanje dvije role s različitim ovlastima: admin i korisnik, organizator i sudionik, trener i sportaš
+  \item Podaci koji pripadaju nekome - temelj za ownership provjere
+  \item Barem jedno pravilo koje ovisi o vremenu, statusu ili kapacitetu
+  \item Realan proces koji možete objasniti u dvije rečenice
+\end{itemize}
+
+\vspace{0.6em}
+Ako imate samo CRUD bez pravila i rola - to nije dovoljno za prolaz. Ako niste sigurni je li tema dovoljna, pitajte me \textbf{prije} nego što počnete.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Primjeri tema}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\begin{itemize}
+  \item Sustav rezervacija termina
+  \item Event management s prijavama
+  \item Task / workflow sustav
+  \item Coach \& athlete tracker
+\end{itemize}
+
+\column{0.48\textwidth}
+\begin{itemize}
+  \item Document approval sustav
+  \item Mini marketplace s oglasima
+  \item Evidencija članstva u klubu
+  \item Sustav narudžbi i dostave
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Referentni primjer s predavanja je sustav prijava na powerlifting natjecanje: admin i klubovi, natjecatelji, rokovi nominacija. Vaša tema mora imati usporedivu složenost.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Tehnologije}
+Koristimo konkretan stack - isti za sve studente. Na predavanjima učimo svaku tehnologiju od nule.
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{7cm}@{}}
+  \toprule
+  \textbf{Tehnologija} & \textbf{Uloga} \\
+  \midrule
+  Python 3.11+ & jezik backenda \\
+  FastAPI & web framework \\
+  SQLAlchemy 2.0 & ORM, async \\
+  Alembic & migracije baze \\
+  PostgreSQL & baza podataka \\
+  Pydantic & validacija i DTO \\
+  pytest & testovi \\
+  uv & paketi i virtualna okruženja \\
+  Docker Compose & baza u kontejneru \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Drugi stack nije dopušten - cilj kolegija je dubina na jednom stacku, ne širina na pet.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Struktura repozitorija}
+Projekt je \textbf{monorepo}: backend i frontend u istom repozitoriju na GitHubu.
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{7.5cm}@{}}
+  \toprule
+  \textbf{Folder} & \textbf{Sadržaj} \\
+  \midrule
+  \codefile{api/routers/} & HTTP endpointi, bez poslovne logike \\
+  \codefile{api/services/} & poslovna logika i provjere \\
+  \codefile{api/repositories/} & svi upiti prema bazi \\
+  \codefile{api/models/} & SQLAlchemy ORM definicije \\
+  \codefile{api/schemas/} & Pydantic DTO modeli \\
+  \codefile{api/core/} & config, session, auth, errori \\
+  \codefile{api/tests/} & pytest testovi \\
+  \codefile{web/} & frontend - dolazi u 2. dijelu \\
+  \bottomrule
+\end{tabular}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Arhitektura: slojevi su obavezni}
+\vspace{0.2em}
+\begin{center}
+\texttt{Routers $\rightarrow$ Services $\rightarrow$ Repositories $\rightarrow$ Models $\rightarrow$ PostgreSQL}
+\end{center}
+
+\vspace{0.6em}
+Svaki sloj ima jednu odgovornost:
+\begin{itemize}
+  \item Router prima request, parsira parametre, poziva service, vraća response
+  \item Service sadrži poslovnu logiku - ne zna za HTTP ni SQL
+  \item Repository radi sve upite prema bazi i vraća model objekte
+\end{itemize}
+
+\vspace{0.6em}
+Ako vam je sva logika u routeru ili router direktno piše SQL - to se mora popraviti \textbf{prije} obrane. Arhitektura nije preporuka, nego uvjet.
+\end{frame}
+
+% ==============================
+% DIO 2: DETALJNI ZAHTJEVI
+% ==============================
+
+% ------------------------------
+\begin{frame}{Zahtjev 1: baza podataka i migracije}
+\begin{itemize}
+  \item \textbf{Najmanje 3 tablice} s relacijama: 1:N obavezno, M:N ako tema traži
+  \item Svaka tablica ima surrogate \codefile{id} kao primarni ključ
+  \item \textbf{Constrainti na razini baze}: NOT NULL za obavezna polja, UNIQUE gdje domena traži jedinstvenost, FOREIGN KEY za sve veze
+  \item Sve promjene sheme kroz \textbf{Alembic migracije} - ručni SQL na bazi nije dopušten
+  \item Svaka migracija ima funkcionalan \codefile{downgrade()}
+  \item \textbf{Seed skripta}: idempotentna, kreira role i demo podatke za obranu
+\end{itemize}
+
+\vspace{0.4em}
+Na obrani provjeravam: \enquote{Zašto je ovaj stupac UNIQUE? Što se dogodi ako constraint makneš i dva requesta stignu istovremeno?}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 2: autentikacija}
+\begin{itemize}
+  \item Login s \codefile{username} + \codefile{password}
+  \item Lozinke hashirane \textbf{bcryptom} - plaintext ili MD5/SHA su nula bodova za autentikaciju
+  \item \textbf{JWT access token} (15 min) + \textbf{refresh token} (dulji rok)
+  \item Tri endpointa: \codefile{/auth/login}, \codefile{/auth/refresh}, \codefile{/auth/me}
+  \item Kriva lozinka i nepostojeći username vraćaju \textbf{isti} 401 error - bez otkrivanja koji korisnici postoje
+  \item \codefile{JWT\_SECRET} iz env varijable, nikad hardkodiran u kodu
+\end{itemize}
+
+\vspace{0.4em}
+JWT payload sadrži samo ono što autorizacija treba: \codefile{sub}, \codefile{role}, vlasnički ID, \codefile{exp}. Nikad lozinku ni osobne podatke.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 3: autorizacija i ownership}
+\begin{itemize}
+  \item \textbf{Najmanje dvije role} s različitim ovlastima, npr. admin i korisnik
+  \item Zaštita rola kroz dependency (\codefile{require\_role}), ne if-ovima po routerima
+  \item \textbf{Ownership}: korisnik vidi i mijenja \textbf{samo svoje} resurse - provjera u service layeru
+  \item Ispravni status kodovi: 401 bez tokena, 403 s tokenom ali bez prava
+\end{itemize}
+
+\vspace{0.6em}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Scenarij} & \textbf{Status} & \textbf{Zašto} \\
+  \midrule
+  Nema tokena ili istekao & 401 & Ne znamo tko si \\
+  Kriva rola & 403 & Znamo tko si, ne smiješ \\
+  Tuđi resurs & 403 ili 404 & Ovisno o politici otkrivanja \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Na obrani mijenjam ID u URL-u i očekujem da vaš backend to zabrani - to je IDOR test.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 4: poslovna pravila}
+Barem \textbf{jedno pravilo koje nije CRUD} - nešto što service provjerava prije nego što dopusti akciju:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{7.2cm}@{}}
+  \toprule
+  \textbf{Tip pravila} & \textbf{Primjer} \\
+  \midrule
+  Rok & Prijava moguća samo do datuma X \\
+  Status / tranzicija & Zahtjev ide draft $\rightarrow$ poslan $\rightarrow$ odobren, ne preskače korake \\
+  Kapacitet & Termin prima najviše N rezervacija \\
+  Jedinstvenost u kontekstu & Isti korisnik se ne može dvaput prijaviti na isti događaj \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Pravilo živi u \textbf{service layeru} i vraća domenski error s jasnim kodom, npr. \codefile{deadline\_passed} uz status 400 ili 409. UI smije sakriti gumb, ali backend \textbf{mora} zabraniti.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 5: API surface}
+Najmanje \textbf{10-15 endpointova}, organiziranih oko resursa:
+
+\vspace{0.4em}
+\begin{tabular}{@{}llr@{}}
+  \toprule
+  \textbf{Grupa} & \textbf{Primjer} & \textbf{Min.} \\
+  \midrule
+  Auth & login, refresh, me & 3 \\
+  Glavni entitet & CRUD: list, create, get, update, delete & 4-5 \\
+  Drugi entitet & CRUD s ownership provjerom & 4-5 \\
+  Workflow & akcije: odobri, odbij, odjavi, zaključaj & 1-2 \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+\begin{itemize}
+  \item \textbf{Nested URL-ovi} gdje ima smisla: \codefile{/clubs/\{id\}/lifters}, ne \codefile{/lifters?club\_id=5}
+  \item Lista endpointova ima \textbf{paginaciju} (\codefile{limit}/\codefile{offset})
+  \item Ispravni status kodovi: 201 create, 204 delete, 400 pravilo, 403 zabranjeno, 404 ne postoji, 409 duplikat, 422 validacija
+\end{itemize}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 6: validacija i error handling}
+\begin{itemize}
+  \item \textbf{Pydantic scheme za svaki input}: zasebne Create, Update i Response varijante - nikad isti DTO za input i output
+  \item Response scheme ne izlažu interne podatke: \codefile{hashed\_password} nikad ne izlazi iz API-ja
+  \item Validatori za domenska ograničenja: datum u prošlosti, dopuštene vrijednosti, rokovi u ispravnom poretku
+  \item \textbf{Standardiziran error format}: svaki error vraća JSON s \codefile{code} i \codefile{message}, kroz globalni exception handler
+  \item Partial update kroz PATCH s \codefile{exclude\_unset=True}
+\end{itemize}
+
+\vspace{0.4em}
+422 vraća Pydantic za oblik podataka, 400/409 vraća service za smisao. Na obrani pitam u čemu je razlika.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 7: testovi}
+Pytest testovi koji dokazuju da pravila vrijede:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{7cm}@{}}
+  \toprule
+  \textbf{Područje} & \textbf{Minimum} \\
+  \midrule
+  Autentikacija & uspješan login, kriva lozinka, istekli token, refresh \\
+  Autorizacija & svaka rola: što smije i što dobiva 403 \\
+  Ownership & korisnik A ne vidi i ne mijenja podatke korisnika B \\
+  Poslovna pravila & pravilo prolazi, pravilo zabranjuje, granični slučaj \\
+  Constrainti & duplikat vraća 409, nevažeći input 422 \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Svaki endpoint ima barem jedan \textbf{negativni test}. Vremenski ovisna pravila testirajte \textbf{freezegunom} - test ne smije ovisiti o danu pokretanja.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Zahtjev 8: Git i predaja}
+\begin{itemize}
+  \item Projekt je na \textbf{GitHubu} od prvog tjedna - repozitorij mi šaljete odmah
+  \item \textbf{Commitovi kroz semestar}, ne jedan veliki commit dan prije obrane - povijest commitova je dio ocjene kvalitete
+  \item Smislene commit poruke: \enquote{feat: add registration deadline check}, ne \enquote{update}
+  \item \codefile{.env} nikad u gitu - u repozitoriju stoji \codefile{.env.example}
+  \item \codefile{README.md} s uputama za pokretanje: baza, migracije, seed, server
+\end{itemize}
+
+\vspace{0.4em}
+Repozitorij s tri commita od kojih je jedan \enquote{final version} govori mi više od bilo kojeg odgovora na usmenom.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Bodovna raspodjela 1. dijela (45 bodova)}
+\begin{tabular}{@{}lr@{}}
+  \toprule
+  \textbf{Komponenta} & \textbf{Bodovi} \\
+  \midrule
+  Modeliranje baze, migracije i seed & 6 \\
+  Autentikacija: bcrypt, JWT, refresh & 7 \\
+  Autorizacija: role i ownership & 7 \\
+  Poslovna pravila & 7 \\
+  API dizajn i status kodovi & 5 \\
+  Validacija i error handling & 4 \\
+  Testovi & 5 \\
+  Arhitektura i kvaliteta koda & 4 \\
+  \midrule
+  \textbf{Ukupno} & \textbf{45} \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Bodovi vrijede samo uz \textbf{razumijevanje}: dio koji na usmenom ne znate objasniti ne nosi bodove, ma koliko dobro radio.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Checklist za predaju 1. dijela}
+Prije obrane provjerite da sve prolazi na svježem cloneu repozitorija:
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item \codefile{docker compose up -d db} podiže bazu
+  \item \codefile{alembic upgrade head} prolazi bez greške
+  \item \codefile{python -m app.seed} puni demo podatke
+  \item \codefile{uvicorn app.main:app} se podiže, \codefile{/docs} pokazuje sve endpointe
+  \item \codefile{pytest} je zelen
+  \item README objašnjava sve gornje korake
+\end{enumerate}
+
+\vspace{0.4em}
+\enquote{Radi na mom laptopu} nije predaja. Ako ja ne mogu pokrenuti projekt po README-u, obrana počinje s minusom.
+\end{frame}
+
+% ==============================
+% DIO 3: INSTALACIJA
+% ==============================
+
+% ------------------------------
+\begin{frame}{Što trebate instalirati}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Alat} & \textbf{Verzija} & \textbf{Svrha} \\
+  \midrule
+  Git & najnovija & verzioniranje koda \\
+  Python & 3.11+ & backend (FastAPI) \\
+  Docker Desktop & najnovija & PostgreSQL baza \\
+  VS Code & najnovija & editor \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Node.js za frontend dolazi u 2. dijelu - za backend vam ne treba. Sve se instalira kroz službene stranice ili package managere; detalji na sljedećim slideovima.
+\end{frame}
+
+% ------------------------------
+\begin{frame}[fragile,shrink=5]{Git}
+\begin{lstlisting}[language=bash]
+# Windows - preuzmite installer sa https://git-scm.com
+# macOS
+brew install git
+# Linux (Debian/Ubuntu)
+sudo apt install git
+
+# Provjera
+git --version
+
+# Osnovna konfiguracija (obavezno nakon instalacije)
+git config --global user.name "Ime Prezime"
+git config --global user.email "email@example.com"
+\end{lstlisting}
+
+\vspace{0.4em}
+Ako nemate GitHub račun, napravite ga odmah - trebat će vam za predaju projekta i za GitHub Education.
+\end{frame}
+
+% ------------------------------
+\begin{frame}[fragile,shrink=5]{Python i uv}
+\begin{lstlisting}[language=bash]
+# Windows - preuzmite sa https://python.org
+# OBAVEZNO oznacite "Add Python to PATH" u installeru
+
+# macOS
+brew install python@3.12
+
+# Linux
+sudo apt install python3
+
+# uv - moderni alat za pakete i virtualna okruzenja
+# Windows: winget install astral-sh.uv
+# macOS:   brew install uv
+# Linux:   curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Provjera
+python --version   # ili python3 --version
+uv --version
+\end{lstlisting}
+
+\vspace{0.4em}
+Virtualna okruženja i pakete vodimo kroz \textbf{uv}: \texttt{uv venv} stvara okruženje, \texttt{uv pip install} instalira pakete - brže od klasičnog pipa, a svaki projekt ostaje izoliran od sustava.
+\end{frame}
+
+% ------------------------------
+\begin{frame}[fragile,shrink=5]{Docker Desktop}
+Preuzmite Docker Desktop s \texttt{docker.com}. Uključuje Docker Engine i Docker Compose.
+
+\begin{lstlisting}[language=bash]
+# Provjera nakon instalacije
+docker --version
+docker compose version
+
+# Pokretanje PostgreSQL baze za razvoj
+docker compose up -d db
+\end{lstlisting}
+
+\vspace{0.4em}
+Docker koristimo \textbf{samo za bazu} - ne trebate kontejnerizirati svoj backend. PostgreSQL lokalno bez Dockera je moguć, ali Docker Compose je jednostavniji jer konfiguracija ostaje u \codefile{docker-compose.yml}.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{VS Code i ekstenzije}
+\textbf{VS Code} preuzmite s \texttt{code.visualstudio.com}. Preporučene ekstenzije za backend:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item \textbf{Python} (Microsoft) - IntelliSense, debugging, venv podrška
+  \item \textbf{SQLTools} + PostgreSQL driver - pregled baze iz editora
+  \item \textbf{REST Client} ili \textbf{Thunder Client} - testiranje API-ja bez Postmana
+\end{itemize}
+
+\vspace{0.6em}
+Smijete koristiti i drugi editor (PyCharm, IntelliJ), ali upute na predavanjima prate VS Code.
+\end{frame}
+
+% ==============================
+% DIO 4: AI ALATI
+% ==============================
+
+% ------------------------------
+\begin{frame}{GitHub Education - što dobivate}
+Kao studenti imate pravo na \textbf{GitHub Student Developer Pack} koji uključuje:
+
+\begin{itemize}
+  \item \textbf{GitHub Copilot} besplatno - AI autocomplete u editoru
+  \item Pristup \textbf{AI modelima} kroz Copilot Chat - najnovije generacije GPT i Claude modela
+  \item GitHub Pro - privatni repozitoriji, Actions minute, Codespaces
+  \item Razni bonusi: domene, cloud krediti, alati
+\end{itemize}
+
+\vspace{0.4em}
+Aktivacija: \texttt{education.github.com} $\rightarrow$ prijavite se s GitHub računom $\rightarrow$ potvrdite studentski status (index ili potvrda s fakulteta).
+\end{frame}
+
+% ------------------------------
+\begin{frame}{GitHub Copilot u VS Code-u}
+Nakon aktivacije GitHub Education, instalirajte \textbf{GitHub Copilot} ekstenziju u VS Code.
+
+\vspace{0.4em}
+\textbf{Dva načina korištenja:}
+\begin{enumerate}
+  \item \textbf{Inline suggestions} - dok tipkate, Copilot predlaže nastavak koda. Tab za prihvaćanje, Esc za odbijanje.
+  \item \textbf{Copilot Chat} (Ctrl+Shift+I) - razgovor s AI-jem o kodu. Selektirajte dio koda i pitajte za objašnjenje, refactoring ili debugging.
+\end{enumerate}
+
+\vspace{0.4em}
+U Copilot Chatu birate model - isprobajte različite, svaki ima drugačije snage.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Copilot Chat - korisne naredbe}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Naredba} & \textbf{Što radi} \\
+  \midrule
+  \texttt{/explain} & Objašnjava selektirani kod \\
+  \texttt{/fix} & Predlaže popravak za grešku \\
+  \texttt{/tests} & Generira testove za selektirani kod \\
+  \texttt{/doc} & Generira dokumentaciju \\
+  \texttt{@workspace} & Daje kontekst cijelog projekta \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Selektirajte funkciju $\rightarrow$ otvorite Chat $\rightarrow$ napišite \texttt{/explain} ili postavite pitanje prirodnim jezikom. Chat vidi vaš kod i daje kontekstualni odgovor.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Claude Code u VS Code-u}
+\textbf{Claude Code} je Anthropicov agentski alat koji se integrira u VS Code kao ekstenzija.
+
+\vspace{0.4em}
+\textbf{Instalacija:}
+\begin{enumerate}
+  \item Napravite račun na \texttt{claude.ai}
+  \item U VS Code instalirajte ekstenziju \textbf{Claude Code} (Anthropic)
+  \item Prijavite se kroz ekstenziju - otvori se browser za autentikaciju
+  \item Claude se pojavljuje kao panel u VS Code-u
+\end{enumerate}
+
+\vspace{0.6em}
+Claude čita vaše datoteke, razumije strukturu projekta i može predlagati promjene direktno u editoru. Za razliku od Copilota koji radi inline, Claude radi u \textbf{agentskom} modu - može čitati, pisati i izvršavati naredbe.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Claude vs Copilot - kad koristiti koji}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Copilot}
+\begin{itemize}
+  \item Brzi inline prijedlozi dok tipkate
+  \item Autocomplete za poznate obrasce
+  \item Kratka pitanja o kodu (\texttt{/explain})
+  \item Generiranje boilerplate koda
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Claude Code}
+\begin{itemize}
+  \item Složeniji zadaci s više datoteka
+  \item Debugging - čita error, traži uzrok
+  \item Razumijevanje arhitekture
+  \item Pisanje i pokretanje testova
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Ne trebate birati samo jedan. Copilot za svakodnevno tipkanje, Claude kad trebate razmisliti o problemu ili napraviti veću promjenu.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{AI smijete koristiti - uz razumijevanje}
+AI alati su dio modernog razvoja softvera i zabraniti ih nema smisla. Cilj kolegija nije provjeriti možete li pisati kod iz glave, nego \textbf{razumijete li što taj kod radi i zašto}.
+
+\vspace{0.6em}
+Na usmenom ne gledam \textbf{jeste li} koristili AI. Gledam \textbf{razumijete li} kod koji ste predali. Ako ne možete objasniti vlastiti kod, svejedno je tko ga je napisao - bodove ne nosi.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Kako AI koristiti za učenje}
+\textbf{Pristup koji radi:}
+\begin{enumerate}
+  \item \textbf{Prvo pokušajte sami} - razmislite o problemu 10-15 minuta prije nego što pitate AI
+  \item \textbf{Pitajte za objašnjenje, ne za gotov kod} - \enquote{Objasni mi kako radi JWT refresh flow} umjesto \enquote{Napiši mi refresh endpoint}
+  \item \textbf{Čitajte generirani kod red po red} - što ne razumijete, tražite da objasni
+  \item \textbf{Reproducirajte sami} - nakon što razumijete, napišite sličan kod bez AI-ja
+  \item \textbf{Testirajte rubne slučajeve} - što ako token istekne? ako korisnik nema pravo?
+\end{enumerate}
+
+\vspace{0.4em}
+\textbf{Što ne raditi}: copy-paste cijelog modula bez čitanja, traženje kompletnog featurea odjednom, slijepo ponavljanje \enquote{ne radi, popravi} umjesto čitanja error poruke.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Dobar prompt vs loš prompt}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Loš prompt}
+\begin{itemize}
+  \item \enquote{Napravi mi login}
+  \item \enquote{Ne radi, popravi}
+  \item \enquote{Napiši testove}
+  \item \enquote{Dodaj autorizaciju}
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Dobar prompt}
+\begin{itemize}
+  \item \enquote{Objasni zašto login vraća 401 na ispravan password - evo requesta i responsea}
+  \item \enquote{Imam ovaj service - objasni kako ownership check radi}
+  \item \enquote{Napiši test koji provjerava da korisnik ne može vidjeti tuđe podatke}
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Što precizniji prompt, to bolji odgovor. Dajte kontekst: error poruku, dio koda, što ste pokušali.
+\end{frame}
+
+% ==============================
+% DIO 5: OBRANA
+% ==============================
+
+% ------------------------------
+\begin{frame}{1. obrana (16.11.): kako izgleda}
+Demonstracija API-ja kroz Swagger, pregled repozitorija i ključnih dijelova koda, pitanja o odlukama i edge caseovima.
+
+\vspace{0.4em}
+\textbf{Tipična pitanja:}
+\begin{itemize}
+  \item Objasni arhitekturu - što radi router, što service, što repository?
+  \item Kako radi JWT flow? Gdje se hashira lozinka?
+  \item Gdje provjeravaš ownership? Pokaži mi liniju koda.
+  \item Kako backend zabranjuje akciju nakon isteka roka?
+  \item Zašto ovaj endpoint vraća 403, a ne 404?
+  \item Što testira ovaj test i što bi se pokvarilo da ga nema?
+\end{itemize}
+
+\vspace{0.4em}
+Na kraju: \textbf{mini promjena uživo} - dodaj polje na model, napravi migraciju, prilagodi schemu i endpoint.
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Što je dovoljan odgovor na usmenom}
+Ne tražim savršene odgovore. Tražim da \textbf{razumijete} svoj kod.
+
+\vspace{0.6em}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Prolazi}
+\begin{itemize}
+  \item \enquote{Dependency čita JWT iz headera, dekodira ga i vraća usera - endpoint ga dobiva kroz Depends}
+  \item \enquote{403 jer je autenticiran, ali nema pravo na taj resurs}
+  \item \enquote{Test dokazuje da korisnik ne može mijenjati tuđi zapis}
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Ne prolazi}
+\begin{itemize}
+  \item \enquote{To mi je AI napisao, ne znam točno}
+  \item \enquote{Mislim da to radi nešto s tokenima}
+  \item \enquote{Nisam siguran zašto je 403, a ne 401}
+\end{itemize}
+\end{columns}
+\end{frame}
+
+% ------------------------------
+\begin{frame}{Rokovi i sljedeći koraci}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Što} & \textbf{Kada} \\
+  \midrule
+  Odabir teme i repozitorij na GitHubu & do 12.10. \\
+  1. obrana: backend & 16.11. \\
+  Prezentacija \enquote{Projekt 2} (frontend zahtjevi) & 23.11. \\
+  2. obrana: full-stack + deploy & 18.01. \\
+  Rezervni termin predaje & veljački rokovi \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Počnite \textbf{ovaj tjedan}: instalirajte okruženje, odaberite temu, napravite repozitorij. Svako predavanje reproducirajte na svom projektu - tko prati ritam predavanja, backend mu je gotov prije roka.
+
+\vspace{0.6em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}

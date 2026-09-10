@@ -1,0 +1,26 @@
+\frametitle{Disabling akcija po fazi}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { computed } from 'vue'
+
+const canRegister = computed(() =>
+  competition.value.phase === 'open'
+)
+const canModify = computed(() =>
+  ['open', 'prelim_passed'].includes(competition.value.phase)
+)
+</script>
+
+<template>
+  <button @click="register" :disabled="!canRegister"
+    :title="canRegister ? '' : 'Rok za prijave je istekao'">
+    Nova prijava
+  </button>
+  <button @click="withdraw(reg)" v-if="canModify">
+    Odjavi
+  </button>
+</template>
+\end{lstlisting}
+
+\vspace{0.4em}
+Koristimo \texttt{:disabled} umjesto \texttt{v-if} za gumbe koji su vidljivi ali nedostupni - korisnik vidi da opcija postoji, ali nije dozvoljena.

@@ -1,0 +1,17 @@
+\frametitle{Instalacija: Node.js i ekstenzije}
+\begin{lstlisting}[language=bash]
+# Node.js - preuzmite LTS sa https://nodejs.org
+node --version   # 22+
+npm --version
+
+# Scaffold projekta (radimo zajedno na predavanju)
+npm create vue@latest
+# odaberite: TypeScript = Yes, Router = Yes, Pinia = Yes
+\end{lstlisting}
+
+\vspace{0.6em}
+Preporučene VS Code ekstenzije za frontend:
+\begin{itemize}
+  \item \textbf{Vue - Official} - syntax highlighting, TypeScript podrška u .vue datotekama
+  \item \textbf{ESLint} + \textbf{Prettier} - lint i formatiranje
+\end{itemize}

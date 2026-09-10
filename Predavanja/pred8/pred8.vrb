@@ -1,0 +1,16 @@
+\frametitle{Vue errorHandler: protiv bijelog ekrana}
+Interceptor hvata HTTP greške, ali ne i greške u samim komponentama - exception u renderu ruši SPA u prazan ekran. Zadnja linija obrane:
+
+\begin{lstlisting}[language=typescript]
+// src/main.ts
+const app = createApp(App)
+
+app.config.errorHandler = (err, instance, info) => {
+  console.error('Vue error:', err, info)
+  // u produkciji: posalji u error tracking (Sentry)
+  // i prikazi korisniku genericku poruku
+}
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{errorHandler} hvata sve neuhvaćene greške iz komponenti, computeda i watchera. Korisnik umjesto bijelog ekrana dobiva poruku, a vi u konzoli ili error trackingu vidite što je puklo. Isti \enquote{fail gracefully} princip koji backend već ima kroz exception handler.

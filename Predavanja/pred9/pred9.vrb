@@ -1,0 +1,29 @@
+\frametitle{Reusable FormField komponenta}
+\begin{lstlisting}[language=html]
+<!-- src/components/FormField.vue -->
+<script setup lang="ts">
+defineProps<{
+  label: string
+  error?: string
+  modelValue: string | number
+}>()
+defineEmits<{
+  'update:modelValue': [value: string]
+}>()
+</script>
+
+<template>
+  <div class="form-field">
+    <label>{{ label }}</label>
+    <input :value="modelValue"
+      @input="$emit('update:modelValue',
+        ($event.target as HTMLInputElement).value)"
+    />
+    <span v-if="error" class="error">{{ error }}</span>
+  </div>
+</template>
+
+<!-- Koristenje: -->
+<!-- <FormField v-model="form.first_name" label="Ime"
+     :error="errors.first_name" /> -->
+\end{lstlisting}

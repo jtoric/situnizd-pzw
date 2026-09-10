@@ -1,0 +1,570 @@
+% !TeX program = lualatex
+% !TeX root = pred2.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija - Predavanje 2 \\ Modeliranje podataka, ORM i migracije}
+\date{12.10.2026.}
+
+\begin{document}
+	
+	\frame{\titlepage}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Plan predavanja}
+		\begin{enumerate}
+			\item Modeliranje podataka: entiteti, relacije, constrainti
+			\item Normalizacija (minimalno) i tipične greške u modelu
+			\item SQL kao temelj: što ORM zapravo radi
+			\item SQLAlchemy 2.0: modeli, engine, session
+			\item Migracije: Alembic, autogenerate, rollback
+			\item Seed podaci i razvojni workflow
+		\end{enumerate}
+		
+		\vspace{0.4em}
+		\begin{block}{Cilj}
+			Na kraju predavanja imamo bazu s tablicama \textbf{Club} i \textbf{User}, migracije i seed.
+		\end{block}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Ishodi učenja}
+		Nakon ovog predavanja student može:
+		\begin{itemize}
+			\item modelirati tablice i relacije za realnu web aplikaciju
+			\item objasniti razliku: model (DB) vs schema (API DTO)
+			\item postaviti SQLAlchemy engine i session per request
+			\item koristiti Alembic za izradu i primjenu migracija
+			\item objasniti unique/foreign key constraint i zašto su bitni
+		\end{itemize}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Prvo: domena našeg projekta (što modeliramo?)}
+		Minimalni entiteti za početak:
+		\begin{itemize}
+			\item \textbf{Club} - klub (naziv, grad, kontakt email, kontakt telefon)
+			\item \textbf{User} - korisnik (admin ili club user)
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Kasnije dodajemo:
+		\begin{itemize}
+			\item \textbf{Lifter} (natjecatelj), \textbf{Competition}, \textbf{Registration}
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Iterativno: prvo temelj (auth + ownership), tek onda složenije entitete.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Entitet, tablica, redak (terminologija)}
+		\begin{itemize}
+			\item \textbf{Entitet} (concept) $\rightarrow$ \textbf{tablica} (implementation)
+			\item \textbf{Instanca entiteta} $\rightarrow$ \textbf{redak} (row)
+			\item \textbf{Atribut entiteta} $\rightarrow$ \textbf{stupac} (column)
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Modeliramo \textbf{stabilne} pojmove domene, ne UI forme.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Primarni i strani ključ}
+		\begin{columns}[T]
+			\begin{column}{0.48\textwidth}
+				\textbf{Primarni ključ (PK)}
+				\begin{itemize}
+					\item jednoznačno identificira redak
+					\item najčešće \textbf{surrogate key}: \texttt{id} integer/uuid
+					\item prirodni ključ (OIB, registracijski broj) - oprez
+				\end{itemize}
+			\end{column}
+			\begin{column}{0.48\textwidth}
+				\textbf{Strani ključ (FK)}
+				\begin{itemize}
+					\item povezuje dvije tablice
+					\item referencijalni integritet: nema usera s \texttt{club\_id} koji ne postoji
+					\item određuje relaciju (1:N, M:N)
+				\end{itemize}
+			\end{column}
+		\end{columns}
+
+		\vspace{0.8em}
+		Prirodni podaci se mijenjaju ili nisu uvijek dostupni, \texttt{id} je stabilan.
+		U našem projektu: Club 1\,:\,1 User, Club 1\,:\,N Lifter.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Relacije: 1:1, 1:N, M:N (brzi pregled)}
+		\begin{center}
+			\small
+			\begin{tabular}{lll}
+				\toprule
+				\textbf{Relacija} & \textbf{Primjer iz projekta} & \textbf{Implementacija} \\
+				\midrule
+				1\,:\,1 & Club $\leftrightarrow$ User & FK + UNIQUE; rijetko, često ista tablica \\
+				1\,:\,N & Club $\rightarrow$ Lifter & FK na strani \enquote{N}; najčešća relacija \\
+				M\,:\,N & Lifter $\leftrightarrow$ Competition & pomoćna tablica (Registration) \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+
+		\vspace{0.6em}
+		Kad dođemo do prijava: Competition 1\,:\,N Registration i Lifter 1\,:\,N Registration.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Constrainti: što baza smije/ne smije dopustiti}
+		\begin{center}
+			\small
+			\begin{tabular}{lll}
+				\toprule
+				\textbf{Constraint} & \textbf{Što jamči} & \textbf{Primjer} \\
+				\midrule
+				NOT NULL & vrijednost mora postojati & \texttt{name} kluba \\
+				UNIQUE & nema duplikata & \texttt{email}, \texttt{username} \\
+				CHECK & vrijednost poštuje pravilo & težina $>$ 0 \\
+				FOREIGN KEY & relacija mora biti valjana & \texttt{club\_id} postoji u \texttt{clubs} \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+	\end{frame}
+
+	% ------------------------------------------------------------
+	\begin{frame}{}
+		\begin{center}
+			{\Large Pravila u kodu nisu dovoljna.}
+
+			\vspace{1em}
+			{\huge \textbf{Baza je autoritet.}}
+		\end{center}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Unique constraint: primjer s usernameom}
+		\begin{itemize}
+			\item Username korisnika mora biti jedinstven
+			\item Bez UNIQUE: login postaje dvosmislen ili nesiguran
+			\item Unique constraint je zaštita od race conditiona:
+			\begin{itemize}
+				\item dva requesta u isto vrijeme pokušaju kreirati isti username
+			\end{itemize}
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Na obrani pitam: \emph{gdje} se jedinstvenost provjerava - u kodu, u bazi ili oboje?
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Normalizacija (minimalno što trebate znati)}
+		\begin{itemize}
+			\item Cilj: smanjiti dupliciranje i anomalije (update/insert/delete)
+			\item 1NF: atomarne vrijednosti (nema lista u stupcu)
+			\item 2NF/3NF: atributi ovise o ključu, a ne o drugim atributima
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Ako imate isti podatak na 3 mjesta, negdje će kad-tad postati netočan.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Tipične greške u modeliranju (iz prakse)}
+		\begin{center}
+			\small
+			\begin{tabular}{ll}
+				\toprule
+				\textbf{Greška} & \textbf{Posljedica} \\
+				\midrule
+				lista u jednom stupcu (\texttt{"a,b,c"}) & nema query-ja po elementima \\
+				email kao primarni ključ & email se može promijeniti \\
+				bez constrainta \enquote{jer ćemo provjeriti u kodu} & race condition \\
+				denormalizacija bez razloga & neusklađenost podataka \\
+				\bottomrule
+			\end{tabular}
+		\end{center}
+
+		\vspace{0.6em}
+		Ispravan model = manje bugova i manje if-ova u kodu.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{SQL je temelj (ORM je sloj iznad)}
+		\begin{itemize}
+			\item ORM generira SQL (ili ga mapira)
+			\item Ako ne razumijete SQL:
+			\begin{itemize}
+				\item ne znate zašto je query spor
+				\item ne znate zašto relationship radi čudno
+			\end{itemize}
+			\item Danas radimo ORM, ali s mentalnim modelom SQL-a
+		\end{itemize}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}[fragile,shrink=5]{SQL: minimalni CRUD primjeri}
+\begin{lstlisting}[language=sql]
+-- CREATE
+INSERT INTO clubs (name, city) VALUES ('Behemot', 'Zadar');
+
+-- READ
+SELECT id, name FROM clubs WHERE city = 'Zadar';
+
+-- UPDATE
+UPDATE clubs SET city = 'Biograd' WHERE id = 1;
+
+-- DELETE
+DELETE FROM clubs WHERE id = 1;
+\end{lstlisting}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}[fragile,shrink=5]{JOIN: zašto relacije postoje}
+\begin{lstlisting}[language=sql]
+SELECT u.id, u.username, c.name AS club_name
+FROM users u
+JOIN clubs c ON c.id = u.club_id
+WHERE u.role = 'club';
+\end{lstlisting}
+		
+		\vspace{0.6em}
+		Relacije omogućuju query-je koji su prirodni i učinkoviti.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Index: kada i zašto?}
+		\begin{itemize}
+			\item Index ubrzava \texttt{WHERE}, \texttt{JOIN}, \texttt{ORDER BY}
+			\item Index košta:
+			\begin{itemize}
+				\item zauzima prostor
+				\item usporava INSERT/UPDATE (mora se ažurirati)
+			\end{itemize}
+			\item Unique constraint obično stvara index (npr. email)
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Indeksiraj ono po čemu često filtriraš: \texttt{email}, \texttt{club\_id}, \texttt{competition\_id}.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Transakcije (što su i zašto?)}
+		\begin{itemize}
+			\item Transakcija = skup DB operacija koje su \textbf{atomarne}
+			\item ACID (kratko):
+			\begin{itemize}
+				\item Atomicity: sve ili ništa
+				\item Consistency: constrainti vrijede
+				\item Isolation: konkurentni requestovi
+				\item Durability: zapis ostaje
+			\end{itemize}
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Svaki request tipično ima svoju transakciju (commit/rollback).
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Model vs Schema (DB vs API)}
+		\begin{itemize}
+			\item \textbf{Model} (SQLAlchemy): kako se podatak sprema u bazu
+			\item \textbf{Schema} (Pydantic): kako podatak putuje preko API-ja
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Zašto razdvajamo?
+		\begin{itemize}
+			\item ne želimo izlagati sve DB stupce (npr. \texttt{password\_hash})
+			\item različiti input/output oblici (create vs read)
+			\item sigurnost i kontrola ugovora
+		\end{itemize}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{SQLAlchemy 2.0: osnovni komadi}
+		\begin{itemize}
+			\item \textbf{Engine}: konekcija prema DB-u
+			\item \textbf{Session}: jedinica rada (unit of work)
+			\item \textbf{Declarative model}: Python klase kao tablice
+			\item \textbf{Query}: SELECT/INSERT/UPDATE/DELETE kroz session
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Danas postavljamo engine + session i kreiramo prva dva modela.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}[fragile, shrink=15]{Engine i session (async)}
+\begin{lstlisting}[language=python]
+from sqlalchemy.ext.asyncio import (
+    create_async_engine, async_sessionmaker, AsyncSession
+)
+
+engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine, class_=AsyncSession,
+    expire_on_commit=False
+)
+
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except:
+            await session.rollback()
+            raise
+\end{lstlisting}
+
+		\vspace{0.4em}
+		Async session per request, commit/rollback kontrolirano. Koristimo \texttt{asyncpg} driver.
+		Connection string za async mora biti \texttt{postgresql+asyncpg://...}, a ne obični \texttt{postgresql://}.
+		To je čest uzrok da projekt \enquote{radi na predavanju, a ne radi doma}.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Zašto session per request?}
+		\begin{itemize}
+			\item Web aplikacija ima mnogo paralelnih requestova
+			\item Jedna globalna session:
+			\begin{itemize}
+				\item race condition
+				\item curenje stanja između requestova
+				\item čudni bugovi koje ne možeš reproducirati
+			\end{itemize}
+		\end{itemize}
+		
+		\vspace{0.6em}
+		U FastAPI dependencyju otvori session, na kraju je zatvori.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}[fragile,shrink=5]{Model: \texttt{Club} (SQLAlchemy 2.0 style)}
+\begin{lstlisting}[language=python]
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String
+
+class Club(Base):
+    __tablename__ = "clubs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+
+    users: Mapped[list["User"]] = relationship(back_populates="club")
+\end{lstlisting}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}[fragile,shrink=5]{Model: \texttt{User} (role + club\_id)}
+\begin{lstlisting}[language=python]
+from sqlalchemy import String, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    club_id: Mapped[int | None] = mapped_column(ForeignKey("clubs.id"), nullable=True)
+    club: Mapped["Club | None"] = relationship(back_populates="users")
+\end{lstlisting}
+		
+		\vspace{0.4em}
+		Admin može imati \texttt{club\_id = NULL}.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Enum ili string za role?}
+		\begin{itemize}
+			\item String je jednostavan, ali riskira typo (\enquote{admn})
+			\item Enum je sigurniji, ali traži malo više konfiguracije
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Možemo krenuti sa stringom + validation u schemi, a kasnije prebaciti u Enum.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Naming conventions (zašto je bitno?)}
+		\begin{itemize}
+			\item Tablice u množini (\texttt{users}, \texttt{clubs})
+			\item Foreign key: \texttt{club\_id}
+			\item Index/constraint imena: predvidljiva (pomaže migracijama)
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Ako naming nije dosljedan, migracije i debug postaju teži.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Alembic: što je i zašto ga koristimo?}
+		\begin{itemize}
+			\item Version control za DB shemu
+			\item Svaka promjena modela $\rightarrow$ nova migracija
+			\item Omogućuje:
+			\begin{itemize}
+				\item timski rad bez \enquote{radi mi na mojoj bazi}
+				\item kontrolirane promjene u produkciji
+				\item rollback kad nešto pođe krivo
+			\end{itemize}
+		\end{itemize}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}[fragile,shrink=5]{Alembic: osnovne naredbe}
+\begin{lstlisting}[language=bash]
+# inicijalizacija (jednom)
+alembic init alembic
+
+# generiranje migracije iz modela
+alembic revision --autogenerate -m "init clubs and users"
+
+# primjena migracija
+alembic upgrade head
+
+# rollback
+alembic downgrade -1
+\end{lstlisting}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Autogenerate nije magija (što provjeriti)}
+		\begin{itemize}
+			\item Autogenerate uspoređuje \textbf{metadata} s bazom
+			\item Ali može pogriješiti ili propustiti:
+			\begin{itemize}
+				\item složene constraint-e
+				\item rename stupaca (može ispasti drop+create)
+			\end{itemize}
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Uvijek pročitaj migraciju prije \texttt{upgrade}.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}[fragile,shrink=5]{Kako izgleda migracija (primjer)}
+\begin{lstlisting}[language=python]
+def upgrade() -> None:
+    op.create_table(
+        "clubs",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("name", sa.String(length=120), nullable=False),
+        sa.Column("city", sa.String(length=80), nullable=False),
+        sa.UniqueConstraint("name"),
+    )
+\end{lstlisting}
+		
+		\vspace{0.6em}
+		Gdje je UNIQUE i što sprječava?
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Rollback (downgrade) i zašto ga trebate znati}
+		\begin{itemize}
+			\item Kad migracija u produkciji pukne, rollback može spasiti situaciju
+			\item U razvoju rollback pomaže za provjeru da migracije nisu \enquote{one-way}
+			\item Ali rollback nije uvijek trivijalan - drop stupca znači nepovratan gubitak podataka
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Ne oslanjaj se na rollback kao plan. Planiraj migracije.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Seed podaci: što, zašto, kako}
+		\begin{itemize}
+			\item Seed = inicijalni podaci za razvoj/test (admin, demo klub)
+			\item Nije isto što i migracija:
+			\begin{itemize}
+				\item migracija mijenja shemu
+				\item seed puni tablice
+			\end{itemize}
+			\item Seed mora biti \textbf{idempotentan} ili barem siguran za ponavljanje
+		\end{itemize}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Seed: minimalni cilj}
+		U seed-u danas želimo:
+		\begin{itemize}
+			\item kreirati \textbf{admin} korisnika
+			\item kreirati jedan \textbf{demo klub}
+			\item kreirati jednog \textbf{club usera} za demo klub
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Da možemo odmah testirati auth i ownership kada dođemo do JWT predavanja.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Timestampi i timezone (kratko, ali bitno)}
+		\begin{itemize}
+			\item U produkciji:
+			\begin{itemize}
+				\item spremamo vrijeme u UTC
+				\item prikaz radimo u lokalnoj zoni (UI)
+			\end{itemize}
+			\item U našem projektu rokovi (prelim/final) će biti datetime:
+			\begin{itemize}
+				\item backend uspoređuje s server vremenom (UTC)
+			\end{itemize}
+		\end{itemize}
+		
+		\vspace{0.6em}
+		Na obrani, ako datumi \enquote{ne rade}, pitam: timezone? format? gdje uspoređuješ?
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Demo kroz commitove (Predavanje 2)}
+		\begin{itemize}
+			\item \texttt{feat(api): add SQLAlchemy engine and session factory}
+			\item \texttt{feat(api): add Club and User models with relationship}
+			\item \texttt{chore(api): add Alembic and initial migration}
+			\item \texttt{feat(api): create initial migration for Club and User}
+			\item \texttt{feat(api): add seed script for admin and demo club}
+		\end{itemize}
+		
+		\vspace{0.6em}
+		\textbf{Na satu:} prolazimo diffeve i provjeravamo DB stanje.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Mini checklista: što mora raditi do kraja sata}
+		\begin{enumerate}
+			\item \texttt{docker compose up -d db} (Postgres radi)
+			\item \texttt{alembic upgrade head} (tablice su kreirane)
+			\item seed skripta se izvrši bez greške
+			\item u bazi postoji admin user i demo klub
+		\end{enumerate}
+		
+		\vspace{0.6em}
+		Ako ovo nemate, sve iduće (JWT, ownership, registracije) će vam biti teže.
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Pitanja za diskusiju (za provjeru razumijevanja)}
+		\begin{itemize}
+			\item Zašto je email UNIQUE? Što se dogodi bez toga?
+			\item Zašto admin ima \texttt{club\_id = NULL}?
+			\item Što radi foreign key constraint?
+			\item Što je razlika model vs schema?
+			\item Zašto session per request, a ne globalna session?
+		\end{itemize}
+	\end{frame}
+	
+	% ------------------------------------------------------------
+	\begin{frame}{Što ide sljedeće (Predavanje 3)}
+		\begin{itemize}
+			\item Hashiranje lozinki
+			\item JWT access + refresh token
+			\item Login i refresh endpointi
+			\item Dependency \texttt{get\_current\_user}
+			\item Sigurnost u SPA (XSS i token storage)
+		\end{itemize}
+	\end{frame}
+	
+\end{document}

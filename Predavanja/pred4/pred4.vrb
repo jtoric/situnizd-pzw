@@ -1,0 +1,20 @@
+\frametitle{Test: ownership}
+\begin{lstlisting}[language=python]
+def test_club_cannot_see_other_clubs_lifters(
+    client, club_a_token, club_b_id
+):
+    r = client.get(
+        f"/clubs/{club_b_id}/lifters",
+        headers={"Authorization": f"Bearer {club_a_token}"},
+    )
+    assert r.status_code == 403
+
+def test_club_can_see_own_lifters(
+    client, club_a_token, club_a_id
+):
+    r = client.get(
+        f"/clubs/{club_a_id}/lifters",
+        headers={"Authorization": f"Bearer {club_a_token}"},
+    )
+    assert r.status_code == 200
+\end{lstlisting}

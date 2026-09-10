@@ -1,0 +1,21 @@
+\frametitle{Playwright config: automatski dev server}
+\begin{lstlisting}[language=typescript]
+// playwright.config.ts
+import { defineConfig } from '@playwright/test'
+
+export default defineConfig({
+  testDir: 'tests/e2e',
+  use: { baseURL: 'http://localhost:5173' },
+  webServer: {
+    command: 'npm run dev',
+    port: 5173,
+    reuseExistingServer: true,
+  },
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{webServer} pokreće Vite dev server prije testova i ugasi ga nakon njih. Backend i baza moraju biti pokrenuti zasebno - E2E testira protiv pravog API-ja sa seed podacima.
+
+\vspace{0.4em}
+Zato E2E testove pokrećemo protiv \textbf{poznatog stanja}: \texttt{python -m app.seed} prije test runa vraća bazu u početno stanje.

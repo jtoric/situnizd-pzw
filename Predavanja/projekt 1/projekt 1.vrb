@@ -1,0 +1,14 @@
+\frametitle{Docker Desktop}
+Preuzmite Docker Desktop s \texttt{docker.com}. Uključuje Docker Engine i Docker Compose.
+
+\begin{lstlisting}[language=bash]
+# Provjera nakon instalacije
+docker --version
+docker compose version
+
+# Pokretanje PostgreSQL baze za razvoj
+docker compose up -d db
+\end{lstlisting}
+
+\vspace{0.4em}
+Docker koristimo \textbf{samo za bazu} - ne trebate kontejnerizirati svoj backend. PostgreSQL lokalno bez Dockera je moguć, ali Docker Compose je jednostavniji jer konfiguracija ostaje u \codefile{docker-compose.yml}.

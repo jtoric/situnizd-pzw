@@ -1,0 +1,15 @@
+\frametitle{Test: dupla prijava daje 409}
+\begin{lstlisting}[language=python]
+@freeze_time("2026-03-01 10:00:00")
+def test_duplicate_registration(client, admin_token):
+    payload = {"lifter_id": 1, "category": "83"}
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    url = "/competitions/1/registrations"
+
+    r1 = client.post(url, json=payload, headers=headers)
+    assert r1.status_code == 201
+
+    r2 = client.post(url, json=payload, headers=headers)
+    assert r2.status_code == 409
+    assert r2.json()["code"] == "duplicate_registration"
+\end{lstlisting}

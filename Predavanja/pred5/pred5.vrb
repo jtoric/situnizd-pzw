@@ -1,0 +1,16 @@
+\frametitle{Filtriranje u repositoryju}
+\begin{lstlisting}[language=python]
+async def list_lifters(
+    db: AsyncSession,
+    club_id: int,
+    gender: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[Lifter]:
+    stmt = select(Lifter).where(Lifter.club_id == club_id)
+    if gender is not None:
+        stmt = stmt.where(Lifter.gender == gender)
+    stmt = stmt.limit(limit).offset(offset)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+\end{lstlisting}
