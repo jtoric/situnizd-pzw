@@ -1,0 +1,61 @@
+# =============================================
+# Python
+# =============================================
+# Kompajlirane datoteke koje Python automatski generira.
+# Ne trebaju nam u repozitoriju jer se generiraju pri pokretanju.
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtualno okruženje — svaki developer kreira svoje lokalno.
+.venv/
+venv/
+ENV/
+
+# =============================================
+# Environment varijable
+# =============================================
+# .env sadrži tajne (lozinke, JWT secret) — NIKAD ne ide u git.
+# U repo ide samo .env.example s demo vrijednostima.
+.env
+
+# =============================================
+# IDE / editor
+# =============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =============================================
+# OS
+# =============================================
+.DS_Store
+Thumbs.db
+
+# =============================================
+# Docker
+# =============================================
+# Volume za Postgres podatke (ako se koristi lokalni bind mount).
+pgdata/
+
+# =============================================
+# Node.js (web/ — dolazi u predavanju 7+)
+# =============================================
+node_modules/
+web/dist/
+
+# =============================================
+# Testiranje
+# =============================================
+.pytest_cache/
+.coverage
+htmlcov/
+
+*.tex
+*.pdf
+Projekt.md

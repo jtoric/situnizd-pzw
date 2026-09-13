@@ -1,0 +1,14 @@
+:root {
+  --boja-pozadina: #0e0e0e;
+  --boja-povrsina: #1a1a1a;
+  --boja-rub: #2e2e2e;
+  --boja-tekst: #ede6d3;
+  --boja-tekst-mute: #8a8579;
+  --boja-akcent: #c8451a;
+  --boja-uspjeh: #7a8c3a;
+
+  --font-display: 'Big Shoulders Display', sans-serif;
+  --font-body: 'JetBrains Mono', monospace;
+
+  --tranzicija: 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
