@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.24.0 (MiKTeX 25.12) (format=lualatex 2026.9.13)  13 SEP 2026 23:06
+This is LuaHBTeX, Version 1.24.0 (MiKTeX 25.12) (format=lualatex 2026.9.13)  13 SEP 2026 23:16
  restricted system commands enabled.
 **predavanje01.tex
 (./predavanje01.tex
@@ -1601,63 +1601,69 @@ LaTeX Font Info:    Font shape `TU/IBMPlexMono(0)/m/n' will be
 
 ] [28
 
-] [29
+]
+\openout4 = predavanje01.vrb
+ (./predavanje01.vrb) [29
+
+] [30
+
+] [31
 
 ]
 \openout4 = predavanje01.vrb
- (./predavanje01.vrb) [30
+
+(./predavanje01.vrb) [32
 
 ]
 \openout4 = predavanje01.vrb
-
-(./predavanje01.vrb) [31
-
-]
-\openout4 = predavanje01.vrb
- (./predavanje01.vrb) [32
+ (./predavanje01.vrb) [33
 
 ]
 \openout4 = predavanje01.vrb
  (./predavanje01.vrb)
-[33
-
-]
-\openout4 = predavanje01.vrb
- (./predavanje01.vrb) [34
+[34
 
 ]
 \openout4 = predavanje01.vrb
  (./predavanje01.vrb) [35
 
-] [36
-
-] [37
+]
+\openout4 = predavanje01.vrb
+ (./predavanje01.vrb) [36
 
 ]
 \openout4 = predavanje01.vrb
+ (./predavanje01.vrb)
+[37
 
-(./predavanje01.vrb) [38
+] [38
+
+] [39
 
 ]
 \openout4 = predavanje01.vrb
- (./predavanje01.vrb) [39
+ (./predavanje01.vrb) [40
 
-] [40
-
-] [41
+]
+\openout4 = predavanje01.vrb
+ (./predavanje01.vrb) [41
 
 ] [42
 
-] [43
-
 ]
-\openout4 = predavanje01.vrb
+[43
 
-(./predavanje01.vrb) [44
+] [44
 
 ] [45
 
-] [46
+]
+\openout4 = predavanje01.vrb
+ (./predavanje01.vrb) [46
+
+] [47
+
+] [48
 
 ]
 \tf@nav=\write6
@@ -1679,15 +1685,15 @@ Package rerunfilecheck Info: File `predavanje01.out' has not changed.
 )
 
 Here is how much of LuaTeX's memory you used:
- 32148 strings out of 476081
+ 32171 strings out of 476081
  195340,1373583 words of node,token memory allocated
  6707 words of node memory still in use:
    50 hlist, 10 vlist, 9 rule, 53 disc, 8 local_par, 141 glue, 104 kern, 25 pena
 lty, 390 glyph, 192 attribute, 63 glue_spec, 98 attribute_list, 4 write, 1 pdf_s
 tart_link, 1 pdf_end_link, 1 pdf_action, 38 pdf_colorstack nodes
-   avail lists: 1:1,2:3145,3:646,4:4968,5:4105,6:80,7:5181,8:1,9:9973,10:29,11:4
+   avail lists: 1:1,2:3145,3:645,4:4968,5:4105,6:80,7:5181,8:1,9:9973,10:29,11:4
 55
- 53442 multiletter control sequences out of 65536+600000
+ 53454 multiletter control sequences out of 65536+600000
  96 fonts using 9799783 bytes
  133i,15n,119p,439b,859s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <C:/Users/tomis/AppData/Local/Programs/MiKTeX/fonts/opentype/ibm/plex/IBMPlexSan
@@ -1698,9 +1704,9 @@ s/MiKTeX/fonts/opentype/ibm/plex/IBMPlexMono-Regular.otf><C:/Users/tomis/AppData
 /Local/Programs/MiKTeX/fonts/opentype/ibm/plex/IBMPlexSans-Regular.otf><C:/Users
 /tomis/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/latxfont/lcircl
 e1.pfb>
-Output written on predavanje01.pdf (46 pages, 211191 bytes).
+Output written on predavanje01.pdf (48 pages, 220053 bytes).
 
-PDF statistics: 629 PDF objects out of 1000 (max. 8388607)
- 98 named destinations out of 1000 (max. 1048576)
- 376 words of extra memory for PDF output out of 10000 (max. 100000000)
+PDF statistics: 663 PDF objects out of 1000 (max. 8388607)
+ 102 named destinations out of 1000 (max. 1048576)
+ 436 words of extra memory for PDF output out of 10000 (max. 100000000)
 

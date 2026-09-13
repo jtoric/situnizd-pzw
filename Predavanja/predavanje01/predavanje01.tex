@@ -474,6 +474,42 @@ Shema provjerava:
 }
 \end{frame}
 
+% ------------------------------------------------------------
+\begin{frame}{Opis API-ja nastaje iz koda}
+OpenAPI je specifikacija: strojno čitljiv opis API-ja u JSON-u, s popisom ruta, metoda, oblika tijela zahtjeva i odgovora te statusnih kodova. Swagger UI je samo jedan prikazivač tog opisa, ne isto što i OpenAPI.
+
+\vspace{0.4em}
+Taj opis ne piše se ručno. FastAPI ga sastavlja iz istih shema i tipova koji su već napisani, pa ne može zastarjeti neovisno o kodu.
+
+\vspace{0.4em}
+\begin{itemize}
+  \item \texttt{/openapi.json} je sam opis
+  \item \texttt{/docs} je Swagger UI nad njim
+  \item \texttt{/redoc} je drugi prikazivač istog opisa
+\end{itemize}
+
+\vspace{0.4em}
+Korist od prvoga dana: API se isprobava bez pisanja ijednog klijenta, a kad u drugom dijelu kolegija dođe frontend, ugovor između njega i backenda već je zapisan.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dostupnost opisa u produkciji}
+\begin{lstlisting}[language=python]
+app = FastAPI(
+    title=config.APP_NAME,
+    docs_url="/docs" if config.ENV == "dev" else None,
+    redoc_url=None,
+)
+\end{lstlisting}
+
+\vspace{0.4em}
+\begin{konvencija}
+Dokumentacija se u produkciji često gasi, da popis ruta i oblik tijela zahtjeva ne budu javno dostupni. Nije obavezno i mnogi projekti je ostavljaju otvorenom; opis tada služi i onima koji se na API spajaju izvana.
+\end{konvencija}
+
+\vspace{0.3em}
+Sam \texttt{/openapi.json} gasi se zasebno, postavkom \texttt{openapi\_url}.
+\end{frame}
 
 % ============================================================
 \sekcija{Kostur projekta}{Po čemu se dijele mape, sastavljanje aplikacije, konfiguracija, pokretanje.}
