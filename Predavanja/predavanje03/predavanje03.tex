@@ -1,0 +1,594 @@
+% !TeX program = lualatex
+% !TeX root = predavanje03.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija - Predavanje 3 \\ Autentikacija i sigurnost (JWT)}
+\date{19.10.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja (1/2)}
+	\begin{enumerate}
+		\item Zašto autentikacija nije trivijalna (gdje greška boli)
+		\item Hashiranje lozinki: bcrypt i zašto ne MD5/SHA
+		\item JWT struktura: header, payload, signature
+		\item Access token i refresh token: uloge i životni ciklus
+		\item Login i refresh endpointi u FastAPI-ju
+	\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja (2/2)}
+	\begin{enumerate}
+		\setcounter{enumi}{5}
+		\item Dependency \texttt{get\_current\_user}
+		\item Token storage: localStorage vs HttpOnly cookie
+		\item XSS i CSRF: što su i koji storage što štiti
+		\item Testovi za auth endpointe
+	\end{enumerate}
+
+	\vspace{0.6em}
+	Na kraju predavanja imate funkcionalan login flow: korisnik se može prijaviti, dobiti token i koristiti zaštićene endpointe.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+	Nakon ovog predavanja student može:
+	\begin{itemize}
+		\item objasniti zašto lozinke hashiramo i što je salt
+		\item opisati strukturu JWT tokena i što svaki dio radi
+		\item objasniti razliku između access i refresh tokena
+		\item implementirati \texttt{get\_current\_user} dependency u FastAPI-ju
+		\item usporediti localStorage i HttpOnly cookie kao strategije pohrane
+		\item objasniti XSS i CSRF napade i koji storage što štiti
+		\item napisati test koji provjerava login i zaštićeni endpoint
+	\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kontekst: gdje smo u projektu?}
+	\begin{itemize}
+		\item Predavanje 2: imamo tablice \textbf{Club} i \textbf{User}, migracije i seed
+		\item Seed je kreirao admin korisnika i demo klub korisnika
+		\item Danas: ti korisnici se mogu \textbf{prijaviti} i dobiti token
+	\end{itemize}
+
+	\vspace{0.6em}
+	Sljedeći korak (Predavanje 4): autorizacija - \textbf{tko smije što raditi} (role i ownership).
+	Autentikacija je samo: \textbf{tko si ti}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto autentikacija nije trivijalna?}
+	\begin{itemize}
+		\item Greška u auth = napadač dobiva pristup tuđim podacima
+		\item Najčešće greške iz prakse:
+		\begin{itemize}
+			\item lozinka pohranjena u plaintext ili slabo hashirana
+			\item JWT tajni ključ je \enquote{secret} ili prazan string
+			\item token se nikad ne invalidira (nema expiry)
+			\item osjetljivi podaci u JWT payloadu - payload je čitljiv svakome
+		\end{itemize}
+	\end{itemize}
+
+	\vspace{0.6em}
+	Auth je jedan od rijetkih dijelova gdje \enquote{radi mi} nije dovoljno. Mora raditi i \textbf{sigurno}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Lozinke: zašto ne smijemo pohranjivati plaintext?}
+	\begin{itemize}
+		\item Ako napadač ukrade bazu: odmah ima pristup svim računima
+		\item Isti problem vrijedi za slabe hasheve (MD5, SHA-1, SHA-256 bez salta)
+		\begin{itemize}
+			\item rainbow tablice i brute force su trivijalni
+		\end{itemize}
+		\item Rješenje: \textbf{spori hash s per-password saltom}
+	\end{itemize}
+
+	\vspace{0.6em}
+	Baza se može ukrasti. Lozinke moraju biti beskorisne napadaču čak i tada.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{bcrypt: kako radi (intuitivno)}
+	\begin{itemize}
+		\item bcrypt generira \textbf{random salt} pri svakom hashiranju
+		\item Salt se ugradi u hash string - nema potrebe za posebnim stupcem
+		\item \textbf{Work factor} (cost): koliko je hash računski skup
+		\begin{itemize}
+			\item viši cost = sporiji napad, ali i sporija provjera
+			\item preporučeni cost: 12 - dobar balans sigurnosti i brzine
+		\end{itemize}
+		\item Ista lozinka $\rightarrow$ različit hash svaki put (salt je drugačiji)
+	\end{itemize}
+
+	\vspace{0.6em}
+	Na obrani pitam: što je salt i zašto se zbog njega isti hash nikad ne ponavlja za istu lozinku?
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{bcrypt u Pythonu}
+\begin{lstlisting}[language=python]
+import bcrypt
+
+def hash_password(plain: str) -> str:
+    return bcrypt.hashpw(
+        plain.encode(), bcrypt.gensalt()
+    ).decode()
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return bcrypt.checkpw(
+        plain.encode(), hashed.encode()
+    )
+\end{lstlisting}
+
+	\vspace{0.4em}
+	Koristimo bcrypt direktno, ne passlib wrapper - passlib ima problem kompatibilnosti s bcrypt $\geq$ 4.1.
+	\texttt{checkpw} interno radi constant-time usporedbu - to je zaštita od timing napada.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{JWT: što je i što nije}
+	\begin{itemize}
+		\item JWT = JSON Web Token - standardizirani format (RFC 7519)
+		\item Token je \textbf{potpisan}, ali \textbf{nije enkriptiran} (osim JWE)
+		\begin{itemize}
+			\item payload se može pročitati bez ključa (\texttt{base64url decode})
+			\item stoga: ne stavljajte tajne podatke u payload
+		\end{itemize}
+		\item Potpis garantira: \textbf{token nije modificiran} i \textbf{izdao ga je naš server}
+	\end{itemize}
+
+	\vspace{0.6em}
+	Česta greška: misleći da je JWT \enquote{enkriptiran}, developer u payload stavlja lozinku ili osjetljive osobne podatke.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{JWT struktura: header.payload.signature}
+	Token izgleda ovako (tri dijela odvojena točkom):
+	\vspace{0.3em}
+	\begin{center}
+		\texttt{\textcolor{red}{xxxxx}.\textcolor{blue}{yyyyy}.\textcolor{violet}{zzzzz}}
+	\end{center}
+
+	\vspace{0.6em}
+	\begin{itemize}
+		\item \textcolor{red}{\textbf{Header}}: algoritam i tip tokena
+		\begin{itemize}
+			\item \texttt{\{ "alg": "HS256", "typ": "JWT" \}}
+		\end{itemize}
+		\item \textcolor{blue}{\textbf{Payload}}: claims (podaci o korisniku i tokenu)
+		\begin{itemize}
+			\item \texttt{sub} (subject), \texttt{exp} (expiry), \texttt{iat} (issued at), custom claims
+		\end{itemize}
+		\item \textcolor{violet}{\textbf{Signature}}: \texttt{HMAC-SHA256(base64(header) + "." + base64(payload), secret)}
+	\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{JWT Claims: što stavljamo u payload?}
+	\begin{itemize}
+		\item \textbf{Standardni claims} (preporučeni):
+		\begin{itemize}
+			\item \texttt{sub}: identifikator korisnika (npr. \texttt{"42"})
+			\item \texttt{exp}: Unix timestamp isteka tokena
+			\item \texttt{iat}: Unix timestamp izdavanja
+			\item \texttt{iss}: issuer (npr. \texttt{"sit-unizd"})
+		\end{itemize}
+		\item \textbf{Custom claims} (naše aplikacije):
+		\begin{itemize}
+			\item \texttt{role}: \texttt{"admin"} ili \texttt{"club"}
+			\item \texttt{club\_id}: FK za ownership provjere
+		\end{itemize}
+	\end{itemize}
+
+	\vspace{0.6em}
+	Payload mora biti \textbf{minimalan}. Samo ono što treba za autorizaciju - ništa više.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Access token vs Refresh token}
+	\begin{tabular}{@{}lll@{}}
+		\toprule
+		& \textbf{Access token} & \textbf{Refresh token} \\
+		\midrule
+		Trajanje        & kratko (15 min)       & dugo (7-30 dana) \\
+		Gdje se šalje   & svaki API request     & samo na \texttt{/auth/refresh} \\
+		Gdje se čuva    & memory / localStorage & localStorage / HttpOnly cookie \\
+		Ako iscuri      & kratak prozor rizika  & ozbiljan problem \\
+		\bottomrule
+	\end{tabular}
+
+	\vspace{0.6em}
+	Access token je \textbf{kratkotrajan} jer ga ne možemo invalidirati bez centralnog stanja.
+	Refresh token omogućava \enquote{tiho} obnavljanje bez ponovne prijave.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Životni ciklus tokena (flow)}
+	\begin{enumerate}
+		\item Korisnik šalje username + lozinku na \texttt{POST /auth/login}
+		\item Backend verificira lozinku, izdaje \textbf{access} i \textbf{refresh} token
+		\item Frontend pohranjuje tokene - o tome u nastavku
+		\item Na svakom zaštićenom requestu: šalje access token u \texttt{Authorization: Bearer ...}
+		\item Kad access token istekne (401): frontend tiho poziva \texttt{POST /auth/refresh}
+		\item Backend verificira refresh token, izdaje novi access token
+		\item Korisnik ne primjećuje ništa
+	\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile, shrink=15]{JWT utils: izdavanje i verifikacija}
+\begin{lstlisting}[language=python]
+from datetime import datetime, timedelta, timezone
+import jwt
+
+def create_access_token(user_id: int, role: str,
+                        club_id: int | None = None) -> str:
+    payload = {
+        "sub": str(user_id),
+        "role": role,
+        "club_id": club_id,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
+        "iat": datetime.now(timezone.utc),
+        "iss": settings.JWT_ISSUER,
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
+
+def decode_token(token: str) -> dict:
+    try:
+        return jwt.decode(token, settings.JWT_SECRET,
+                          algorithms=["HS256"],
+                          issuer=settings.JWT_ISSUER,
+                          options={"require": ["exp"]})
+    except jwt.ExpiredSignatureError:
+        raise UnauthorizedError("Token expired")
+    except jwt.InvalidTokenError:
+        raise UnauthorizedError("Invalid token")
+\end{lstlisting}
+
+	\vspace{0.4em}
+	Koristimo \textbf{PyJWT} - aktivno održavana biblioteka. Razlikovanje \texttt{ExpiredSignatureError} od \texttt{InvalidTokenError} omogućuje da frontend zna treba li refresh (istekao) ili ponovni login (nevažeći).
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile, shrink=10]{Login endpoint}
+\begin{lstlisting}[language=python]
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.deps import get_db
+from app.schemas.auth import LoginRequest, TokenResponse
+from app.services.auth import authenticate_user, create_tokens
+
+router = APIRouter()
+
+@router.post("/login", response_model=TokenResponse)
+async def login(body: LoginRequest,
+                db: AsyncSession = Depends(get_db)):
+    user = await authenticate_user(db, body.username, body.password)
+    access_token, refresh_token = create_tokens(user)
+    return TokenResponse(access_token=access_token,
+                         refresh_token=refresh_token)
+\end{lstlisting}
+
+	\vspace{0.4em}
+	\texttt{authenticate\_user} je u service layeru, ne u routeru.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Refresh endpoint}
+\begin{lstlisting}[language=python]
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(body: RefreshRequest,
+                  db: AsyncSession = Depends(get_db)):
+    payload = decode_token(body.refresh_token)
+    user = await get_user_by_username(db, payload["sub"])
+    if not user or not user.is_active:
+        raise UnauthorizedError("User not found or inactive")
+    access_token, new_refresh = create_tokens(user)
+    return TokenResponse(access_token=access_token,
+                         refresh_token=new_refresh)
+\end{lstlisting}
+
+	\vspace{0.4em}
+	Razmislite do obrane: zašto provjeravamo \texttt{is\_active}, a ne samo potpis tokena?
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Dependency: \texttt{get\_current\_user}}
+\begin{lstlisting}[language=python]
+from fastapi import Depends, Header
+from app.core.errors import UnauthorizedError
+
+async def get_current_user(
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    if not authorization.startswith("Bearer "):
+        raise UnauthorizedError("Missing token")
+    token = authorization.removeprefix("Bearer ")
+    payload = decode_token(token)
+    user = await get_user_by_id(db, payload["sub"])
+    if not user or not user.is_active:
+        raise UnauthorizedError("User not found")
+    return user
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Korištenje dependencyja u routeru}
+\begin{lstlisting}[language=python]
+@router.get("/me")
+async def get_me(current_user: User = Depends(get_current_user)):
+    return {"id": current_user.id, "username": current_user.username,
+            "role": current_user.role}
+
+@router.get("/clubs")
+async def list_clubs(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # svaki korisnik koji je prijavljen smije vidjeti klubove
+    return await get_all_clubs(db)
+\end{lstlisting}
+
+	\vspace{0.4em}
+	Provjera \textbf{role i ownership} dolazi u Predavanju 4.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto dependency, a ne middleware za auth?}
+	\begin{itemize}
+		\item Middleware se izvršava za \textbf{sve} requestove (i \texttt{/health}, i \texttt{/docs})
+		\item Dependency se izvršava samo gdje ga \textbf{deklariramo}
+		\item Dependency je \textbf{testabilniji}: lako ga možemo zamijeniti u testovima
+		\item FastAPI dependency injection je eksplicitan:
+		\begin{itemize}
+			\item odmah vidimo koji endpoint treba autentikaciju
+		\end{itemize}
+	\end{itemize}
+
+	\vspace{0.6em}
+	Pitanje za razmišljanje: kako bi testirao endpoint koji koristi \texttt{get\_current\_user}? Odgovor stiže u Predavanju 11.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Token storage: gdje čuvamo tokene na frontendu?}
+	Dvije uobičajene opcije:
+
+	\vspace{0.6em}
+	\begin{tabular}{@{}lll@{}}
+		\toprule
+		& \textbf{localStorage} & \textbf{HttpOnly cookie} \\
+		\midrule
+		Pristup JS-u         & da                  & ne \\
+		XSS ranjivost        & visoka              & niska \\
+		CSRF ranjivost       & niska               & umjerena \\
+		Implementacija       & jednostavna         & složenija \\
+		Pogodnost za SPA     & visoka              & zahtijeva \texttt{credentials} \\
+		\bottomrule
+	\end{tabular}
+
+	\vspace{0.6em}
+	U projektu koristimo \textbf{localStorage} za oba tokena - jednostavnija implementacija za SPA. HttpOnly cookie je sigurnija produkcijska alternativa, pokazat ćemo i nju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{XSS (Cross-Site Scripting): što je i zašto boli}
+	\begin{itemize}
+		\item Napadač ubaci zloćudni JavaScript u stranicu (npr. kroz komentar, URL)
+		\item Taj JS se izvršava u browseru žrtve - ima isti pristup kao vaš kod
+		\item Ako je token u \texttt{localStorage}:
+		\begin{itemize}
+			\item \texttt{document.cookie} nema token, ali \texttt{localStorage.getItem()} ga ima
+			\item napadač krade token s jednom linijom koda
+		\end{itemize}
+		\item Zaštita: HttpOnly cookie (JS ga ne može pročitati), CSP header, sanitizacija outputa
+	\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{CSRF (Cross-Site Request Forgery): što je i zašto boli}
+	\begin{itemize}
+		\item Napadač nagovori korisnika da posjeti stranicu koja šalje request \textbf{u korisnikovo ime}
+		\item Browser automatski šalje cookieje uz request (uključujući auth cookie)
+		\item Ako koristite HttpOnly cookie bez CSRF zaštite: ranjivi ste na CSRF
+		\item Zaštita: \texttt{SameSite=Strict/Lax} na cookie, CSRF token, provjera \texttt{Origin} headera
+	\end{itemize}
+
+	\vspace{0.6em}
+	localStorage + XSS = krađa tokena. \\
+	HttpOnly cookie + CSRF = izvršavanje akcija. \\
+	Nema savršene opcije - bira se manji rizik.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Praktična odluka za naš projekt}
+	\begin{itemize}
+		\item \textbf{Access i refresh token}: \texttt{localStorage}
+		\begin{itemize}
+			\item preživljava refresh stranice - korisnik ostaje prijavljen
+			\item frontend implementaciju radimo u Predavanju 8
+		\end{itemize}
+		\item Cijena: token je dostupan JavaScriptu, XSS ga može ukrasti
+		\item Zato: kratak access token (15 min), Vue auto-escaping, nikad \texttt{v-html} s korisničkim sadržajem
+	\end{itemize}
+
+	\vspace{0.6em}
+	U produkcijskim sustavima refresh token ide u \textbf{HttpOnly cookie} - JS ga ne može pročitati. Za naš projekt localStorage je svjesni trade-off, ne neznanje.
+
+	\vspace{0.4em}
+	Na obrani pitam: što napadač dobiva XSS-om ako su tokeni u localStorageu? Kako HttpOnly cookie mijenja rizik?
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Produkcijska alternativa: HttpOnly cookie (FastAPI)}
+\begin{lstlisting}[language=python]
+from fastapi import Response
+
+@router.post("/login")
+async def login(body: LoginRequest, response: Response,
+                db: AsyncSession = Depends(get_db)):
+    user = await authenticate_user(db, body.username, body.password)
+    access_token, refresh_token = create_tokens(user)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,       # samo HTTPS u produkciji
+        samesite="lax",
+        max_age=60 * 60 * 24 * 30,  # 30 dana
+    )
+    return {"access_token": access_token}
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Testovi za auth: što pokrivamo?}
+	\begin{itemize}
+		\item \textbf{Uspješan login}: točni kredencijali $\rightarrow$ 200 + token
+		\item \textbf{Krivi podaci}: pogrešna lozinka $\rightarrow$ 401
+		\item \textbf{Nepostojeći username}: $\rightarrow$ 401 (isti error, ne otkrivamo postoji li)
+		\item \textbf{Zaštićeni endpoint bez tokena}: $\rightarrow$ 401
+		\item \textbf{Zaštićeni endpoint s tokenom}: $\rightarrow$ 200
+		\item \textbf{Istekli token}: $\rightarrow$ 401
+		\item \textbf{Refresh}: valjan refresh token $\rightarrow$ novi access token
+	\end{itemize}
+
+	\vspace{0.6em}
+	Zašto isti error za krivu lozinku i nepostojeći username? Enumeracija korisnika: napadač bi mogao otkriti koji usernamei postoje u sustavu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile, shrink=10]{Primjer testa (pytest + TestClient)}
+\begin{lstlisting}[language=python]
+from fastapi.testclient import TestClient
+from app.main import app
+
+client = TestClient(app)
+
+def test_login_success(db_with_seed):
+    r = client.post("/auth/login",
+                    json={"username": "admin",
+                          "password": "admin123"})
+    assert r.status_code == 200
+    assert "access_token" in r.json()
+
+def test_login_wrong_password(db_with_seed):
+    r = client.post("/auth/login",
+                    json={"username": "admin",
+                          "password": "wrong"})
+    assert r.status_code == 401
+
+def test_protected_without_token():
+    r = client.get("/auth/me")
+    assert r.status_code == 401
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Override dependencyja u testovima}
+\begin{lstlisting}[language=python]
+from app.core.deps import get_current_user
+from app.models.user import User
+
+def fake_admin():
+    return User(id=1, username="admin",
+                role="admin", is_active=True)
+
+app.dependency_overrides[get_current_user] = fake_admin
+
+def test_me_endpoint():
+    r = client.get("/auth/me")
+    assert r.status_code == 200
+    assert r.json()["role"] == "admin"
+
+# uvijek očistite override nakon testa
+app.dependency_overrides = {}
+\end{lstlisting}
+
+	\vspace{0.4em}
+	Testiramo endpoint \textbf{neovisno} o auth logici.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Sigurnost JWT tajnog ključa}
+	\begin{itemize}
+		\item Tajni ključ \textbf{mora biti} nasumičan i dugačak (min. 32 bajta)
+		\begin{itemize}
+			\item \texttt{openssl rand -hex 32}
+		\end{itemize}
+		\item Nikad ne smije biti u kodu ili u repozitoriju
+		\item Env var: \texttt{JWT\_SECRET} iz \codefile{.env} (koji je u \codefile{.gitignore})
+		\item Ako se kompromitira: \textbf{svi tokeni su nevaljani} - morate rotirati ključ
+	\end{itemize}
+
+	\vspace{0.6em}
+	Zadatak za znatiželjne: kako bi invalidirao sve aktivne tokene odjednom, a da ne mijenjaš \texttt{JWT\_SECRET}?
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Brute force na login: rate limiting}
+	Login endpoint je meta za pogađanje lozinki. bcrypt usporava svaki pojedinačni pokušaj, ali ne sprječava napadača da ih pošalje tisuće.
+
+	\vspace{0.6em}
+	\begin{tabular}{@{}ll@{}}
+		\toprule
+		\textbf{Mjera} & \textbf{Što sprječava} \\
+		\midrule
+		bcrypt s visokim costom & offline crackanje ukradenih hasheva \\
+		rate limiting & online pogađanje kroz login endpoint \\
+		\bottomrule
+	\end{tabular}
+
+	\vspace{0.6em}
+	Rate limiting ograničava broj pokušaja po IP-u ili usernameu, npr. 5 pokušaja u minuti. U FastAPI ekosustavu to radi biblioteka \texttt{slowapi}. Za studentski projekt nije obavezan, ali na obrani morate znati objasniti zašto bi ga produkcijski sustav imao.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Token invalidacija: ograničenja stateless JWT-a}
+	\begin{itemize}
+		\item JWT je \textbf{stateless}: server ne prati koji su tokeni aktivni
+		\item Ako se korisnik odjavi ili promijeni lozinku, stari token i dalje vrijedi do expiry-ja
+		\item Opcije za invalidaciju:
+		\begin{itemize}
+			\item \textbf{Kratki expiry} (access token): prozor rizika je mali
+			\item \textbf{Revocation list} (blacklist): centralna lista invalidnih tokena (Redis)
+			\item \textbf{Token version} u bazi: ako se ne poklapa, token je nevaljan
+		\end{itemize}
+	\end{itemize}
+
+	\vspace{0.6em}
+	Za ovaj projekt: kratki access token + refresh token je dovoljan. Revocation list je \enquote{nice to have}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Commitovi za Predavanje 3}
+\begin{itemize}
+  \item \texttt{feat(api): add bcrypt helpers, auth schemas and user repository}
+  \item \texttt{feat(api): add JWT utilities (create/decode access + refresh tokens)}
+  \item \texttt{feat(api): add auth service and login/refresh endpoints}
+  \item \texttt{feat(api): add get\_current\_user dependency and /auth/me endpoint}
+  \item \texttt{test(api): add auth tests (login, refresh, expired token, protected endpoint)}
+\end{itemize}
+
+\vspace{0.6em}
+\textbf{Na satu:} prolazimo diffeve i testiramo sa Swaggerom - login, token, zaštićeni endpoint.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što ide sljedeće (Predavanje 4)}
+	\begin{itemize}
+		\item Autorizacija: tko smije što raditi
+		\item Role check: admin vs club korisnik
+		\item Ownership: korisnik smije mijenjati samo svoje
+		\item Dependency \texttt{require\_role} i \texttt{require\_admin}
+		\item Greške: 401 vs 403 - razlika i kad što vraćamo
+	\end{itemize}
+\end{frame}
+
+\end{document}

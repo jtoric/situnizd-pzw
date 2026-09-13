@@ -1,0 +1,783 @@
+% !TeX program = lualatex
+% !TeX root = predavanje01.tex
+\input{../common/preamble.tex}
+
+\title[Predavanje 1: Arhitektura backenda]{Razvoj web aplikacija \\ Predavanje 1: Arhitektura backenda i kostur projekta}
+\date{08.10.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Od zahtjeva do odgovora: što backend radi i kako se dijeli u slojeve
+  \item Ugovor prema klijentu: rute, statusni kodovi, sheme
+  \item Kostur projekta: struktura, konfiguracija, pokretanje
+  \item Dijagnostika i kvaliteta: zapisnik, pogreške, statička analiza
+  \item Rad s verzijama koda
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja projekt je pokrenut: baza u kontejneru, backend koji odgovara na zahtjev i zapisan postupak pokretanja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+
+\begin{itemize}
+  \item objasniti put HTTP zahtjeva kroz slojeve backenda
+  \item razgraničiti odgovornosti slojeva \codefile{routers}, \codefile{services} i \codefile{repositories}
+  \item postaviti razvojnu okolinu: baza u kontejneru i konfiguracija iz varijabli okoline
+  \item objasniti kako se aplikacija sastavlja i pokreće
+  \item čitati promjene u kodu naredbom \texttt{git diff}
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Domena primjera}
+Sustav prijava klubova na powerlifting natjecanje.
+
+\begin{itemize}
+  \item Klub prijavljuje svoje natjecatelje i vidi samo svoje prijave; organizator vidi prijave svih klubova.
+  \item Natjecanje ima dva roka nominacije. Do prvoga roka prijave se dodaju, mijenjaju i povlače. Između rokova mogu se još mijenjati i povlačiti, ali ne i dodavati. Nakon drugoga roka popis je zaključan.
+\end{itemize}
+
+\vspace{0.4em}
+Ista se struktura pojavljuje u mnogim sustavima: korisnik vidi dio podataka, a operacije nad njima ovise o tome u kojem je stanju nadređeni zapis.
+\end{frame}
+
+% ============================================================
+\sekcija{Od zahtjeva do odgovora}{Što putuje mrežom, jednostavan backend, obrada zahtjeva, i sloj po sloj koji je obavlja.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{HTTP zahtjev i odgovor}
+Zahtjev je tekst: metoda, putanja, zaglavlja i, po potrebi, tijelo.
+
+\begin{lstlisting}
+GET /clubs/12/lifters HTTP/1.1
+Host: api.primjer.hr
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+\end{lstlisting}
+
+Odgovor je također tekst: statusni kod, zaglavlja i tijelo.
+
+\begin{lstlisting}
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+[{"id": 31, "ime": "Ana Horvat"}]
+\end{lstlisting}
+
+\vspace{0.2em}
+Backend je program koji prima prvi tekst i sastavlja drugi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=8]{Primjer jednostavnog backenda}
+\begin{lstlisting}[language=python]
+from fastapi import APIRouter
+
+router = APIRouter()
+
+@router.get("/competitions")
+def list_competitions():
+    return [
+        {"id": 7, "naziv": "Zimski kup", "datum": "2027-03-14"},
+        {"id": 8, "naziv": "Ljetni kup", "datum": "2027-06-06"},
+    ]
+\end{lstlisting}
+
+\vspace{0.4em}
+Framework (ovdje FastAPI) povezuje par metode i putanje s funkcijom. Funkcija vraća podatke, a framework ih pretvara u JSON, dodaje zaglavlja i statusni kod \texttt{200}. Funkcija pridružena putanji naziva se \textbf{ruta}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Obrada zahtjeva}
+Popis natjecatelja jednoga kluba nije javan, a prijava natjecatelja k tome mijenja podatke. Za obradu takvog zahtjeva i sastavljanje odgovora moramo:
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item provjeriti oblik i tipove poslanih podataka
+  \item utvrditi tko šalje zahtjev
+  \item provjeriti smije li taj korisnik do tih podataka
+  \item provjeriti dopuštaju li poslovna pravila izmjenu u ovom trenutku
+  \item upisati promjenu tako da pri pogrešci ne ostane polovičan trag
+\end{enumerate}
+
+\vspace{0.4em}
+Svaki zahtjev koji mijenja podatke prolazi kroz ove korake.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Od koraka do slojeva}
+Koraci su različiti poslovi, ali ih aplikacija ne obavlja jednom: svaka ruta koja dira iste podatke prolazi kroz iste korake.
+
+\vspace{0.5em}
+Slojevi su odgovor na pitanje \textbf{gdje u kodu svaki korak stoji}. Svaki korak dobiva jedno mjesto, a rute ga odande pozivaju umjesto da ga same izvode.
+
+\vspace{0.5em}
+\begin{itemize}
+  \item koraci 2 i 6 (primanje zahtjeva i sastavljanje odgovora): \codefile{routers}
+  \item korak 1 (oblik i tipovi poslanih podataka): \codefile{schemas}
+  \item koraci 3 i 4 (prava pristupa i poslovna pravila): \codefile{services}
+  \item korak 5 (upis u bazu): \codefile{repositories}
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{Sloj ruta: \codefile{routers}}
+\begin{lstlisting}[language=python]
+# app/routers/registrations.py
+
+@router.post("/{competition_id}/registrations", status_code=201)
+def create_registration(
+    competition_id: int,
+    data: RegistrationCreate,
+    user: User = Depends(get_current_user),
+):
+    return registration_service.create(competition_id, data, user)
+\end{lstlisting}
+
+\vspace{0.3em}
+Dobro napisana ruta je minimalna. Iz putanje uzima broj natjecanja, iz tijela zahtjeva već provjerene podatke, iz tokena korisnika, i sve to predaje sloju \codefile{services}. Njezin je cijeli sadržaj prihvaćanje HTTP-a: putanja, metoda, statusni kod.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Ruta bez sloja ispod sebe}
+Rute ne moraju pozivati sloj \codefile{services}, na primjer:
+
+\begin{lstlisting}[language=python]
+# app/routers/health.py
+
+@router.get("/")
+def health():
+    return {"status": "ok"}
+\end{lstlisting}
+
+\vspace{0.4em}
+Odgovor na \texttt{GET /health} potvrđuje troje: proces radi, usmjeravanje zahtjeva radi i aplikacija se uspjela sastaviti.
+
+\vspace{0.3em}
+Tu rutu ne poziva korisnik nego nadzorni alat: Docker je zove pri provjeri stanja kontejnera, a platforme za postavljanje u produkciju u pravilnim razmacima, da utvrde je li primjerak aplikacije spreman primati promet. Primjerak koji ne odgovori ispada iz razdiobe prometa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=8]{Sloj shema: \codefile{schemas}}
+\begin{lstlisting}[language=python]
+# app/schemas/registration.py
+
+class RegistrationCreate(BaseModel):
+    lifter_id: int
+    weight_class: Literal[59, 66, 74, 83, 93, 105, 120]
+\end{lstlisting}
+
+\vspace{0.4em}
+Shema opisuje što ruta prima. Zahtjev koji joj ne odgovara ne dolazi do funkcije: framework ga odbija i u odgovoru imenuje polje koje nije prošlo.
+
+\vspace{0.3em}
+Ograničenje stoji u tipu polja, pa provjera ne postoji kao zaseban redak koda koji se može zaboraviti. U našem primjeru tip nabraja dopuštene težinske kategorije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto nam treba sloj \codefile{schemas}}
+Provjera oblika podataka mogla bi stajati i u ruti, kao niz uvjeta na početku funkcije. Odvojena u shemu, dobiva tri svojstva koja tako napisana provjera nema:
+
+\begin{itemize}
+  \item ista se shema koristi u svakoj ruti koja prima takav zapis, pa se pravila o obliku ne prepisuju
+  \item odgovor o pogrešci ima isti oblik za sva polja i sve rute, jer ga sastavlja framework
+  \item opis ulaza i izlaza postoji kao podatak, iz kojega framework gradi dokumentaciju API-ja
+\end{itemize}
+
+\vspace{0.4em}
+Uz to, provjera se dogodi prije nego funkcija počne raditi, pa poslovna pravila nikada ne primaju podatke krivog tipa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=15]{Sloj poslovnih pravila: \codefile{services}}
+\begin{lstlisting}[language=python]
+# app/services/registration.py
+
+def create(competition_id, data, user):
+    competition = competitions.get(competition_id)
+    if competition.prelim_deadline < now():
+        raise RegistrationClosed()
+
+    lifter = lifters.get(data.lifter_id)
+    if lifter.club_id != user.club_id:
+        raise NotOwned()
+
+    return registrations.insert(competition_id, data)
+\end{lstlisting}
+
+\vspace{0.2em}
+U ovom sloju stoje odluke o tome smije li se izmjena izvesti. Funkcija prima obične vrijednosti, a ne zahtjev, i ne piše upite nad bazom. Kad pravilo ne prolazi, podiže iznimku i zaustavlja obradu prije nego išta bude upisano.
+\end{frame}
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=15]{Zašto nam treba sloj \codefile{services}}
+Prijava natjecatelja, izmjena prijave i odjava tri su rute, a sve tri prije izmjene moraju provjeriti je li rok prošao. Bez sloja \codefile{services} iste ili slične provjere moramo napisati u kodu svake od tih ruta:
+
+\begin{lstlisting}[language=python]
+# app/routers/registrations.py
+
+def create_registration(...):
+    if competition.prelim_deadline < now():     # first copy
+        raise HTTPException(409)
+
+def update_registration(...):
+    if competition.prelim_deadline < now():     # second copy
+        raise HTTPException(409)
+
+def withdraw_registration(...):
+    if competition.prelim_deadline < now():     # third copy
+        raise HTTPException(409)
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Što kad se pravilo promijeni}
+Organizator javlja da rok istječe u ponoć po lokalnom vremenu, a dosad se uspoređivao s koordiniranim svjetskim vremenom (UTC). Provjeru treba promijeniti.
+
+\vspace{0.4em}
+Bez sloja \codefile{services} izmjena se mora napraviti u svakoj ruti, a lako se dogodi da se napravi samo ondje gdje je problem uočen, pa preostale dvije nastave po starom. Razlika se vidi samo u satu oko ponoći, pa testovi nepromijenjenih ruta mogu i dalje prolaziti iako kod nije ispravan.
+
+\vspace{0.4em}
+S jednom funkcijom u sloju \codefile{services} izmjena je na jednom mjestu:
+
+\begin{lstlisting}[language=python]
+# app/services/registration.py
+
+def ensure_open(competition):
+    if competition.prelim_deadline < now():
+        raise RegistrationClosed()
+\end{lstlisting}
+
+\vspace{0.2em}
+Cijena podjele je veći broj datoteka i jedan poziv više po zahtjevu. Isplati se čim isti posao pripada većem broju ruta.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{Sloj pristupa bazi: \codefile{repositories}}
+\begin{lstlisting}[language=python]
+# app/repositories/registration.py
+
+def insert(competition_id, data):
+    row = Registration(
+        competition_id=competition_id,
+        **data.model_dump(),
+    )
+    session.add(row)
+    session.commit()
+    return row
+\end{lstlisting}
+
+\vspace{0.3em}
+Ovaj sloj zna kako su podatci pohranjeni i ništa više. Ne odlučuje smije li se izmjena izvesti; u našem primjeru to znači da ne provjerava ni rok ni pripadnost natjecatelja klubu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto nam treba sloj \codefile{repositories}}
+Upit nad bazom mogao bi stajati i u funkciji s pravilima. Odvojen, donosi dvoje:
+
+\begin{itemize}
+  \item \textbf{Pravila se čitaju bez baze.} Funkcija s pravilima poziva \texttt{insert()} i \texttt{get()} umjesto da gradi upite, pa se iz nje vidi koja se odluka donosi, a ne kako su podatci pohranjeni.
+  \item \textbf{Promjena pohrane ostaje na jednom mjestu.} Novo polje, promijenjena veza među tablicama ili drukčiji upit zbog brzine mijenjaju samo ovaj sloj.
+\end{itemize}
+
+\vspace{0.4em}
+Isti sloj drži i granice transakcije: niz upisa koji mora proći u cijelosti ili nikako ovdje je jedna cjelina. Da je razasut po pravilima, dio bi zapisa mogao ostati upisan nakon pogreške.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kako slojevi surađuju}
+\begin{center}
+\begin{tikzpicture}[
+  node distance=7mm and 10mm,
+  box/.style={draw=ink, thick, rounded corners, fill=white, align=center,
+              minimum height=9mm, minimum width=21mm, font=\small, text=textclr},
+  lbl/.style={font=\scriptsize, align=center, text=mutedclr}
+]
+  \node[box] (r) {\ttfamily routers};
+  \node[box, right=of r] (s) {\ttfamily services};
+  \node[box, right=of s] (p) {\ttfamily repositories};
+  \node[box, right=of p] (d) {Baza};
+  \node[box, above=of r] (sh) {\ttfamily schemas};
+
+  \draw[-{Latex}, ink2, thick] (sh) -- (r);
+  \draw[-{Latex}, ink2, thick] (r) -- (s);
+  \draw[-{Latex}, ink2, thick] (s) -- (p);
+  \draw[-{Latex}, ink2, thick] (p) -- (d);
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+Svaki sloj poziva samo onaj do sebe i nikada onaj iznad: \codefile{services} ne zna da postoji \codefile{routers}, a \codefile{repositories} ne zna da postoje pravila. Rezultat ili iznimka vraćaju se pozivatelju, kao kod svakog poziva funkcije. Iznimku iz sloja \codefile{services} u odgovor pretvara handler registriran na razini aplikacije.
+
+\vspace{0.3em}
+Zato se svaki sloj može pozvati i bez onih iznad njega: \codefile{services} bez pokrenutog poslužitelja, \codefile{repositories} bez pravila.
+\end{frame}
+
+
+
+\sekcija{Ugovor prema klijentu}{Metoda i putanja, statusni kodovi i njihovi razredi, idempotentnost, sheme.}
+
+% ------------------------------------------------------------
+\begin{frame}{Metoda i putanja}
+Putanja imenuje ono nad čime se radi, a metoda kaže što se radi. Par metode i putanje jednoznačno određuje rutu.
+
+\vspace{0.5em}
+{\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llL{5.6cm}@{}}
+  \toprule
+  \textbf{Metoda} & \textbf{Putanja} & \textbf{Što poslužitelj radi} \\
+  \midrule
+  \texttt{GET}    & \texttt{/clubs/12/lifters}    & vraća popis natjecatelja kluba 12 \\
+  \texttt{POST}   & \texttt{/clubs/12/lifters}    & dodaje novog natjecatelja u klub 12 \\
+  \texttt{GET}    & \texttt{/clubs/12/lifters/31} & vraća podatke natjecatelja 31 \\
+  \texttt{PATCH}  & \texttt{/clubs/12/lifters/31} & mijenja podatke natjecatelja 31 \\
+  \texttt{DELETE} & \texttt{/clubs/12/lifters/31} & briše natjecatelja 31 \\
+  \bottomrule
+\end{tabular}
+}
+
+\vspace{0.5em}
+Ista putanja s različitim metodama vodi na različite funkcije. To je svojstvo HTTP-a, a ne izbor aplikacije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Oblikovanje putanja}
+HTTP ne propisuje kako putanja treba izgledati. Poslužitelj smije poslušati i \texttt{/getLifters} i \texttt{/l?id=31}. Ustaljeni oblik postoji zato što ga čitatelj prepoznaje bez dokumentacije.
+
+\vspace{0.5em}
+\begin{konvencija}
+\begin{itemize}
+  \item Putanja sadrži imenice u množini (\texttt{/lifters}), a ne glagole (\texttt{/getLifters}). Radnju već nosi metoda.
+  \item Pojedinačni zapis dobiva se dodavanjem oznake (\texttt{/lifters/31}).
+  \item Pripadnost se izražava ugnježđivanjem (\texttt{/clubs/12/lifters}).
+\end{itemize}
+\end{konvencija}
+
+\vspace{0.4em}
+Aplikacija koja odstupa od toga radi jednako dobro. Cijena odstupanja plaća se u vremenu svakoga tko popis ruta prvi put čita.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Razredi statusnih kodova}
+Svaki odgovor počinje trozanamenkastim statusnim kodom. Standard HTTP-a (RFC 9110) dijeli kodove u pet razreda prema prvoj znamenki:
+
+\vspace{0.5em}
+{\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lL{8.4cm}@{}}
+  \toprule
+  \textbf{Razred} & \textbf{Značenje} \\
+  \midrule
+  \texttt{1xx} & obavijest o tijeku obrade, odgovor još slijedi \\
+  \texttt{2xx} & zahtjev je primljen, razumljiv i obrađen \\
+  \texttt{3xx} & potrebna je daljnja radnja, najčešće odlazak na drugu adresu \\
+  \texttt{4xx} & zahtjev je pogrešan ili se ne može ispuniti takav kakav je \\
+  \texttt{5xx} & zahtjev je bio ispravan, ali ga poslužitelj nije uspio obraditi \\
+  \bottomrule
+\end{tabular}
+}
+
+\vspace{0.5em}
+Standard traži da klijent razumije razred svakoga koda, i onda kad sam kod ne poznaje. Kod iz razreda \texttt{4xx} koji klijent ne prepoznaje smije obraditi kao \texttt{400}.
+\end{frame}
+% ------------------------------------------------------------
+\begin{frame}{Kodovi koji se javljaju u ovakvoj aplikaciji}
+Od stotinjak kodova koje standard opisuje, ovakva aplikacija koristi ih desetak:
+
+\vspace{0.6em}
+{\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lL{3.9cm}lL{3.9cm}@{}}
+  \toprule
+  \textbf{Kod} & \textbf{Značenje} & \textbf{Kod} & \textbf{Značenje} \\
+  \midrule
+  \texttt{200} & obrađeno, tijelo slijedi         & \texttt{405} & metoda nad tom putanjom nije podržana \\
+  \texttt{201} & nastao je novi zapis             & \texttt{409} & sukob sa stanjem resursa \\
+  \texttt{204} & obrađeno, tijela nema            & \texttt{415} & oblik sadržaja nije podržan \\
+  \texttt{400} & zahtjev je neispravan            & \texttt{422} & sadržaj se ne može obraditi \\
+  \texttt{401} & prijava nedostaje ili ne vrijedi & \texttt{500} & nepredviđeno stanje u poslužitelju \\
+  \texttt{403} & zahtjev je odbijen               & \texttt{503} & poslužitelj trenutno ne poslužuje \\
+  \texttt{404} & na toj putanji nema ničega       &              & \\
+  \bottomrule
+\end{tabular}
+}
+
+\vspace{0.4em}
+{\small Razred \texttt{3xx} u aplikaciji koja vraća JSON gotovo se ne pojavljuje, a \texttt{1xx} se javlja pri nadogradnji veze, primjerice na WebSocket.}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Izbor koda u graničnim slučajevima}
+Kod \texttt{401} odnosi se na prijavu, a ne na prava: standard ga opisuje kao nedostatak valjanih podataka za prijavu, premda mu naziv glasi \texttt{Unauthorized}. Kod \texttt{403} znači da je pošiljatelj poznat, a zahtjev ipak odbijen.
+
+\vspace{0.5em}
+Ostatak izbora standard ne razrješava, jer njegovi opisi dopuštaju više od jednoga.
+
+\begin{konvencija}[Konvencija, razlikuje se od projekta do projekta]
+\begin{itemize}
+  \item Neispravni podatci u tijelu zahtjeva: FastAPI i Pydantic vraćaju \texttt{422}, ali je moguć i \texttt{400}.
+  \item Uspješno brisanje: \texttt{204} bez tijela ili \texttt{200} s podatcima obrisanog zapisa.
+  \item Zapis koji postoji, ali ga korisnik ne smije vidjeti: \texttt{403} ili \texttt{404}, ovisno o tome smije li se odati da zapis postoji.
+\end{itemize}
+\end{konvencija}
+
+\vspace{0.3em}
+Izbor se donosi jednom i dosljedno provodi kroz cijeli projekt.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Idempotentnost}
+Metoda je idempotentna ako niz od više jednakih zahtjeva ostavlja poslužitelj u istom stanju kao i jedan takav zahtjev. Standard to svojstvo pridružuje samim metodama:
+
+\begin{itemize}
+  \item \texttt{GET}, \texttt{HEAD}, \texttt{OPTIONS} i \texttt{TRACE} ne mijenjaju stanje, pa su idempotentni.
+  \item \texttt{PUT} i \texttt{DELETE} mijenjaju stanje, ali su idempotentni: zapis se postavlja na zadanu vrijednost, odnosno briše.
+  \item \texttt{POST} i \texttt{PATCH} nisu idempotentni.
+\end{itemize}
+
+\vspace{0.4em}
+Posljedica je praktična: klijent smije ponoviti neuspjeli \texttt{GET} ili \texttt{DELETE} bez razmišljanja. Ponovljeni \texttt{POST} može stvoriti drugi zapis, pa zaštita od toga mora doći iz aplikacije, najčešće ograničenjem jedinstvenosti u bazi.
+\end{frame}
+
+
+% ------------------------------------------------------------
+\begin{frame}{Shema kao opis ulaza i izlaza}
+Shema je zapis o tome kakve podatke ruta prima i kakve vraća. Framework je provjerava prije nego zahtjev dođe do poslovnih pravila, pa neispravan sadržaj do njih ne stiže.
+
+\vspace{0.4em}
+Shema provjerava:
+
+\begin{itemize}
+  \item jesu li obavezna polja prisutna
+  \item je li svako polje očekivanog tipa
+  \item zadovoljava li vrijednost ograničenje zapisano uz polje, primjerice popis dopuštenih vrijednosti ili raspon
+\end{itemize}
+
+\vspace{0.5em}
+{\small
+\begin{tabular}{@{}lL{6.4cm}@{}}
+  \toprule
+  \textbf{Poslana težinska kategorija} & \textbf{Ishod} \\
+  \midrule
+  83, vrijednost s popisa   & prolazi dalje \\
+  85, nije na popisu        & odbijeno, odgovor imenuje to polje \\
+  \enquote{osamdeset tri}   & odbijeno, vrijednost nije broj \\
+  \bottomrule
+\end{tabular}
+}
+\end{frame}
+
+
+% ============================================================
+\sekcija{Kostur projekta}{Po čemu se dijele mape, sastavljanje aplikacije, konfiguracija, pokretanje.}
+
+% ------------------------------------------------------------
+\begin{frame}{Po čemu se dijele mape}
+Struktura mapa je odgovor na pitanje gdje tražiti izmjenu. Dva su uobičajena odgovora:
+
+\begin{itemize}
+  \item \textbf{po sloju}: sve sheme na jednom mjestu, sve rute na drugom, svi upiti nad bazom na trećem
+  \item \textbf{po značajki}: sve što se tiče prijava na jednom mjestu, sve što se tiče korisnika na drugom
+\end{itemize}
+
+\vspace{0.5em}
+Podjela po sloju lakše podnosi rast broja pravila, jer svako pravilo ima očito mjesto. Podjela po značajki lakše podnosi rast broja međusobno nepovezanih dijelova, jer se svaki može čitati i mijenjati zasebno.
+
+\vspace{0.3em}
+Mi ćemo koristiti podjelu po sloju: u aplikacijama s ulogama, stanjima i rokovima raste broj pravila, a ne broj nepovezanih dijelova.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Struktura repozitorija}
+\begin{lstlisting}[language=bash]
+repo/
+  api/                 # backend (FastAPI)
+  web/                 # frontend (Vue)
+  docker-compose.yml   # database service
+  .env.example         # configuration template
+  .gitignore
+  README.md
+\end{lstlisting}
+
+\vspace{0.4em}
+\begin{konvencija}[Izbor, ne pravilo]
+Backend i frontend ovdje stoje u istom repozitoriju. Promjena koja dira obje strane tada je jedan commit umjesto dvaju usklađenih u dvama repozitorijima. Odvojeni repozitoriji imaju svoje razloge, primjerice različite timove i različit ritam izdanja.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Struktura backenda}
+\begin{lstlisting}[language=bash]
+api/
+  app/
+    main.py            # creates the application
+    core/
+      config.py        # configuration from the environment
+      deps.py          # shared dependencies
+      errors.py        # domain errors and handlers
+      logging.py       # logging setup
+    routers/
+      health.py
+    schemas/
+    models/
+    services/
+    repositories/
+  tests/
+  requirements.txt
+\end{lstlisting}
+
+\vspace{0.3em}
+Mape prate slojeve s prethodnog dijela predavanja, pa se mjesto izmjene određuje prije nego što se otvori ijedna datoteka.
+\end{frame}
+
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{Konfiguracija iz varijabli okoline}
+\begin{lstlisting}[language=python]
+# app/core/config.py
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    APP_NAME: str = "Powerlifting Registrations API"
+    ENV: str = "dev"
+    DATABASE_URL: str
+    JWT_SECRET: str = "change-me"
+
+settings = Settings()
+\end{lstlisting}
+
+\begin{itemize}
+  \item Vrijednosti se čitaju na jednome mjestu, pa \texttt{os.getenv} ne treba pozivati po kodu.
+  \item \codefile{.env} ostaje na računalu i ulazi u \codefile{.gitignore}; u repozitorij ide \codefile{.env.example} s nazivima varijabli i bezopasnim vrijednostima.
+  \item Prijelaz s razvojne okoline na produkcijsku mijenja vrijednosti varijabli, a ne kod.
+\end{itemize}
+\end{frame}
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{Sastavljanje aplikacije}
+Aplikacija nastaje tako da se frameworku prijave rute, postavke i zajedničke ovisnosti.
+
+\begin{lstlisting}[language=python]
+# app/main.py
+from fastapi import FastAPI
+from app.core.config import Settings, settings
+from app.routers.health import router as health_router
+
+def create_app(config: Settings = settings) -> FastAPI:
+    app = FastAPI(title=config.APP_NAME, debug=config.ENV == "dev")
+    app.include_router(health_router, prefix="/health", tags=["health"])
+    return app
+
+app = create_app()
+\end{lstlisting}
+
+\vspace{0.4em}
+Ovdje se postavke iz prethodnog slajda i upotrebljavaju. Posljednji redak stvara primjerak koji poslužitelj pokreće. Isti se poziv može ponoviti drugdje i s drugim postavkama, primjerice \texttt{create\_app(test\_settings)} u testovima.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{Baza u kontejneru}
+\begin{lstlisting}[language=bash]
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: pl_reg
+      POSTGRES_USER: pl_user
+      POSTGRES_PASSWORD: pl_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+\end{lstlisting}
+
+\vspace{0.3em}
+Zapis određuje istu inačicu PostgreSQL-a za sve, neovisno o operacijskom sustavu. Imenovani volumen \texttt{pgdata} čuva podatke između pokretanja; brisanjem volumena baza se vraća u prazno stanje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Pokretanje i provjera}
+\begin{lstlisting}[language=bash]
+docker compose up -d db      # database
+
+cd api
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+uvicorn app.main:app --reload
+\end{lstlisting}
+
+\vspace{0.4em}
+Alat \texttt{uv} objedinjuje stvaranje virtualne okoline i instalaciju paketa; \codefile{requirements.txt} ostaje nepromijenjen.
+
+\vspace{0.3em}
+Provjera: \texttt{http://127.0.0.1:8000/health} vraća \texttt{\{"status": "ok"\}}, a \texttt{/docs} prikazuje popis ruta. Ta ista ruta služi i u produkciji: platforma njome provjerava je li primjerak aplikacije spreman primati promet.
+\end{frame}
+
+% ============================================================
+\sekcija{Dijagnostika i kvaliteta}{Zapisnik rada, dosljedan oblik pogreške, statička analiza i formatiranje.}
+
+% ------------------------------------------------------------
+\begin{frame}{Što ulazi u zapisnik}
+Aplikacija usput zapisuje što je radila. Taj zapisnik (engl. \emph{log}) jedini je trag kojim se poslije rekonstruira što se dogodilo.
+
+\vspace{0.8em}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{@{}L{5.6cm}L{5.6cm}@{}}
+  \toprule
+  \textbf{Zapisuje se} & \textbf{Ne zapisuje se} \\
+  \midrule
+  ruta, metoda i statusni kod odgovora & lozinke i tokeni, ni u dijelovima \\
+  ispis iznimke s popisom poziva, u razvojnoj okolini & tijelo zahtjeva s osobnim podatcima \\
+  domenski događaji, primjerice odjava natjecatelja & podatci po kojima se osoba može identificirati \\
+  \bottomrule
+\end{tabular}
+}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Postavljanje zapisivanja}
+\begin{lstlisting}[language=python]
+# app/core/logging.py
+import logging
+
+def setup_logging(debug: bool = False) -> None:
+    logging.basicConfig(
+        level=logging.DEBUG if debug else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+# in a service module:
+logger = logging.getLogger(__name__)
+logger.info("club created: id=%s", club.id)
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{logger} se dohvaća preko \texttt{\_\_name\_\_}, pa svaki redak nosi naziv modula iz kojega dolazi. Zapis ide na standardni izlaz, odakle ga preuzima okolina u kojoj proces radi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{Dosljedan oblik pogreške}
+Svaki neuspjeh vraća tijelo istoga oblika, pa ga frontend obrađuje na jednome mjestu:
+
+\begin{lstlisting}[language=json]
+{
+  "code": "registration_closed",
+  "message": "Rok za prijave je istekao."
+}
+\end{lstlisting}
+
+\begin{itemize}
+  \item \texttt{code} je stalan i namijenjen kodu koji odlučuje što učiniti.
+  \item \texttt{message} je namijenjen čovjeku i smije se mijenjati.
+\end{itemize}
+
+\vspace{0.3em}
+Iznimka koju podiže sloj \codefile{services} nosi oba polja i statusni kod. Jedan handler registriran na razini aplikacije hvata sve takve iznimke i od njih sastavlja odgovor, pa se to ne ponavlja ni u jednoj ruti.
+
+\vspace{0.3em}
+\begin{konvencija}
+Uz ta dva polja često dolazi i treće, s popisom polja koja nisu prošla provjeru. Potrebno je kad sučelje poruku prikazuje uz svaki unos u obrascu, a ne samo jednu na vrhu.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što se vidi bez pokretanja koda}
+\begin{itemize}
+  \item \textbf{Promjena koja to nije.} Dva autora imaju različito postavljene uređivače: jedan uvlači s četiri razmaka, drugi s dva i pri spremanju preslaguje uvoze. Kad drugi otvori i spremi tuđu datoteku, \texttt{git diff} pokazuje četrdeset izmijenjenih redaka, a ponašanje je isto. Stvarne promjene treba tražiti među njima.
+  \item \textbf{Pogreška vidljiva iz samoga koda.} Neiskorišten uvoz, varijabla kojoj je vrijednost dodijeljena a nikad pročitana, grana do koje izvođenje ne može doći, krivo napisan naziv.
+\end{itemize}
+
+\vspace{0.5em}
+Prvo uklanja alat koji kod zapisuje u jedan stil, drugo pronalazi alat koji ga pregledava. Ruff radi oboje: \texttt{ruff format .} i \texttt{ruff check .}.
+
+\vspace{0.3em}
+Oba se pokreću lokalno i pri svakoj promjeni u repozitoriju. Ono što alat može provjeriti ne treba provjeravati čovjek.
+\end{frame}
+
+% ============================================================
+\sekcija{Rad s verzijama koda}{Commit kao zapis jedne promjene, čitanje razlike, naredbe za pregled povijesti.}
+
+% ------------------------------------------------------------
+\begin{frame}{Commit kao zapis jedne promjene}
+Povijest repozitorija je zapis o tome kako je aplikacija nastala. Koliko je taj zapis upotrebljiv, ovisi o tome koliko je promjena stavljeno u jedan commit.
+
+\begin{itemize}
+  \item Commit koji dira jednu temu može se pročitati u cijelosti i, ako zatreba, poništiti sam za sebe.
+  \item Commit s petnaest datoteka i tri nepovezane promjene ne može ni jedno ni drugo.
+  \item Poruka opisuje namjeru (\texttt{add config loading from environment}), a ne postupak (\texttt{izmjene}).
+\end{itemize}
+
+\vspace{0.4em}
+Kad se pojavi pogreška koje prije nije bilo, pretraga povijesti pokazuje u kojem se commitu ponašanje promijenilo. Taj je odgovor koristan samo ako commit sadrži jednu promjenu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kako čitati razliku}
+\begin{enumerate}
+  \item Poruka commita: koji je cilj promjene.
+  \item Popis datoteka: koje su nove, a koje izmijenjene.
+  \item Promjene vidljive prema van: nova ruta, promijenjena shema, novo polje u odgovoru.
+  \item Promjene u konfiguraciji: varijable okoline, opis usluga, zavisnosti.
+  \item Tek na kraju pojedinosti izvedbe.
+\end{enumerate}
+
+\vspace{0.4em}
+Redoslijed je namjeran: prva tri koraka kažu mijenja li se ugovor prema klijentu, a to je jedino što odmah utječe na frontend.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Korisne naredbe}
+\begin{lstlisting}[language=bash]
+# history, one line per commit
+git log --oneline --decorate
+
+# what a single commit changed
+git show <commit>
+
+# difference between two commits
+git diff <commit1>..<commit2>
+
+# uncommitted changes in the working tree
+git diff
+\end{lstlisting}
+
+\vspace{0.4em}
+Zadnja naredba pokazuje što je promijenjeno, a još nije zabilježeno. Pregled te razlike prije svakog commita hvata zaboravljene ispise, privremene izmjene i datoteke koje ne bi trebale ući u repozitorij.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Sažetak}
+\begin{itemize}
+  \item Backend prima HTTP zahtjev i sastavlja odgovor. U najmanjem obliku to je funkcija pridružena putanji.
+  \item Čim podatci nisu javni i čim se mijenjaju, uz to dolaze utvrđivanje pošiljatelja, provjera prava, provjera oblika poslanih podataka, poslovna pravila i transakcija.
+  \item Provjera koja pripada većem broju ruta zapisuje se jednom, u sloju \codefile{services}, i odatle se poziva.
+  \item Statusni kod nosi značenje: \texttt{401} je neutvrđen identitet, \texttt{403} nedostatak ovlasti, \texttt{409} sukob sa stanjem resursa. Za neispravne podatke projekt bira između \texttt{400} i \texttt{422} i toga se drži.
+  \item Konfiguracija dolazi iz varijabli okoline, pa prijelaz u produkciju ne mijenja kod; \codefile{.env} ostaje izvan repozitorija.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što slijedi}
+\begin{itemize}
+  \item \textbf{15.10.2026.} Predavanje 2, modeliranje podataka: entiteti Klub i Korisnik, veza s bazom preko ORM-a, migracije alatom Alembic i početno punjenje baze.
+  \item \textbf{22.10.2026.} Predavanje 3, autentikacija i sigurnost.
+  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
+\end{itemize}
+
+\vspace{0.5em}
+Do sljedećega predavanja: pokrenuti bazu i backend na vlastitom računalu te potvrditi odgovor na ruti \texttt{/health}.
+\end{frame}
+
+\end{document}

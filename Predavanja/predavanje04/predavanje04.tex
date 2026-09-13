@@ -1,0 +1,551 @@
+% !TeX program = lualatex
+% !TeX root = predavanje04.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija - Predavanje 4 \\ Autorizacija, role i ownership}
+\date{26.10.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Autentikacija vs autorizacija - razlika i granica
+  \item Role: admin i club korisnik
+  \item Ownership: korisnik smije mijenjati samo svoje podatke
+  \item Dependency-ji za provjeru role i ownership
+  \item 401 vs 403 - kad koji status code
+  \item Middleware vs dependency pristup
+  \item Testovi za autorizaciju
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja: endpointi provjeravaju \textbf{tko si} i \textbf{smiješ li to raditi}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+\begin{itemize}
+  \item objasniti razliku između autentikacije i autorizacije
+  \item implementirati provjeru role u FastAPI dependencyju
+  \item implementirati ownership provjeru u service layeru
+  \item razlikovati 401 i 403 status code i objasniti kad se koji koristi
+  \item napisati test koji provjerava da korisnik ne može pristupiti tuđim podacima
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Modeli autorizacije: RBAC, ABAC, ACL}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Model} & \textbf{Kako radi} \\
+  \midrule
+  \textbf{ACL} (Access Control List) & Svaki resurs ima listu tko smije što (npr. Unix file permissions) \\
+  \midrule
+  \textbf{RBAC} (Role-Based) & Korisnik ima rolu, rola ima dozvole. Jednostavno za male sustave. \\
+  \midrule
+  \textbf{ABAC} (Attribute-Based) & Odluka na temelju atributa korisnika, resursa i konteksta. Fleksibilno ali složeno. \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Naš projekt koristi \textbf{RBAC + ownership} - dovoljno za domenu, a studenti razumiju model.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto RBAC za naš projekt?}
+\begin{itemize}
+  \item Imamo samo 2 role (\texttt{admin}, \texttt{club}) - RBAC je prirodan izbor
+  \item ABAC bi bio overkill: nemamo složene politike poput \enquote{klub smije prijaviti samo liftera starijeg od 18 godina iz istog grada}
+  \item ACL ne skalira: ne želimo definirati pristup za svaki resurs pojedinačno
+\end{itemize}
+
+\vspace{0.6em}
+\begin{block}{Kad bi trebao ABAC?}
+Kad imate 10+ rola, politike ovise o vremenu/lokaciji, ili pravilima koja se mijenjaju bez deploya.
+\end{block}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{OWASP Top 10: Broken Access Control (\#1)}
+Od 2021., \textbf{Broken Access Control} je \#1 ranjivost prema OWASP-u. \\
+OWASP je kratica za \textbf{Open Web Application Security Project} - neprofitna organizacija koja objavljuje liste najčešćih sigurnosnih propusta.
+
+\vspace{0.6em}
+Tipični propusti:
+\begin{enumerate}
+  \item Provjera pristupa samo na frontendu
+  \item Endpoint bez ikakve provjere role
+  \item Korisnik mijenja ID u URL-u i pristupa tuđim podacima
+  \item API vraća podatke koje korisnik ne bi smio vidjeti
+\end{enumerate}
+
+\vspace{0.6em}
+Naš projekt pokriva sve navedeno: backend provjerava rolu i ownership na \textbf{svakom} endpointu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{IDOR: Insecure Direct Object Reference}
+Napadač mijenja ID u requestu da pristupi tuđim podacima.
+
+\vspace{0.6em}
+\textbf{Primjer napada:}
+\begin{enumerate}
+  \item Korisnik kluba Behemot šalje: \texttt{GET /clubs/1/lifters} (svoj klub)
+  \item Mijenja URL u: \texttt{GET /clubs/2/lifters} (klub Heraklo)
+  \item Bez ownership provjere: vidi tuđe natjecatelje
+\end{enumerate}
+
+\vspace{0.6em}
+\textbf{Obrana}: usporedba \texttt{current\_user.club\_id} s \texttt{club\_id} iz URL-a u service layeru.
+
+\vspace{0.4em}
+IDOR je najčešći oblik Broken Access Controla.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Horizontalna vs vertikalna eskalacija}
+\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Horizontalna} & \textbf{Vertikalna} \\
+  \midrule
+  Što & Pristup podacima \textbf{drugog korisnika} iste role & Pristup funkcijama \textbf{više role} \\
+  Primjer & Klub A vidi liftera kluba B & Club korisnik kreira natjecanje (admin akcija) \\
+  Obrana & Ownership provjera & Role provjera \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Moramo se braniti od \textbf{obje} eskalacije. \texttt{require\_role} brani od vertikalne, ownership od horizontalne.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Principle of Least Privilege}
+\begin{center}
+\Large Korisnik smije \textbf{samo ono} što mu treba za posao. Ništa više.
+\end{center}
+
+\vspace{0.8em}
+U praksi:
+\begin{itemize}
+  \item Club korisnik ne vidi API za kreiranje natjecanja - čak ni u Swagger dokumentaciji
+  \item Admin ne modificira prijave klubova direktno - to je klubova odgovornost
+  \item Endpointi koji vraćaju liste filtriraju prema roli: admin vidi sve, club vidi svoje
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Defense in Depth: višeslojni pristup}
+Ne oslanjamo se na jednu provjeru:
+
+\vspace{0.6em}
+\begin{enumerate}
+  \item \textbf{Transport}: HTTPS (enkriptirani promet)
+  \item \textbf{Autentikacija}: JWT token verifikacija
+  \item \textbf{Autorizacija - rola}: \texttt{require\_role} dependency
+  \item \textbf{Autorizacija - ownership}: service layer provjera
+  \item \textbf{Baza}: foreign key i unique constrainti
+\end{enumerate}
+
+\vspace{0.6em}
+Ako jedan sloj zakaže, problem zaustavlja sljedeći.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{JWT claims: što stavljamo u token?}
+Naš JWT payload sadrži:
+\begin{itemize}
+  \item \texttt{sub} - user ID
+  \item \texttt{role} - \texttt{"admin"} ili \texttt{"club"}
+  \item \texttt{club\_id} - ID kluba (null za admina)
+  \item \texttt{exp} - istek tokena
+\end{itemize}
+
+\vspace{0.6em}
+\textbf{Pravilo}: u token stavimo samo ono što nam treba za autorizaciju na \textbf{svakom} requestu.
+
+\vspace{0.4em}
+\begin{block}{Zašto ne čitamo rolu iz baze na svakom requestu?}
+Performanse: upit u bazu na svaki request je skup. JWT je self-contained - sve što treba je u tokenu.
+Trade-off: ako se rola promijeni, stari token i dalje ima staru rolu do isteka.
+\end{block}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Token revokacija: trade-off}
+Problem: korisnik je deaktiviran, ali ima valjan token do isteka.
+
+\vspace{0.6em}
+Opcije:
+\begin{enumerate}
+  \item \textbf{Kratki tokeni} (15 min) - kompromis brzine i sigurnosti
+  \item \textbf{Blacklist} - lista revociranih tokena (zahtijeva storage, npr. Redis)
+  \item \textbf{Verzioniranje} - \texttt{token\_version} u bazi, odbijaj stare verzije
+\end{enumerate}
+
+\vspace{0.6em}
+Naš projekt koristi kratke tokene (15 min access + refresh). Na obrani morate znati objasniti zašto nismo implementirali blacklist.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Auto-login: kreiranje kluba s korisnikom}
+Kad admin kreira klub:
+\begin{enumerate}
+  \item Admin šalje: \texttt{POST /clubs} s \texttt{name}, \texttt{city}, \texttt{password}
+  \item Backend kreira Club i automatski kreira User:
+  \begin{itemize}
+    \item \texttt{username = slugify(name)} - npr. \enquote{Behemot} $\rightarrow$ \texttt{behemot}
+    \item \texttt{role = "club"}
+    \item \texttt{club\_id = novi\_klub.id}
+  \end{itemize}
+  \item Response vraća klub podatke + generirani username
+\end{enumerate}
+
+\vspace{0.6em}
+Club 1:1 User - svaki klub ima točno jednog korisnika za prijavu.
+
+\vspace{0.4em}
+Admin vidi username i prosljeđuje ga klubu. Klub se prijavi s username + password.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kontekst: gdje smo u projektu?}
+\begin{itemize}
+  \item Predavanje 3: korisnik se može \textbf{prijaviti} i dobiti JWT token
+  \item \texttt{get\_current\_user} dependency izvlači korisnika iz tokena
+  \item Danas: dodajemo sloj koji provjerava \textbf{smiješ li raditi to što tražiš}
+\end{itemize}
+
+\vspace{0.6em}
+\begin{center}
+\Large Autentikacija = tko si ti. \\ Autorizacija = smiješ li to.
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Naš model autorizacije}
+\begin{tabular}{@{}lp{9cm}@{}}
+  \toprule
+  \textbf{Rola} & \textbf{Ovlasti} \\
+  \midrule
+  \texttt{admin} & Kreira natjecanja, kreira klubove i korisnike, vidi sve prijave, upravlja rokovima \\
+  \midrule
+  \texttt{club} & Registrira natjecatelje svog kluba, prijavljuje ih na natjecanje, vidi samo \textbf{svoje} podatke \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Rola je pohranjena u JWT payloadu i u bazi (\texttt{users.role}).
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ownership: zašto rola nije dovoljna?}
+\begin{itemize}
+  \item Dva korisnika imaju rolu \texttt{club}
+  \item Korisnik kluba \enquote{Behemot} ne smije uređivati natjecatelje kluba \enquote{Heraklo}
+  \item Rola kaže \textbf{što smiješ raditi} - ownership kaže \textbf{nad čijim podacima}
+\end{itemize}
+
+\vspace{0.6em}
+Ownership se provjerava usporedbom \texttt{current\_user.club\_id} s \texttt{club\_id} resursa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{401 vs 403: kad koji?}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Status} & \textbf{Značenje} \\
+  \midrule
+  \textbf{401 Unauthorized} & Nisi se identificirao ili ti je token istekao. Ponovno se prijavi. \\
+  \midrule
+  \textbf{403 Forbidden} & Znam tko si, ali \textbf{nemaš pravo} na to. Ponovna prijava neće pomoći. \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Česta greška: vratiti 401 kad bi trebao biti 403. To zbunjuje frontend koji pokušava refreshati token umjesto da prikaže \enquote{nemate pristup}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Dependency: \texttt{require\_role}}
+\begin{lstlisting}[language=python]
+from app.core.errors import AppError
+
+def require_role(*allowed_roles: str):
+    def checker(
+        current_user: User = Depends(get_current_user)
+    ) -> User:
+        if current_user.role not in allowed_roles:
+            raise AppError(
+                "forbidden",
+                "Nemate dozvolu za ovu akciju",
+                status_code=403,
+            )
+        return current_user
+    return checker
+\end{lstlisting}
+
+\vspace{0.4em}
+Factory pattern: \texttt{require\_role("admin")} vraća dependency koji propušta samo admine.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Korištenje \texttt{require\_role} u routeru}
+\begin{lstlisting}[language=python]
+@router.post("/")
+async def create_club(
+    body: ClubCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_role("admin")),
+):
+    # auto-kreira User s username=slugify(name)
+    return await club_service.create_club(db, body)
+
+# preview: ovo implementiramo na P5
+@router.get("/{club_id}/lifters")
+async def list_lifters(
+    club_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin", "club")),
+):
+    return await lifter_service.list_by_club(db, club_id, user)
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Gdje provjeravati ownership?}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Sloj} & \textbf{Odgovornost} \\
+  \midrule
+  Router & Parsira request, poziva service. \textbf{Ne provjerava} ownership. \\
+  \midrule
+  Service & \textbf{Provjerava ownership} i poslovna pravila. Baca \texttt{AppError}. \\
+  \midrule
+  Repository & Radi DB upit. Ne zna za role ni ownership. \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Ownership je \textbf{poslovno pravilo}, ne HTTP koncept. Zato živi u service layeru.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile, shrink=10]{Service: ownership provjera (preview za P5)}
+\begin{lstlisting}[language=python]
+async def list_lifters_by_club(
+    db: AsyncSession,
+    club_id: int,
+    current_user: User,
+) -> list[Lifter]:
+    if current_user.role == "club" and current_user.club_id != club_id:
+        raise AppError(
+            "forbidden",
+            "Ne mozete pristupiti natjecateljima drugog kluba",
+            status_code=403,
+        )
+    return await lifter_repo.get_by_club(db, club_id)
+\end{lstlisting}
+
+\vspace{0.4em}
+Admin smije vidjeti sve. Club korisnik smije vidjeti samo svoj klub.
+Lifter endpoint implementiramo na P5, ovdje pokazujemo \textbf{pattern}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Alternativa: ownership kao dependency}
+\begin{lstlisting}[language=python]
+async def require_club_access(
+    club_id: int,
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.role == "admin":
+        return current_user
+    if current_user.club_id != club_id:
+        raise AppError("forbidden", "Pristup odbijen", 403)
+    return current_user
+\end{lstlisting}
+
+\vspace{0.4em}
+Ovo radi ako je \texttt{club\_id} uvijek u URL-u. Za složenije slučajeve ownership ostaje u serviceu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Admin vidi sve, club vidi svoje}
+Tipični pattern u našem projektu (neki endpointi dolaze na P5):
+
+\vspace{0.6em}
+\begin{tabular}{@{}llll@{}}
+  \toprule
+  \textbf{Endpoint} & \textbf{Admin} & \textbf{Club} & \textbf{Provjera} \\
+  \midrule
+  \texttt{GET /clubs/\{id\}/lifters} & svi & samo svoj klub & ownership \\
+  \texttt{POST /competitions/\{id\}/registrations} & sve & samo svoj klub & ownership \\
+  \texttt{POST /competitions} & da & ne & role \\
+  \texttt{GET /clubs} & svi & samo svoj & ownership \\
+  \texttt{POST /clubs} & da & ne & role \\
+  \bottomrule
+\end{tabular}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Česte greške u autorizaciji}
+\begin{enumerate}
+  \item Provjera role samo na frontendu - backend je autoritet
+  \item Ownership provjera samo po URL-u, ne po tijelu requesta
+  \item Zaboraviti provjeriti ownership na UPDATE/DELETE
+  \item Vratiti 404 umjesto 403 - otkriva postojanje resursa
+  \item Ne testirati autorizaciju uopće
+\end{enumerate}
+
+\vspace{0.6em}
+Na obrani testiram točno ovo: šaljem request s tokenom korisnika koji \textbf{ne bi smio} imati pristup.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{404 vs 403: dilema otkrivanja resursa}
+\begin{itemize}
+  \item Ako vratim 403: napadač zna da resurs postoji
+  \item Ako vratim 404: napadač ne zna, ali korisnik ne razumije zašto ne vidi podatke
+\end{itemize}
+
+\vspace{0.6em}
+Uobičajena praksa:
+\begin{itemize}
+  \item Za javne resurse (natjecanja): 403 je ok, ionako su javni
+  \item Za osjetljive resurse: 404 je sigurnija opcija
+\end{itemize}
+
+\vspace{0.4em}
+U našem projektu koristimo 403 jer domena nije osjetljiva. Na obrani morate znati objasniti zašto.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile, shrink=10]{Test: autorizacija po roli}
+\begin{lstlisting}[language=python]
+def test_club_user_cannot_create_club(client, club_token):
+    r = client.post(
+        "/clubs",
+        json={"name": "Novi", "city": "Zagreb", "password": "pass123"},
+        headers={"Authorization": f"Bearer {club_token}"},
+    )
+    assert r.status_code == 403
+
+def test_admin_can_create_club(client, admin_token):
+    r = client.post(
+        "/clubs",
+        json={"name": "Novi", "city": "Zagreb", "password": "pass123"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert r.status_code == 201
+    assert r.json()["username"] == "novi"
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile, shrink=10]{Test: ownership}
+\begin{lstlisting}[language=python]
+def test_club_cannot_see_other_clubs_lifters(
+    client, club_a_token, club_b_id
+):
+    r = client.get(
+        f"/clubs/{club_b_id}/lifters",
+        headers={"Authorization": f"Bearer {club_a_token}"},
+    )
+    assert r.status_code == 403
+
+def test_club_can_see_own_lifters(
+    client, club_a_token, club_a_id
+):
+    r = client.get(
+        f"/clubs/{club_a_id}/lifters",
+        headers={"Authorization": f"Bearer {club_a_token}"},
+    )
+    assert r.status_code == 200
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Testne fixture za auth tokene}
+Testovi trebaju tokene za razne korisnike. Fixture pristup:
+\begin{itemize}
+  \item \texttt{admin\_token} - fixture koja seedira admina i vrati token
+  \item \texttt{club\_a\_token} - fixture za korisnika kluba A
+  \item \texttt{club\_b\_token} - fixture za korisnika kluba B
+\end{itemize}
+
+\vspace{0.6em}
+Alternativa: \texttt{dependency\_overrides} iz prošlog predavanja.
+Direktni tokeni su bolji jer testiraju \textbf{cijeli stack} uključujući JWT verifikaciju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Middleware vs dependency za autorizaciju}
+\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Middleware} & \textbf{Dependency} \\
+  \midrule
+  Kad se izvršava & Prije routera, na svaki request & Samo na endpointima koji ga koriste \\
+  Granularnost & Gruba (po prefixu URL-a) & Fina (po endpointu) \\
+  Pristup podacima & Samo request/response & Može primiti path parametre \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+FastAPI dependency pristup je bolji za naš slučaj:
+\begin{itemize}
+  \item Različiti endpointi trebaju različite role
+  \item \texttt{club\_id} iz URL-a nam treba za ownership provjeru
+  \item Middleware ne može znati koji je \texttt{club\_id} relevantan
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Audit checklist: jeste li sve pokrili?}
+Prije obrane provjerite svaki endpoint:
+\begin{enumerate}
+  \item Zahtijeva li autentikaciju? (\texttt{get\_current\_user} ili \texttt{require\_role})
+  \item Provjerava li rolu? (admin-only vs club-allowed)
+  \item Provjerava li ownership? (club smije samo svoje)
+  \item Postoji li test za neautorizirani pristup?
+  \item Je li response konzistentan? (401 vs 403 na pravom mjestu)
+\end{enumerate}
+
+\vspace{0.4em}
+Ako imate 5 endpointa, trebate barem 5 testova za autorizaciju - po jedan negativni za svaki endpoint.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Commitovi za Predavanje 4}
+\begin{itemize}
+  \item \texttt{feat(api): add require\_role dependency factory}
+  \item \texttt{feat(api): add club schemas and repository}
+  \item \texttt{feat(api): add admin club endpoints (create with auto-login, list, update, reset-password)}
+  \item \texttt{feat(api): enforce ownership checks in service layer}
+  \item \texttt{test(api): add role and ownership tests (admin/club/cross-club)}
+\end{itemize}
+
+\vspace{0.6em}
+\textbf{Na satu:} prolazimo diffeve i testiramo sa Swaggerom - šaljemo requestove s raznim tokenima.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što ide sljedeće (Predavanje 5)}
+\begin{itemize}
+  \item Modeliranje preostalih entiteta: Lifter, Competition, Registration
+  \item CRUD operacije kroz sve slojeve
+  \item Pydantic schema dizajn: Create vs Update vs Response
+  \item Validacija inputa i smisleni error odgovori
+  \item Paginacija i filtriranje
+\end{itemize}
+
+\vspace{0.8em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}

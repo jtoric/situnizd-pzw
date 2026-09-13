@@ -1,0 +1,777 @@
+% !TeX program = lualatex
+% !TeX root = predavanje09.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija - Predavanje 9 \\ State management, UX stanja i forme}
+\date{07.12.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item State management: zašto i kad koristiti store
+  \item Pinia store za poslovne entitete
+  \item Lista s loading/error/empty stanjima
+  \item Composables: ponovno iskoristiva reaktivna logika
+  \item Forme s klijentskom i serverskom validacijom
+  \item Registracije i status badgevi
+  \item Reusable komponente (tablica, forma)
+  \item Commitovi za ovo predavanje
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja: club korisnik može vidjeti svoje natjecatelje, dodati novog i prijaviti ga na natjecanje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+\begin{itemize}
+  \item kreirati Pinia store za CRUD operacije nad entitetom
+  \item implementirati loading, error i empty stanja u viewu
+  \item izdvojiti reaktivnu logiku u composable funkciju
+  \item napraviti formu s \texttt{v-model} bindingom i klijentskom validacijom
+  \item prikazati serverske greške u formi za statuse 422 i 409
+  \item izdvojiti ponavljajući UI u reusable komponentu s tipiziranim propsima
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kad koristiti store, a kad lokalni state}
+\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Lokalni state (\texttt{ref()})} & \textbf{Pinia store} \\
+  \midrule
+  Scope & Jedna komponenta & Cijela aplikacija \\
+  Primjer & Form inputi, toggle & Lista natjecatelja, auth \\
+  Persistencija & Do unmounta & Do refresha (ili localStorage) \\
+  Dijeljenje & Props/emit & Import u bilo kojoj komponenti \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Pravilo: ako dva ili više viewova trebaju iste podatke, stavi u store. Ako je podatak relevantan samo unutar jedne komponente, drži ga lokalno.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{State management: problem koji rješava}
+Bez centralnog storea, dijeljenje podataka među komponentama zahtijeva \textbf{prop drilling}:
+
+\vspace{0.4em}
+\begin{center}
+\texttt{App $\rightarrow$ Layout $\rightarrow$ Sidebar $\rightarrow$ UserInfo}
+\end{center}
+
+\vspace{0.4em}
+Svaka komponenta u lancu mora primiti i proslijediti prop koji koristi samo zadnja. Ovo je:
+\begin{itemize}
+  \item Nepregledno - 5 razina prosljeđivanja za jedan podatak
+  \item Krto - promjena na jednoj razini razbija lanac
+  \item Teško za maintain - ne znaš odakle podatak dolazi
+\end{itemize}
+
+\vspace{0.6em}
+Store rješava ovo: bilo koja komponenta može direktno čitati i pisati dijeljeni state bez posrednika.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Pinia vs Vuex}
+\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Vuex (legacy)} & \textbf{Pinia} \\
+  \midrule
+  API & Options: state, mutations, actions, getters & Composition: ref, computed, function \\
+  Mutacije & Obavezne (sinkrone) & Nema - direktno mijenjaj state \\
+  TypeScript & Loša podrška & Odlična \\
+  DevTools & Da & Da (bolje) \\
+  Moduli & Kompleksni namespace & Svaki store je nezavisan \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Pinia je službeni nasljednik Vuexa. Ako naiđete na tutoriale s Vuexom, koncepti su isti, ali API je drugačiji.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Store pattern: state, actions, getters}
+Svaki Pinia store ima tri koncepta:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{4cm}p{5cm}@{}}
+  \toprule
+  \textbf{Koncept} & \textbf{U Piniji} & \textbf{Analogija (backend)} \\
+  \midrule
+  State & \texttt{ref()} & Podatak u bazi \\
+  Getters & \texttt{computed()} & Izvedeni podatak (SQL VIEW) \\
+  Actions & Funkcije & Service metode \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+\begin{itemize}
+  \item \textbf{State} drži sirove podatke (lista natjecatelja, loading flag)
+  \item \textbf{Getters} deriviraju podatke iz statea (filtrirani natjecatelji, ukupan broj)
+  \item \textbf{Actions} mijenjaju state (dohvat s API-ja, dodavanje, brisanje)
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Optimistički vs pesimistički update}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Pesimistički}
+\begin{itemize}
+  \item Pošalji request $\rightarrow$ čekaj odgovor $\rightarrow$ ažuriraj UI
+  \item Korisnik vidi spinner
+  \item Sigurniji - nema rollbacka
+  \item Sporiji UX
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Optimistički}
+\begin{itemize}
+  \item Ažuriraj UI odmah $\rightarrow$ pošalji request $\rightarrow$ rollback ako ne uspije
+  \item Korisnik vidi instant promjenu
+  \item Kompleksniji - treba rollback logika
+  \item Brži UX
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Za ovaj projekt koristimo pesimistički pristup - jednostavniji je i dovoljno brz. Optimistički update se koristi za akcije poput lajkanja objave ili micanja itema iz liste.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Pinia store za natjecatelje}
+\begin{lstlisting}[language=typescript]
+// src/stores/lifters.ts
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import api from '@/api/client'
+import type { Lifter } from '@/types'
+
+export const useLifterStore = defineStore('lifters', () => {
+  const lifters = ref<Lifter[]>([])
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+
+  async function fetchLifters(clubId: number) {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await api.get<Lifter[]>(
+        `/clubs/${clubId}/lifters`
+      )
+      lifters.value = data
+    } catch {
+      error.value = 'Greska pri dohvatu natjecatelja'
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { lifters, loading, error, fetchLifters }
+})
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Zamka: destrukturiranje storea gubi reaktivnost}
+\begin{lstlisting}[language=typescript]
+const store = useLifterStore()
+const { lifters } = store          // GUBI reaktivnost!
+
+import { storeToRefs } from 'pinia'
+const { lifters, loading } = storeToRefs(store)  // ispravno
+const { fetchLifters } = store     // funkcije smiju direktno
+\end{lstlisting}
+
+\vspace{0.4em}
+Destrukturiranje kopira trenutnu vrijednost i template se prestaje ažurirati kad se store promijeni. \texttt{storeToRefs} zadržava reaktivne reference, a akcije se smiju uzeti direktno jer su obične funkcije.
+
+\vspace{0.4em}
+\textbf{Napomena:} AI alati često generiraju upravo ovu grešku - provjerite svako destrukturiranje storea koje vam alat predloži.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Tri stanja svakog viewa}
+Svaki view koji dohvaća podatke s API-ja mora hendlati tri situacije:
+
+\vspace{0.6em}
+\begin{tabular}{@{}llp{6cm}@{}}
+  \toprule
+  \textbf{Stanje} & \textbf{Uvjet} & \textbf{Što prikazujemo} \\
+  \midrule
+  Loading & \texttt{loading === true} & Spinner ili skeleton \\
+  Error & \texttt{error !== null} & Poruka greške s retry gumbom \\
+  Empty & \texttt{items.length === 0} & Poruka i CTA (npr. \enquote{Dodaj prvog natjecatelja}) \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Ako pokažete samo podatke bez ovih stanja, korisnik ne zna učitava li se nešto, je li greška ili stvarno nema podataka. To je loš UX.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Skeleton loading vs spinner}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Spinner}
+\begin{itemize}
+  \item Generički indikator učitavanja
+  \item Ne govori korisniku što će vidjeti
+  \item Jednostavan za implementaciju
+  \item Može uzrokovati layout shift
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Skeleton screen}
+\begin{itemize}
+  \item Sivi blokovi na mjestu budućeg sadržaja
+  \item Korisnik zna kakav layout očekivati
+  \item Perceptualno brže (manje čekanja)
+  \item Zahtijeva više koda
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Za studentski projekt spinner je dovoljno dobar. Skeleton je standard u produkcijskim aplikacijama - Facebook, YouTube, LinkedIn ga koriste svugdje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Empty state: zašto je bitan}
+Empty state je ono što korisnik vidi kad nema podataka. Loš empty state:
+
+\vspace{0.2em}
+\begin{center}
+\textit{(prazna tablica bez ikakvog teksta)}
+\end{center}
+
+\vspace{0.4em}
+Dobar empty state:
+\begin{itemize}
+  \item Jasna poruka: \enquote{Nemate natjecatelja.}
+  \item CTA (Call to Action): link ili gumb za dodavanje prvog zapisa
+  \item Opcionalno: kratka uputa što sljedeće napraviti
+\end{itemize}
+
+\vspace{0.6em}
+Empty state se događa češće nego mislite - svaki novi korisnik vidi ga prvi put. To je prilika za dobar prvi dojam, ne prazna stranica.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Error stanja i retry}
+Nije svaka greška ista. Razlikujemo:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{4cm}p{5cm}@{}}
+  \toprule
+  \textbf{Tip} & \textbf{Primjer} & \textbf{Reakcija} \\
+  \midrule
+  Network error & Nema interneta & Retry gumb, provjeri konekciju \\
+  Server error (5xx) & Bug na backendu & Retry gumb, \enquote{Pokušajte kasnije} \\
+  Auth error (401) & Token istekao & Automatski refresh ili redirect \\
+  Client error (4xx) & Krivi podaci & Prikaži poruku, ne nudi retry \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Retry ima smisla samo za tranzijentne greške (network, 5xx). Za 400/422/409 retry će dati isti rezultat - korisnik mora promijeniti input.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Debouncing: ne šalji request na svaki keystroke}
+Kad korisnik piše u search polje, ne želimo slati API request na svako slovo:
+
+\vspace{0.4em}
+\begin{center}
+\texttt{p $\rightarrow$ po $\rightarrow$ pow $\rightarrow$ powe $\rightarrow$ power} = 5 requestova za jednu riječ
+\end{center}
+
+\vspace{0.6em}
+\textbf{Debounce} odgađa akciju dok korisnik ne prestane tipkati (npr. 300ms):
+\begin{enumerate}
+  \item Korisnik piše \texttt{p} $\rightarrow$ timer kreće (300ms)
+  \item Piše \texttt{o} $\rightarrow$ timer se resetira
+  \item Piše \texttt{w}, \texttt{e}, \texttt{r} $\rightarrow$ timer se resetira svaki put
+  \item 300ms bez tipkanja $\rightarrow$ šalje se jedan request za \texttt{power}
+\end{enumerate}
+
+\vspace{0.4em}
+Za frontend filtriranje (computed) debounce nije potreban jer nema network poziva. Za API search endpoint je obavezan.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Composable: useDebouncedSearch}
+\begin{lstlisting}[language=typescript]
+// src/composables/useDebouncedSearch.ts
+import { ref, watch } from 'vue'
+
+export function useDebouncedSearch(delay = 300) {
+  const search = ref('')
+  const debounced = ref('')
+  let timer: ReturnType<typeof setTimeout>
+
+  watch(search, (value) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => { debounced.value = value }, delay)
+  })
+
+  return { search, debounced }
+}
+
+// u komponenti:
+// const { search, debounced } = useDebouncedSearch()
+// <input v-model="search" />  -> API poziv prati debounced
+\end{lstlisting}
+
+\vspace{0.4em}
+Composable je funkcija s prefiksom \texttt{use} koja kapsulira reaktivnu logiku - isto što i Pinia store, ali bez globalnog stanja. Svaka komponenta koja je pozove dobiva svoju instancu. Ovo je centralni Composition API pattern za dijeljenje logike.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Lista natjecatelja s UX stanjima}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useLifterStore } from '@/stores/lifters'
+
+const auth = useAuthStore()
+const store = useLifterStore()
+
+onMounted(() => {
+  store.fetchLifters(auth.user.club_id)
+})
+</script>
+
+<template>
+  <h1>Natjecatelji</h1>
+  <div v-if="store.loading">Ucitavanje...</div>
+  <div v-else-if="store.error" class="error">
+    {{ store.error }}
+    <button @click="store.fetchLifters(auth.user.club_id)">
+      Pokusaj ponovo
+    </button>
+  </div>
+  <div v-else-if="store.lifters.length === 0">
+    Nemate natjecatelja. <RouterLink to="/lifters/new">
+    Dodajte prvog.</RouterLink>
+  </div>
+  <table v-else>...</table>
+</template>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Tablica podataka}
+\begin{lstlisting}[language=html]
+<table v-else>
+  <thead>
+    <tr>
+      <th>Ime</th>
+      <th>Prezime</th>
+      <th>Spol</th>
+      <th>Datum rodenja</th>
+      <th>Akcije</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr v-for="lifter in store.lifters" :key="lifter.id">
+      <td>{{ lifter.first_name }}</td>
+      <td>{{ lifter.last_name }}</td>
+      <td>{{ lifter.gender }}</td>
+      <td>{{ lifter.birth_date }}</td>
+      <td>
+        <RouterLink :to="`/lifters/${lifter.id}/edit`">
+          Uredi
+        </RouterLink>
+      </td>
+    </tr>
+  </tbody>
+</table>
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{v-for} iterira kroz array. \texttt{:key} je obavezan - Vue ga koristi za efikasno ažuriranje DOM-a.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Forma za dodavanje natjecatelja}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { AxiosError } from 'axios'
+import api from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const router = useRouter()
+const form = ref({
+  first_name: '', last_name: '',
+  gender: 'M', birth_date: '',
+})
+const errors = ref<Record<string, string>>({})
+
+async function submit() {
+  errors.value = {}
+  try {
+    await api.post(
+      `/clubs/${auth.user!.club_id}/lifters`, form.value
+    )
+    router.push('/lifters')
+  } catch (e) {
+    const err = e as AxiosError
+    if (err.response?.status === 422) {
+      errors.value = parseValidationErrors(err.response.data)
+    }
+  }
+}
+</script>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Forma: template s validacijom}
+\begin{lstlisting}[language=html]
+<template>
+  <h1>Novi natjecatelj</h1>
+  <form @submit.prevent="submit">
+    <div>
+      <label>Ime</label>
+      <input v-model="form.first_name" required />
+      <span v-if="errors.first_name" class="error">
+        {{ errors.first_name }}
+      </span>
+    </div>
+    <div>
+      <label>Spol</label>
+      <select v-model="form.gender">
+        <option value="M">Muski</option>
+        <option value="F">Zenski</option>
+      </select>
+    </div>
+    <div>
+      <label>Datum rodenja</label>
+      <input v-model="form.birth_date" type="date" required />
+    </div>
+    <button type="submit">Spremi</button>
+  </form>
+</template>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Edit forma: punjenje postojećim podacima}
+\begin{lstlisting}[language=html]
+// src/views/LifterEditView.vue
+<script setup lang="ts">
+import { ref, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import api from '@/api/client'
+import type { Lifter } from '@/types'
+
+const route = useRoute()
+const form = ref({ first_name: '', last_name: '',
+                   gender: 'M', birth_date: '' })
+
+async function load(id: number) {
+  const { data } = await api.get<Lifter>(`/lifters/${id}`)
+  form.value = { ...data }
+}
+
+onMounted(() => load(Number(route.params.id)))
+watch(() => route.params.id,
+      (id) => load(Number(id)))
+</script>
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{onMounted} pokriva prvi ulazak na rutu, a \texttt{watch} na route param slučaj kad router ponovno iskoristi istu komponentu za drugi ID - bez watcha forma ostane s podacima starog zapisa. Ovo je najčešći praktični \texttt{watch} u SPA aplikaciji.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Validacija: klijentska vs serverska}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Klijentska (frontend)}
+\begin{itemize}
+  \item HTML atributi: \texttt{required}, \texttt{min}, \texttt{maxlength}
+  \item Brzi feedback - bez mrežnog poziva
+  \item Može se zaobići (DevTools)
+  \item Za UX, ne za sigurnost
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Serverska (backend)}
+\begin{itemize}
+  \item Pydantic schema validacija
+  \item Vraća 422 s detaljima
+  \item Ne može se zaobići
+  \item Autoritet za podatke
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Trebate obje. Klijentska daje brzi feedback, serverska jamči integritet. Frontend prikazuje serverske greške kad klijentska validacija nije dovoljna (npr. duplikat u bazi).
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Form UX best practices}
+\begin{enumerate}
+  \item \textbf{Inline validacija} - prikaži grešku ispod polja odmah kad korisnik napusti polje, ne tek na submit
+  \item \textbf{Disable submit dok forma nije validna} - korisnik zna da nešto nedostaje
+  \item \textbf{Clear error kad korisnik počne tipkati} - ne drži crveni tekst nakon što je korisnik počeo ispravljati
+  \item \textbf{Focus na prvo polje s greškom} - nakon neuspjelog submita, premjesti fokus na problem
+  \item \textbf{Serverske greške uz polje} - 422 greška za \texttt{birth\_date} ide pored datumskog inputa, ne kao generička poruka
+\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Prikaz serverskih grešaka u formi}
+Backend može vratiti dva tipa grešaka koje trebamo prikazati:
+
+\vspace{0.4em}
+\begin{tabular}{@{}llp{5.5cm}@{}}
+  \toprule
+  \textbf{Status} & \textbf{Tip} & \textbf{Prikaz} \\
+  \midrule
+  422 & Field-level validacija & Greška ispod odgovarajućeg polja (\texttt{loc} kaže koje) \\
+  409 & Duplikat & Globalna poruka iznad forme: \enquote{Natjecatelj je već prijavljen} \\
+  400 & Poslovno pravilo & Globalna poruka: \enquote{Rok za prijave je istekao} \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Razlikujemo ih po status kodu. 422 ima \texttt{detail} array s lokacijama polja, 409 i 400 imaju \texttt{message} string. Frontend parsira response i prikazuje grešku na pravom mjestu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Parsiranje 422 grešaka s backenda}
+\begin{lstlisting}[language=typescript]
+// src/utils/errors.ts
+
+// FastAPI 422 format:
+// { "detail": [{ "loc": ["body","first_name"],
+//   "msg": "field required", "type": "missing" }] }
+
+interface ValidationDetail {
+  loc: (string | number)[]
+  msg: string
+}
+
+export function parseValidationErrors(
+  data: { detail?: ValidationDetail[] } | unknown
+): Record<string, string> {
+  const errors: Record<string, string> = {}
+  const detail = (data as { detail?: ValidationDetail[] })?.detail
+  if (Array.isArray(detail)) {
+    for (const err of detail) {
+      // loc je ["body", "field_name"]
+      const field = String(err.loc[err.loc.length - 1])
+      errors[field] = err.msg
+    }
+  }
+  return errors
+}
+\end{lstlisting}
+
+\vspace{0.4em}
+Svaka greška ima \texttt{loc} (lokacija polja) i \texttt{msg} (poruka). Mapiramo ih na objekt \texttt{\{field: message\}} za prikaz u formi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Registracije: prikaz sa status badgeom}
+\begin{lstlisting}[language=html]
+<template>
+  <table>
+    <tr v-for="reg in registrations" :key="reg.id">
+      <td>{{ reg.lifter_name }}</td>
+      <td>{{ reg.category }}</td>
+      <td>
+        <span :class="statusClass(reg.status)">
+          {{ reg.status }}
+        </span>
+      </td>
+      <td>
+        <button v-if="reg.status === 'active'"
+                @click="withdraw(reg.id)">
+          Odjavi
+        </button>
+      </td>
+    </tr>
+  </table>
+</template>
+
+<script setup lang="ts">
+function statusClass(status: string): string {
+  return status === 'active' ? 'badge-green' : 'badge-red'
+}
+</script>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Reusable komponente: kad izdvojiti}
+Izdvajamo komponentu kad se isti UI pattern ponavlja na 2+ mjesta:
+
+\vspace{0.4em}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Komponenta} & \textbf{Razlog} \\
+  \midrule
+  \codefile{LoadingSpinner.vue} & Koristi se u svakom viewu \\
+  \codefile{ErrorMessage.vue} & Isti pattern: poruka + retry \\
+  \codefile{DataTable.vue} & Tablica s headerom i redovima \\
+  \codefile{FormField.vue} & Label + input + error poruka \\
+  \codefile{StatusBadge.vue} & Obojeni badge za statuse \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Ne pretjerujte s apstrakcijom. Ako se nešto koristi samo jednom, ne treba biti zasebna komponenta.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kompozicija vs nasljeđivanje u UI-ju}
+Vue ne koristi nasljeđivanje komponenti. Umjesto toga koristi \textbf{kompoziciju}:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Nasljeđivanje} & \textbf{Kompozicija} \\
+  \midrule
+  Pristup & \texttt{class AdminTable extends Table} & \texttt{<DataTable>} s propsima i slotovima \\
+  Fleksibilnost & Rigidna hijerarhija & Slobodna kombinacija \\
+  Reusability & Teško za različite kontekste & Lako - props i slots \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Slots omogućuju parentu da definira \textbf{što} se prikazuje, a child komponenta definira \textbf{gdje} i \textbf{kako}. Ovo je isti princip kao \enquote{composition over inheritance} iz OOP-a.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Props dizajn: API vaše komponente}
+Propsi su \textbf{javni API} vaše komponente. Dizajnirajte ih s istom pažnjom kao REST endpoint:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item \textbf{Imenujte opisno}: \texttt{isLoading} umjesto \texttt{flag}, \texttt{errorMessage} umjesto \texttt{msg}
+  \item \textbf{Definirajte tipove}: generički \texttt{defineProps<\{...\}>()} - TypeScript provjerava svaki prop na mjestu korištenja
+  \item \textbf{Postavite defaulte}: \texttt{withDefaults()} za opcionalne propse
+  \item \textbf{Koristite v-model za dvosmjerne propse}: umjesto prop + emit pattern ručno
+\end{itemize}
+
+\vspace{0.6em}
+Komponenta s 10+ propsova je znak da radi previše. Razmislite o razbijanju na manje komponente ili korištenju slotova.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Key prop u v-for: zašto je obavezan}
+Bez \texttt{:key}, Vue koristi \enquote{in-place patch} strategiju - ažurira postojeće DOM elemente umjesto da ih premjesti.
+
+\vspace{0.4em}
+Problem: korisnik uređuje input u 2. redu tablice. Filtriranjem se 2. red promijeni - ali DOM element ostane isti. Input vrijednost pripada starom redu.
+
+\vspace{0.6em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Key} & \textbf{Ponašanje} \\
+  \midrule
+  \texttt{:key="item.id"} & Vue prati identitet elementa - premješta DOM node kad se lista presloži \\
+  \texttt{:key="index"} & Vue tretira poziciju kao identitet - bugovi pri sortiranju/filtriranju \\
+  Bez keya & Warning u konzoli, nepredvidljivo ponašanje \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Koristite jedinstven, stabilan identifikator (ID iz baze) kao key. Nikad index.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Emit pattern: inverzija kontrole}
+Child komponenta ne odlučuje što se događa kad korisnik klikne gumb - samo javlja parentu.
+
+\vspace{0.6em}
+\begin{center}
+\texttt{Child: emit('delete', itemId)} $\rightarrow$ \texttt{Parent: handleDelete(itemId)}
+\end{center}
+
+\vspace{0.6em}
+\begin{itemize}
+  \item Child ne zna koristi li se u admin viewu ili club viewu
+  \item Parent odlučuje: prikaži modal? Odmah obriši? Zatraži razlog?
+  \item Ista child komponenta se koristi u različitim kontekstima s različitim ponašanjem
+\end{itemize}
+
+\vspace{0.6em}
+Ovo je \textbf{inverzija kontrole} - isti princip kao dependency injection na backendu. Komponenta prima ponašanje izvana umjesto da ga hardkodira.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Reusable FormField komponenta}
+\begin{lstlisting}[language=html]
+<!-- src/components/FormField.vue -->
+<script setup lang="ts">
+defineProps<{
+  label: string
+  error?: string
+  modelValue: string | number
+}>()
+defineEmits<{
+  'update:modelValue': [value: string]
+}>()
+</script>
+
+<template>
+  <div class="form-field">
+    <label>{{ label }}</label>
+    <input :value="modelValue"
+      @input="$emit('update:modelValue',
+        ($event.target as HTMLInputElement).value)"
+    />
+    <span v-if="error" class="error">{{ error }}</span>
+  </div>
+</template>
+
+<!-- Koristenje: -->
+<!-- <FormField v-model="form.first_name" label="Ime"
+     :error="errors.first_name" /> -->
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Commitovi za Predavanje 9}
+\begin{itemize}
+  \item \texttt{feat(web): add lifters list view with loading/error/empty states}
+  \item \texttt{feat(web): add lifter create/edit form with validation}
+  \item \texttt{feat(web): add competitions list and registration form}
+  \item \texttt{feat(web): add my registrations view with status badges}
+  \item \texttt{refactor(web): extract reusable form and table components}
+\end{itemize}
+
+\vspace{0.4em}
+\textbf{Na satu:} gradimo CRUD viewove, testiramo forme, promatramo Network tab u DevToolsima.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što ide sljedeće (Predavanje 10)}
+\begin{itemize}
+  \item Admin viewovi: tablice s filterima i paginacijom
+  \item Permission-aware UI - prikaz/sakrivanje ovisno o roli i fazi
+  \item Modali za potvrdu akcija
+  \item CSV export
+\end{itemize}
+
+\vspace{0.8em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}

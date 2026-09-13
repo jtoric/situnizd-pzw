@@ -2,8 +2,8 @@
   "latex-workshop.latex.rootFile.doNotPrompt": true,
   "latex-workshop.latex.rootFile.indicator": "% !TeX root",
   "latex-workshop.latex.search.rootFiles.include": [
-    "Predavanja/p*/pred*.tex",
-    "Predavanja/p*/*.tex"
+    "Predavanja/predavanje*/predavanje*.tex",
+    "Predavanja/*/*.tex"
   ],
   "latex-workshop.latex.search.rootFiles.exclude": [
     "Predavanja/common/**"

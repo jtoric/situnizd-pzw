@@ -7,23 +7,136 @@
 \usetheme{CambridgeUS}
 
 \usepackage{fontspec}              % radi samo sa XeLaTeX/LuaLaTeX
-\setsansfont{Latin Modern Sans}    % sans-serif font
-\setmonofont{Latin Modern Mono}    % monospace font za kod
 \usepackage[croatian]{babel}
 \usepackage{csquotes}              % \enquote{} → hrvatski navodnici „..."
-\usepackage{lmodern}
 \usepackage{booktabs}
+\usepackage{array}
 \usepackage{listings}
 \usepackage{xcolor}
+\usepackage{colortbl}
 \usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
 
-% ---------- Autor i logo ----------
-\author{mag.ing. Josip Torić (SIT UNIZD)}
-\titlegraphic{\includegraphics[height=2.5cm]{../common/SIT_logo_tekst1.pdf}}
+% ---------- Tipografija: IBM Plex ----------
+\setsansfont{IBMPlexSans}[
+  Extension      = .otf,
+  UprightFont    = *-Regular,
+  ItalicFont     = *-Italic,
+  BoldFont       = *-SemiBold,
+  BoldItalicFont = *-SemiBoldItalic
+]
+\setmainfont{IBMPlexSans}[
+  Extension      = .otf,
+  UprightFont    = *-Regular,
+  ItalicFont     = *-Italic,
+  BoldFont       = *-SemiBold,
+  BoldItalicFont = *-SemiBoldItalic
+]
+\setmonofont{IBMPlexMono}[
+  Extension      = .otf,
+  UprightFont    = *-Regular,
+  ItalicFont     = *-Italic,
+  BoldFont       = *-SemiBold,
+  BoldItalicFont = *-SemiBoldItalic,
+  Scale          = 0.92
+]
+
+% ---------- Paleta ----------
+\definecolor{ink}{HTML}{0C4685}      % primarna tamnoplava
+\definecolor{ink2}{HTML}{6E7BAA}     % sekundarna plavo-siva
+\definecolor{tint}{HTML}{EAEEF6}     % svjetli plavi tint
+\definecolor{textclr}{HTML}{1A222E}  % glavni tekst
+\definecolor{mutedclr}{HTML}{6B7484} % podnožje, sekundarni tekst
+\definecolor{bgclr}{HTML}{F6F7F9}    % pozadina slajda
+\definecolor{lineclr}{HTML}{D9DEE7}  % tanke linije tablica
+\definecolor{divrule}{HTML}{9DB4D6}  % akcent na tamnim sekcijskim slajdovima
+\definecolor{divtext}{HTML}{E6ECF6}  % tekst na tamnim sekcijskim slajdovima
+
+\setbeamercolor{normal text}{fg=textclr,bg=bgclr}
+\setbeamercolor{structure}{fg=ink}
+\setbeamercolor{alerted text}{fg=ink}
+
+\setbeamercolor{title}{fg=ink,bg=tint}
+\setbeamercolor{subtitle}{fg=mutedclr}
+\setbeamercolor{author}{fg=textclr}
+\setbeamercolor{date}{fg=mutedclr}
+\setbeamercolor{frametitle}{fg=ink,bg=tint}
+
+\setbeamercolor{section in head/foot}{fg=white,bg=ink}
+\setbeamercolor{subsection in head/foot}{fg=ink,bg=tint}
+\setbeamercolor{author in head/foot}{fg=white,bg=ink}
+\setbeamercolor{title in head/foot}{fg=textclr,bg=tint}
+\setbeamercolor{date in head/foot}{fg=mutedclr,bg=tint}
+
+\setbeamercolor{block title}{fg=white,bg=ink}
+\setbeamercolor{block body}{fg=textclr,bg=tint}
+\setbeamercolor{block title example}{fg=white,bg=ink2}
+\setbeamercolor{block body example}{fg=textclr,bg=tint}
+\setbeamercolor{itemize item}{fg=ink2}
+\setbeamercolor{itemize subitem}{fg=ink2}
+\setbeamercolor{enumerate item}{fg=ink2}
+
+\setbeamertemplate{itemize items}[square]
+\setbeamertemplate{navigation symbols}{}
+\arrayrulecolor{lineclr}
+
+% ---------- Kolegij, autori i logo ----------
+\newcommand{\kolegij}{Razvoj web aplikacija}
+\author{doc.\,dr.\,sc. Tomislav Petković \and mag.\,ing. Josip Torić}
+\titlegraphic{\includegraphics[height=2.1cm]{../common/SIT_logo_tekst1.pdf}}
+
+% ---------- Zaglavlje ----------
+% Jedna puna traka: lijevo sekcija, desno podsekcija.
+\setbeamertemplate{headline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=\paperwidth,ht=2.25ex,dp=1ex,leftskip=.3cm,rightskip=.3cm]{section in head/foot}%
+      \usebeamerfont{section in head/foot}\insertsectionhead\hfill\insertsubsectionhead%
+    \end{beamercolorbox}%
+  }%
+}
+
+% ---------- Podnožje ----------
+% Lijevo: naziv trenutne prezentacije (kratki oblik naslova iz \title[...]{...})
+% Sredina: naziv kolegija.  Desno: datum i redni broj slajda.
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=.34\paperwidth,ht=2.25ex,dp=1ex,center]{author in head/foot}%
+      \usebeamerfont{author in head/foot}\insertshorttitle%
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.25ex,dp=1ex,center]{title in head/foot}%
+      \usebeamerfont{title in head/foot}\kolegij%
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.25ex,dp=1ex,center]{date in head/foot}%
+      \usebeamerfont{date in head/foot}\insertshortdate{}\hspace*{2em}%
+      \insertframenumber{}\,/\,\inserttotalframenumber\hspace*{1ex}%
+    \end{beamercolorbox}%
+  }%
+  \vskip0pt%
+}
+
+% ---------- Sekcijski slajd ----------
+% \sekcija{Naslov sekcije}{jedna linija koja nabraja teme sekcije}
+\newcommand{\sekcija}[2]{%
+  \section{#1}%
+  {%
+    \setbeamercolor{background canvas}{bg=ink}%
+    \setbeamertemplate{headline}{}%
+    \begin{frame}
+      \vfill
+      \hspace*{0.03\textwidth}{\color{divrule}\rule{2.6cm}{1.1pt}}\par
+      \vskip 0.7em
+      \hspace*{0.03\textwidth}{\Large\bfseries\color{white}#1}\par
+      \vskip 0.6em
+      \hspace*{0.03\textwidth}\begin{minipage}{0.9\textwidth}\color{divtext}\small #2\end{minipage}\par
+      \vfill
+    \end{frame}%
+  }%
+}
 
 % ---------- Listings ----------
-\definecolor{codebg}{RGB}{248,248,248}
-\definecolor{codeframeclr}{RGB}{220,220,220}
 \lstdefinelanguage{bash}{
   morekeywords={sudo,apt,brew,pip,pipx,uv,winget,python,git,flask,source,deactivate,code,gunicorn,docker,compose,heroku,render,railway,node,npm,pnpm,yarn,uvicorn,alembic,pytest,ruff,black,precommit},
   sensitive=false,
@@ -57,10 +170,12 @@
 }
 \lstalias{javascript}{typescript}
 \lstset{
-  backgroundcolor=\color{codebg},
+  backgroundcolor=\color{tint},
   basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{ink}\bfseries,
+  commentstyle=\color{mutedclr},
   frame=single,
-  rulecolor=\color{codeframeclr},
+  rulecolor=\color{lineclr},
   frameround=tttt,
   breaklines=true,
   tabsize=2,
@@ -68,8 +183,22 @@
   upquote=true,
   columns=fullflexible
 }
+% NAPOMENA: listings premeće hrvatske dijakritike u ispisu koda
+% ("početni" se prelomi u "čpoetni"), i literate to ne popravlja unutar
+% komentara. Zato su komentari u isječcima koda na engleskom.
+
+% ---------- Činjenica naspram konvencije ----------
+% Sve što nije propisano standardom ili jezikom, nego je dogovor struke,
+% ide u ovaj okvir, da student zna koje je vrste tvrdnja pred njim.
+% \begin{konvencija} ... \end{konvencija}
+% \begin{konvencija}[Konvencija: nazivi putanja] ... \end{konvencija}
+\newenvironment{konvencija}[1][Konvencija]
+  {\begin{exampleblock}{#1}}
+  {\end{exampleblock}}
 
 % ---------- Helper macros ----------
+% Stupac tablice zadane širine, poravnat ulijevo (bez rastezanja i dijeljenja riječi).
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcommand{\codefile}[1]{\texttt{#1}}
 \newcommand{\kbd}[1]{\texttt{#1}}
 

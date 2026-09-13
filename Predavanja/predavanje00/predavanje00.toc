@@ -1,0 +1,6 @@
+\babel@toc {croatian}{}\relax 
+\beamer@sectionintoc {1}{Kolegij}{3}{0}{1}
+\beamer@sectionintoc {2}{Referentna aplikacija}{7}{0}{2}
+\beamer@sectionintoc {3}{Arhitektura i tehnologije}{13}{0}{3}
+\beamer@sectionintoc {4}{Organizacija nastave}{18}{0}{4}
+\beamer@sectionintoc {5}{Radna okolina}{25}{0}{5}

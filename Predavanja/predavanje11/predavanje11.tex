@@ -1,0 +1,592 @@
+% !TeX program = lualatex
+% !TeX root = predavanje11.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija - Predavanje 11 \\ Testiranje full-stack aplikacije}
+\date{21.12.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Zašto testiramo i piramida testiranja
+  \item pytest: fixtures, conftest i izolacija testova
+  \item Testiranje vremenskih pravila (freezegun)
+  \item Coverage: koliko je dovoljno
+  \item Vitest: unit testovi za storeove i utile
+  \item Testiranje komponenti (@vue/test-utils)
+  \item E2E testovi s Playwrightom
+  \item Testovi u CI-ju i commitovi
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja: backend i frontend imaju testove koji čuvaju poslovna pravila, a vi znate koji tip testa gdje pripada.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+\begin{itemize}
+  \item objasniti piramidu testiranja i odabrati pravi tip testa za problem
+  \item napisati pytest fixture i zamijeniti dependency s \texttt{dependency\_overrides}
+  \item izolirati testove transakcijom s rollbackom
+  \item testirati vremenski ovisna pravila s freezegunom
+  \item napisati Vitest unit test za Pinia store i utility funkciju
+  \item napisati component test s \texttt{@vue/test-utils}
+  \item napisati Playwright E2E test za login i pravilo faze
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kontekst: gdje smo u projektu?}
+\begin{itemize}
+  \item Backend (P1-P6): API s pravilima, testove smo pisali usput uz svaku temu
+  \item Frontend (P7-P10): SPA s auth flowom, formama i admin ekranima - bez ijednog testa
+  \item Danas: sustavno testiranje \textbf{cijelog stacka} prije deploya
+\end{itemize}
+
+\vspace{0.6em}
+Sljedeći korak (Predavanje 12): deploy. Aplikaciju koja ide u produkciju bez testova ne možete mijenjati bez straha - svaka izmjena može nešto potiho razbiti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{}
+\begin{center}
+\Large Test nije dokaz da kod radi. \\[0.5em]
+Test je dokaz da \textbf{pravilo vrijedi} - i da vrijedi i sutra, nakon što nešto promijenite.
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Piramida testiranja}
+\begin{tabular}{@{}llllp{3.2cm}@{}}
+  \toprule
+  \textbf{Razina} & \textbf{Broj} & \textbf{Brzina} & \textbf{Alat} & \textbf{Što testira} \\
+  \midrule
+  E2E & malo & minute & Playwright & Cijeli flow u browseru \\
+  Integration & srednje & sekunde & pytest + httpx & Endpoint kroz sve slojeve \\
+  Unit & puno & milisekunde & pytest, Vitest & Izolirana funkcija, store \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Što je test niže u piramidi, to je brži i precizniji - kad padne, odmah znate gdje je problem. E2E test hvata ono što unit ne može: integraciju svih dijelova. Zato ih imamo malo, ali na ključnim flowovima.
+
+\vspace{0.4em}
+Anti-pattern je obrnuta piramida: sve kroz spori E2E, ništa kroz unit. Takvi testovi traju predugo i padaju iz nejasnih razloga.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što smo dosad testirali (rekapitulacija)}
+\begin{tabular}{@{}llp{5.5cm}@{}}
+  \toprule
+  \textbf{Predavanje} & \textbf{Testovi} & \textbf{Što čuvaju} \\
+  \midrule
+  P3 & Login, refresh, istekli token & Autentikacija radi i ne otkriva korisnike \\
+  P4 & Role i cross-club pristup & Klub ne vidi tuđe resurse \\
+  P5 & CRUD, validacija, duplikati & Constrainti i 409/422 odgovori \\
+  P6 & Faze s freezegunom & Rokovi zabranjuju akcije \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Te testove ste pisali uz gradivo. Danas ih slažemo u strukturu koja se lako održava: zajedničke fixture, izolacija, coverage - i dodajemo frontend koji dosad nije imao ništa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Anatomija dobrog testa: Arrange - Act - Assert}
+Svaki test ima tri dijela:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{8.5cm}@{}}
+  \toprule
+  \textbf{Dio} & \textbf{Što radi} \\
+  \midrule
+  Arrange & Pripremi stanje: korisnik u bazi, token, natjecanje s rokom \\
+  Act & Izvrši jednu akciju: pošalji request, pozovi funkciju \\
+  Assert & Provjeri ishod: status kod, sadržaj odgovora, stanje u bazi \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Ime testa opisuje pravilo, ne implementaciju: \texttt{test\_klub\_ne\_moze\_prijaviti\_nakon\_prelim\_roka} govori što je pravilo. Kad taj test padne, iz imena znate koje se pravilo prekršilo.
+
+\vspace{0.4em}
+Jedan test = jedno pravilo. Test koji provjerava pet stvari padne, a vi ne znate koja od pet je kriva.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{pytest fixtures: gradivni blokovi testova}
+Fixture je funkcija koja priprema ono što test treba - pytest je poziva automatski po imenu parametra:
+
+\begin{lstlisting}[language=python]
+import pytest
+
+@pytest.fixture
+def competition_open():
+    return Competition(
+        name="Otvoreno prvenstvo",
+        prelim_deadline=datetime(2027, 3, 1, tzinfo=timezone.utc),
+        final_deadline=datetime(2027, 3, 15, tzinfo=timezone.utc),
+    )
+
+def test_faza_prije_prelim_roka(competition_open):
+    with freeze_time("2027-02-01"):
+        assert get_competition_phase(competition_open) == Phase.OPEN
+\end{lstlisting}
+
+\vspace{0.4em}
+Fixture se definira jednom, koristi u koliko god testova treba. Kad se model promijeni, mijenjate jednu fixture umjesto dvadeset testova.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{conftest.py: dijeljene fixture za cijeli projekt}
+\begin{lstlisting}[language=python]
+# tests/conftest.py
+import pytest
+from httpx import AsyncClient, ASGITransport
+from app.main import app
+from app.core.deps import get_db
+
+@pytest.fixture
+async def client(db_session):
+    # zamijeni pravu bazu test sessionom
+    app.dependency_overrides[get_db] = lambda: db_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as c:
+        yield c
+    app.dependency_overrides.clear()
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{conftest.py} je poseban file - fixture iz njega su dostupne svim testovima bez importa. \texttt{dependency\_overrides} je FastAPI mehanizam: sve što je \texttt{Depends(get\_db)} u testu dobiva našu test sesiju umjesto prave baze.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Izolacija testova: transakcija + rollback}
+\begin{lstlisting}[language=python]
+@pytest.fixture
+async def db_session():
+    async with engine.connect() as conn:
+        trans = await conn.begin()
+        session = AsyncSession(bind=conn)
+        yield session          # test radi u transakciji
+        await session.close()
+        await trans.rollback() # sve promjene nestaju
+\end{lstlisting}
+
+\vspace{0.4em}
+Svaki test dobiva svježu transakciju koja se na kraju rollbacka. Posljedice:
+\begin{itemize}
+  \item testovi ne vide podatke jedni od drugih
+  \item redoslijed izvršavanja ne mijenja rezultat
+  \item nema \enquote{očisti bazu} koda na kraju svakog testa
+\end{itemize}
+
+\vspace{0.4em}
+Test koji ovisi o podacima prethodnog testa je tempirana bomba - radi dok netko ne pokrene samo jedan test.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Fixture za tokene: testiranje kao admin i kao klub}
+\begin{lstlisting}[language=python]
+@pytest.fixture
+async def admin_token(client):
+    resp = await client.post("/auth/login", json={
+        "username": "admin", "password": "admin123"})
+    return resp.json()["access_token"]
+
+@pytest.fixture
+async def club_token(client):
+    resp = await client.post("/auth/login", json={
+        "username": "behemot", "password": "klub123"})
+    return resp.json()["access_token"]
+
+async def test_klub_ne_moze_kreirati_klub(client, club_token):
+    resp = await client.post("/clubs",
+        json={"name": "Novi klub"},
+        headers={"Authorization": f"Bearer {club_token}"})
+    assert resp.status_code == 403
+\end{lstlisting}
+
+\vspace{0.4em}
+Za svaki endpoint pišemo barem jedan negativni test: pogrešna rola, tuđi resurs ili istekli rok.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{freezegun: vremenska pravila (rekapitulacija P6)}
+\begin{lstlisting}[language=python]
+from freezegun import freeze_time
+
+@freeze_time("2027-03-05")  # izmedu prelim i final roka
+async def test_nova_prijava_nakon_prelim_roka(client, club_token):
+    resp = await client.post(
+        "/competitions/1/registrations",
+        json={"lifter_id": 1, "category": "93"},
+        headers={"Authorization": f"Bearer {club_token}"})
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "deadline_passed"
+
+@freeze_time("2027-03-05")
+async def test_odjava_izmedu_rokova_prolazi(client, club_token):
+    resp = await client.post(
+        "/competitions/1/registrations/1/withdraw",
+        headers={"Authorization": f"Bearer {club_token}"})
+    assert resp.status_code == 200
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{freeze\_time} zamrzava \texttt{datetime.now()} na zadani trenutak. Bez toga bi testovi faza prolazili ili padali ovisno o stvarnom datumu pokretanja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Coverage: koliko je koda pokriveno}
+\begin{lstlisting}[language=bash]
+uv pip install pytest-cov
+pytest --cov=app --cov-report=term-missing
+
+# Name                        Stmts   Miss  Cover   Missing
+# app/services/registration.py  45      3    93%   88-90
+# app/routers/clubs.py           30      0   100%
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{Missing} stupac pokazuje linije koje nijedan test ne izvršava - često su to error grane i edge caseovi, upravo ono što se najviše isplati testirati.
+
+\vspace{0.6em}
+Coverage mjeri \textbf{izvršenost}, ne ispravnost: linija može biti pokrivena testom koji ništa ne provjerava. 100\% coverage nije cilj - cilj je da su \textbf{poslovna pravila i error grane} pokriveni smislenim assertima. Za ovaj projekt: services i pravila blizu 100\%, boilerplate može niže.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Backend: što mora biti pokriveno prije obrane}
+\begin{tabular}{@{}lp{7.2cm}@{}}
+  \toprule
+  \textbf{Područje} & \textbf{Minimum testova} \\
+  \midrule
+  Autentikacija & uspješan login, kriva lozinka, istekli token, refresh \\
+  Autorizacija & svaka rola na svakom endpointu - tko smije, tko dobiva 403 \\
+  Ownership & klub A ne vidi i ne mijenja resurse kluba B \\
+  Poslovna pravila & svaka faza $\times$ svaka operacija iz matrice \\
+  Constrainti & dupla prijava vraća 409, nevažeći input 422 \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Na obrani pitam: \enquote{Što točno testira ovaj test i što bi se moglo pokvariti da ga nema?} Test bez odgovora na to pitanje je balast.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto testirati frontend}
+Backend ima pytest - frontend mora imati ekvivalent. Bez testova:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item Bug u \texttt{parseValidationErrors} otkrije se na obrani, ne lokalno
+  \item Refactoring Pinia storea razbije nešto u formi - ne znate dok ne kliknete
+  \item CI pipeline može pustiti broken kod na produkciju
+\end{itemize}
+
+\vspace{0.6em}
+\begin{tabular}{@{}lp{5cm}p{4cm}@{}}
+  \toprule
+  \textbf{Tip} & \textbf{Što testira} & \textbf{Alat} \\
+  \midrule
+  Unit & Izolirana funkcija ili store & Vitest \\
+  Komponenta & Renderiranje s propsima & Vitest + test-utils \\
+  E2E & Cijeli flow u browseru & Playwright \\
+  \bottomrule
+\end{tabular}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Vitest: setup}
+\begin{lstlisting}[language=bash]
+# Instalacija
+npm install -D vitest @vue/test-utils jsdom
+
+# package.json - dodaj scripte
+"test": "vitest",
+"test:ui": "vitest --ui"
+\end{lstlisting}
+
+\begin{lstlisting}[language=typescript]
+// vite.config.ts - dodaj test konfiguraciju
+export default defineConfig({
+  plugins: [vue()],
+  test: {
+    environment: 'jsdom',  // simulira browser DOM
+    globals: true,         // describe/it/expect bez importa
+  },
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+Vitest koristi istu Vite konfiguraciju - nema zasebnog config filea. API je Jest-kompatibilan: \texttt{describe}, \texttt{it}, \texttt{expect}, \texttt{vi.mock}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što testirati unit testovima}
+\begin{tabular}{@{}lp{5cm}p{4.5cm}@{}}
+  \toprule
+  \textbf{Isplati se testirati} & \textbf{Primjer} & \textbf{Zašto} \\
+  \midrule
+  Utility funkcije & \texttt{parseValidationErrors} & Čista logika, brzi testovi \\
+  Pinia store actions & \texttt{fetchLifters} & Logika s mock API-jem \\
+  Computed getteri & Filtrirani natjecatelji & Derivirana logika \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+\textbf{Ne testirati:}
+\begin{itemize}
+  \item Vue framework sam (reaktivnost, direktive) - Vueov posao
+  \item Third-party biblioteke (Axios, Pinia) - već imaju testove
+  \item Čisti HTML prikaz bez logike - mala vrijednost, veliki maintenance
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Unit test: parseValidationErrors}
+\begin{lstlisting}[language=typescript]
+// src/utils/errors.test.ts
+import { parseValidationErrors } from './errors'
+
+describe('parseValidationErrors', () => {
+  it('mapira FastAPI 422 detail na greske po polju', () => {
+    const data = {
+      detail: [
+        { loc: ['body', 'first_name'],
+          msg: 'field required', type: 'missing' },
+        { loc: ['body', 'birth_date'],
+          msg: 'invalid date', type: 'value_error' },
+      ]
+    }
+    expect(parseValidationErrors(data)).toEqual({
+      first_name: 'field required',
+      birth_date: 'invalid date',
+    })
+  })
+
+  it('vraca prazan objekt za ne-422 odgovor', () => {
+    expect(parseValidationErrors({})).toEqual({})
+  })
+})
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Unit test: Pinia store}
+\begin{lstlisting}[language=typescript]
+// src/stores/lifters.test.ts
+import { setActivePinia, createPinia } from 'pinia'
+import { useLifterStore } from './lifters'
+import api from '@/api/client'
+
+vi.mock('@/api/client')  // zamijeni Axios s mockom
+
+beforeEach(() => setActivePinia(createPinia()))
+
+it('fetchLifters popunjava state uspjesno', async () => {
+  const mockLifter = { id: 1, first_name: 'Ivan' }
+  vi.mocked(api.get).mockResolvedValue(
+    { data: [mockLifter] }
+  )
+
+  const store = useLifterStore()
+  await store.fetchLifters(1)
+
+  expect(store.lifters).toHaveLength(1)
+  expect(store.lifters[0].first_name).toBe('Ivan')
+  expect(store.loading).toBe(false)
+  expect(store.error).toBeNull()
+})
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Component test: FormField}
+\begin{lstlisting}[language=typescript]
+// src/components/FormField.test.ts
+import { mount } from '@vue/test-utils'
+import FormField from './FormField.vue'
+
+it('prikazuje label i error poruku', () => {
+  const wrapper = mount(FormField, {
+    props: { label: 'Ime', error: 'Obavezno polje',
+             modelValue: '' }
+  })
+  expect(wrapper.text()).toContain('Ime')
+  expect(wrapper.find('.error').text()).toBe('Obavezno polje')
+})
+
+it('emitira update:modelValue pri unosu', async () => {
+  const wrapper = mount(FormField, {
+    props: { label: 'Ime', modelValue: '' }
+  })
+  await wrapper.find('input').setValue('Marko')
+  expect(wrapper.emitted('update:modelValue')![0])
+    .toEqual(['Marko'])
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{mount} renderira komponentu u jsdom-u. Testiramo \textbf{ugovor} komponente: propsi ulaze, eventi izlaze - ne unutarnju implementaciju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{E2E testovi: Playwright}
+Playwright kontrolira pravi browser - testira što korisnik zapravo vidi i radi:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item Pokreće Chromium, Firefox ili WebKit
+  \item Navigira, klikće, ispunjava forme - kao pravi korisnik
+  \item Provjera: URL, tekst na stranici, vidljivost elemenata
+  \item Automatski čeka da elementi budu dostupni (nema sleep/timeout)
+\end{itemize}
+
+\vspace{0.6em}
+\begin{lstlisting}[language=bash]
+npm install -D @playwright/test
+npx playwright install   # preuzme browsere
+\end{lstlisting}
+
+\vspace{0.4em}
+U komponentama dodajte \texttt{data-testid} atribute za stabilne selectore: \texttt{data-testid="username"} ne puca kad promijenite CSS klasu ili tekst labela.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{E2E test: login flow}
+\begin{lstlisting}[language=typescript]
+// tests/e2e/login.spec.ts
+import { test, expect } from '@playwright/test'
+
+test('prijava preusmjerava na dashboard', async ({ page }) => {
+  await page.goto('/login')
+
+  await page.getByTestId('username').fill('behemot')
+  await page.getByTestId('password').fill('klub123')
+  await page.getByTestId('submit').click()
+
+  await expect(page).toHaveURL('/dashboard')
+  await expect(
+    page.getByText('Dobro dosli')
+  ).toBeVisible()
+})
+
+test('pogresna lozinka prikazuje gresku', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('username').fill('behemot')
+  await page.getByTestId('password').fill('krivo')
+  await page.getByTestId('submit').click()
+  await expect(page.getByText('Pogresni podaci')).toBeVisible()
+})
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{E2E test: pravilo faze u UI-ju}
+Seed sadrži natjecanje kojem je final rok prošao. E2E test provjerava da UI poštuje fazu:
+
+\begin{lstlisting}[language=typescript]
+// tests/e2e/phases.spec.ts
+import { test, expect } from '@playwright/test'
+import { loginAsClub } from './helpers'
+
+test('nakon final roka gumb odjave je disabled',
+    async ({ page }) => {
+  await loginAsClub(page)
+  await page.goto('/competitions/2/registrations')
+
+  await expect(
+    page.getByTestId('withdraw-btn')
+  ).toBeDisabled()
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+Ovaj test spaja sve: backend vraća faze, frontend computed ih pretvara u \texttt{:disabled}, a test dokazuje da korisnik nakon roka stvarno ne može kliknuti. Unit test to ne može pokriti - zato E2E postoji.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Playwright config: automatski dev server}
+\begin{lstlisting}[language=typescript]
+// playwright.config.ts
+import { defineConfig } from '@playwright/test'
+
+export default defineConfig({
+  testDir: 'tests/e2e',
+  use: { baseURL: 'http://localhost:5173' },
+  webServer: {
+    command: 'npm run dev',
+    port: 5173,
+    reuseExistingServer: true,
+  },
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{webServer} pokreće Vite dev server prije testova i ugasi ga nakon njih. Backend i baza moraju biti pokrenuti zasebno - E2E testira protiv pravog API-ja sa seed podacima.
+
+\vspace{0.4em}
+Zato E2E testove pokrećemo protiv \textbf{poznatog stanja}: \texttt{python -m app.seed} prije test runa vraća bazu u početno stanje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Testovi u CI pipelineu}
+\begin{tabular}{@{}lp{4cm}p{5cm}@{}}
+  \toprule
+  \textbf{Test} & \textbf{Kad se pokreće} & \textbf{Zašto} \\
+  \midrule
+  pytest & Svaki push & Poslovna pravila backenda \\
+  Vitest & Svaki push & Brz (sekunde), hvatamo regresije rano \\
+  Playwright & Pull request & Sporiji (minute), treba running server \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+\begin{itemize}
+  \item \texttt{pytest} i \texttt{npm run test -- --run} idu u svaki CI run
+  \item Ako test padne - commit dobije crveni X, merge je blokiran
+  \item Cijeli pipeline (lint + test + build) slažemo na Predavanju 12
+\end{itemize}
+
+\vspace{0.4em}
+Za studentski projekt obavezni su pytest i Vitest. Playwright je bonus koji pokazuje zrelost projekta na obrani.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Commitovi za Predavanje 11}
+\begin{itemize}
+  \item \texttt{test(api): add conftest with async client and db fixtures}
+  \item \texttt{test(api): add coverage config and fill gaps in rule tests}
+  \item \texttt{test(web): add vitest setup with util and store unit tests}
+  \item \texttt{test(web): add component tests for form field}
+  \item \texttt{test(e2e): add playwright login and phase rule tests}
+\end{itemize}
+
+\vspace{0.4em}
+\textbf{Na satu:} pokrećemo testove, rušimo jedno poslovno pravilo namjerno i gledamo koji test pada i zašto.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što ide sljedeće (Predavanje 12)}
+\begin{itemize}
+  \item Production konfiguracija i environment varijable
+  \item CORS i deploy backenda na Railway
+  \item Deploy frontenda i SPA fallback
+  \item CI/CD pipeline koji pokreće današnje testove
+\end{itemize}
+
+\vspace{0.8em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}

@@ -1,0 +1,714 @@
+% !TeX program = lualatex
+% !TeX root = predavanje10.tex
+\input{../common/preamble.tex}
+
+\title[Razvoj web aplikacija]{Razvoj web aplikacija - Predavanje 10 \\ Admin tablice, filteri i permission-aware UI}
+\date{14.12.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Admin CRUD ekrani za natjecanja
+  \item Tablice s filterima i paginacijom
+  \item Modali za destruktivne akcije
+  \item CSV export
+  \item Permission-aware UI: faze i role u frontendu
+  \item Commitovi za ovo predavanje
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja: admin može upravljati natjecanjima i pregledavati sve registracije s filterima i exportom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+\begin{itemize}
+  \item implementirati admin CRUD ekrane s tablicom i formom
+  \item dodati filtriranje i paginaciju na tablicu
+  \item koristiti modalni dijalog za potvrdu destruktivnih akcija
+  \item generirati CSV export na frontendu iz podataka s API-ja
+  \item prilagoditi UI ovisno o korisnikovoj roli i fazi natjecanja
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Admin panel: odgovornosti}
+Admin korisnik ima širi pristup od običnog korisnika. U našem sustavu:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Akcija} & \textbf{Samo admin} \\
+  \midrule
+  Kreiranje natjecanja & Da - klubovi ne mogu kreirati natjecanja \\
+  Pregled svih registracija & Da - klubovi vide samo svoje \\
+  Reset lozinke kluba & Da - klubovi si ne mogu sami resetirati \\
+  Kreiranje novih klubova & Da - samo admin onboarda klubove \\
+  CSV export & Da - admin treba podatke za organizaciju \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Admin viewovi i club viewovi dijele isti API, ali imaju različite UI ekrane. Backend kontrolira pristup, frontend kontrolira prikaz.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Princip najmanjeg privilegija na frontendu}
+Ne prikazuj korisniku akcije koje ne smije izvršiti:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item Club korisnik ne vidi \enquote{Novo natjecanje} gumb jer ne može kreirati natjecanja
+  \item Club ne vidi admin navigaciju, ali admin vidi sve
+  \item Gumbi za akcije koje ovise o fazi se skrivaju ili onemogućuju
+\end{itemize}
+
+\vspace{0.6em}
+Ali: nikad se ne oslanjajte samo na frontend za sigurnost. Korisnik može:
+\begin{itemize}
+  \item Otvoriti DevTools i promijeniti DOM
+  \item Direktno slati HTTP requestove (curl, Postman)
+  \item Modificirati JavaScript u browseru
+\end{itemize}
+
+\vspace{0.4em}
+Frontend sakrivanje je UX, backend provjera je sigurnost. Oboje su potrebni.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Admin vs Club viewovi}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Admin vidi}
+\begin{itemize}
+  \item Sve klubove i njihove natjecatelje
+  \item CRUD za natjecanja
+  \item Sve registracije na natjecanje
+  \item Mogućnost exporta podataka
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Club vidi}
+\begin{itemize}
+  \item Samo svoj klub i svoje natjecatelje
+  \item Listu natjecanja (read-only)
+  \item Samo svoje registracije
+  \item Akcije ovisno o fazi
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Isti API endpointi, različiti viewovi. Backend kontrolira što korisnik \textbf{smije} - frontend kontrolira što korisnik \textbf{vidi}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Tablica kao UI pattern}
+Tablica je najčešći način prikaza strukturiranih podataka u admin panelu. Dobra tablica ima:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Element} & \textbf{Svrha} \\
+  \midrule
+  Zaglavlje (header) & Nazivi stupaca, sortiranje klikom na header \\
+  Redovi & Jedan red = jedan entitet (natjecanje, registracija) \\
+  Akcije & Gumbi/linkovi u zadnjem stupcu (Uredi, Obriši, Detalji) \\
+  Filteri & Search bar i dropdown iznad tablice \\
+  Paginacija & Navigacija kroz stranice ispod tablice \\
+  Empty state & Poruka kad nema podataka koji zadovoljavaju filtere \\
+  \bottomrule
+\end{tabular}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Sortiranje na frontendu}
+Za male datasetove, sortiranje radimo u JavaScriptu:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item \texttt{Array.sort()} sortira in-place - koristite \texttt{[...array].sort()} za novi array
+  \item Sortiranje stringova: \texttt{a.name.localeCompare(b.name)} za ispravno sortiranje dijakritika
+  \item Sortiranje datuma: usporedba timestamp vrijednosti
+  \item Multi-column sort: primarni i sekundarni kriterij
+\end{itemize}
+
+\vspace{0.6em}
+UX konvencija: klik na header stupca sortira po tom stupcu. Strelica pokazuje smjer (asc/desc). Drugi klik invertira smjer. Koristite \texttt{computed} - ne mutirajte originalni array.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Filtriranje: dizajn pattern}
+Filteri se kombiniraju - korisnik može istovremeno pretraživati i filtrirati po statusu:
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item Svaki filter je \texttt{ref()} - \texttt{search}, \texttt{statusFilter}, \texttt{categoryFilter}
+  \item \texttt{computed} chain primjenjuje sve filtere redom na originalni array
+  \item Paginacija se primjenjuje na filtrirani rezultat (ne na originalni)
+  \item Promjena filtera resetira stranicu na 1
+\end{enumerate}
+
+\vspace{0.6em}
+\begin{center}
+\texttt{svi podaci $\rightarrow$ search filter $\rightarrow$ status filter $\rightarrow$ sort $\rightarrow$ paginate $\rightarrow$ prikaz}
+\end{center}
+
+\vspace{0.4em}
+Svaki korak je \texttt{computed} koji ovisi o prethodnom. Vue automatski recalculira kad se bilo koji input promijeni.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Admin tablica natjecanja}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import api from '@/api/client'
+
+const competitions = ref([])
+const loading = ref(true)
+
+onMounted(async () => {
+  try {
+    const { data } = await api.get('/competitions')
+    competitions.value = data
+  } finally {
+    loading.value = false
+  }
+})
+</script>
+
+<template>
+  <h1>Natjecanja</h1>
+  <RouterLink to="/admin/competitions/new" class="btn">
+    Novo natjecanje
+  </RouterLink>
+  <div v-if="loading">Ucitavanje...</div>
+  <table v-else>
+    <thead>
+      <tr>
+        <th>Naziv</th><th>Datum</th>
+        <th>Lokacija</th><th>Faza</th><th>Akcije</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr v-for="c in competitions" :key="c.id">
+        <td>{{ c.name }}</td>
+        <td>{{ c.date }}</td>
+        <td>{{ c.location }}</td>
+        <td><StatusBadge :status="c.phase" /></td>
+        <td>
+          <RouterLink :to="`/admin/competitions/${c.id}`">
+            Detalji
+          </RouterLink>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</template>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Filtriranje: search i status filter}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+
+const search = ref<string>('')
+const statusFilter = ref<string>('all')
+
+const filtered = computed(() => {
+  return registrations.value.filter((r) => {
+    const matchesSearch =
+      r.lifter_name.toLowerCase()
+        .includes(search.value.toLowerCase())
+    const matchesStatus =
+      statusFilter.value === 'all'
+      || r.status === statusFilter.value
+    return matchesSearch && matchesStatus
+  })
+})
+</script>
+
+<template>
+  <input v-model="search" placeholder="Pretrazi..." />
+  <select v-model="statusFilter">
+    <option value="all">Svi</option>
+    <option value="active">Aktivni</option>
+    <option value="withdrawn">Odjavljeni</option>
+  </select>
+  <!-- tablica koristi filtered umjesto registrations -->
+</template>
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{computed} se automatski recalculira kad se \texttt{search} ili \texttt{statusFilter} promijeni.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Paginacija na frontendu}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+
+const page = ref(1)
+const perPage = 10
+
+const totalPages = computed(() =>
+  Math.ceil(filtered.value.length / perPage)
+)
+
+const paginated = computed(() => {
+  const start = (page.value - 1) * perPage
+  return filtered.value.slice(start, start + perPage)
+})
+</script>
+
+<template>
+  <!-- tablica koristi paginated -->
+  <div class="pagination">
+    <button @click="page--" :disabled="page <= 1">
+      Prethodna
+    </button>
+    <span>{{ page }} / {{ totalPages }}</span>
+    <button @click="page++" :disabled="page >= totalPages">
+      Sljedeca
+    </button>
+  </div>
+</template>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Paginacija: frontend vs backend}
+\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Frontend paginacija} & \textbf{Backend paginacija} \\
+  \midrule
+  Kako radi & Dohvati sve, sliceaj u JS-u & Šalji \texttt{?page=2\&per\_page=10} \\
+  Kad koristiti & Mali dataset (<500 redova) & Veliki dataset \\
+  Prednost & Instant navigacija & Ne opterećuje memoriju \\
+  Mana & Spor inicijalni load & Svaka stranica = novi request \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Za projekt s 20-50 registracija, frontend paginacija je sasvim dovoljna. Backend paginacija je implementirana na \codefile{/lifters} endpointu - frontend samo šalje query parametre.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Infinite scroll vs paginacija}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Paginacija}
+\begin{itemize}
+  \item Korisnik eksplicitno traži sljedeću stranicu
+  \item Zna koliko podataka ima (stranica 3/10)
+  \item Može preskočiti na stranicu 7
+  \item Standard za admin tablice
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Infinite scroll}
+\begin{itemize}
+  \item Nove stavke se učitavaju automatski na scroll
+  \item Korisnik ne zna koliko ima podataka
+  \item Ne može preskočiti na sredinu
+  \item Standard za feedove (Instagram, Twitter)
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Za admin tablice koristimo paginaciju - admin treba pregled nad podacima i mogućnost skakanja na specifičnu stranicu. Infinite scroll je za beskonačne feedove poput društvenih mreža.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Responsivne tablice}
+HTML tablice na mobilnim ekranima postaju nečitljive kad imaju više od 3-4 stupca:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Pristup} & \textbf{Opis} \\
+  \midrule
+  Horizontalni scroll & \texttt{overflow-x: auto} na wrapper divu. Korisnik scrolla lijevo-desno. \\
+  Sakrivanje stupaca & Manje bitni stupci se skrivaju na manjim ekranima s \texttt{@media}. \\
+  Card layout & Ispod breakpointa, svaki red postaje kartica s labelom i vrijednošću. \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Za studentski projekt, horizontalni scroll je dovoljno dobar i zahtijeva jednu liniju CSS-a. Card layout je produkcijski standard, ali zahtijeva više koda.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Modalni dijalog za potvrdu}
+\begin{lstlisting}[language=html]
+<!-- src/components/ConfirmModal.vue -->
+<script setup lang="ts">
+defineProps<{
+  show: boolean
+  title: string
+  message: string
+}>()
+defineEmits<{
+  confirm: []
+  cancel: []
+}>()
+</script>
+
+<template>
+  <div v-if="show" class="modal-overlay" @click="$emit('cancel')">
+    <div class="modal" @click.stop>
+      <h3>{{ title }}</h3>
+      <p>{{ message }}</p>
+      <div class="modal-actions">
+        <button @click="$emit('cancel')">Odustani</button>
+        <button @click="$emit('confirm')" class="btn-danger">
+          Potvrdi
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{@click.stop} sprečava propagaciju klika - klik na modal ne zatvara overlay.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Modali: UX smjernice}
+\begin{itemize}
+  \item \textbf{Kad koristiti modal}: destruktivne akcije (brisanje, odjava), potvrda akcije s posljedicama
+  \item \textbf{Kad ne koristiti}: informativni sadržaj, forme za unos podataka (bolje zasebna stranica)
+  \item \textbf{ESC zatvara modal} - korisnici to očekuju
+  \item \textbf{Klik na overlay zatvara modal} - ali ne i klik unutar modala (\texttt{@click.stop})
+  \item \textbf{Focus trap} - Tab tipka ne smije izaći iz modala dok je otvoren
+\end{itemize}
+
+\vspace{0.6em}
+Modal prekida korisnikov tok rada - koristite ga samo kad je prekid opravdan (sprečavanje greške).
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Destruktivne akcije: UX pattern}
+Odjava natjecatelja je nepovratna akcija. UX pattern za destruktivne akcije:
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item Gumb za akciju je \textbf{vizualno drugačiji} - crveni gumb umjesto plavog
+  \item Klik otvara \textbf{modal s pitanjem} - ne izvršava odmah
+  \item Modal jasno opisuje \textbf{posljedice} - \enquote{Odjava se ne može poništiti}
+  \item \textbf{Potvrdi} gumb je crveni, \textbf{Odustani} je neutralan
+  \item Opcionalno: zahtijevaj unos teksta za potvrdu (npr. GitHub brisanje repozitorija)
+\end{enumerate}
+
+\vspace{0.6em}
+Alternativa modalu je \textbf{undo pattern}: akcija se izvrši odmah, ali korisnik ima 5 sekundi da klikne \enquote{Poništi}. Gmail koristi ovo za brisanje mailova.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Teleport u Vueu}
+Problem: modal je definiran unutar child komponente, ali treba biti renderiran na vrhu DOM stabla (izvan layouta, iznad svih elemenata).
+
+\vspace{0.4em}
+\begin{itemize}
+  \item Bez Teleporta: modal je nested u parent DOM-u. CSS \texttt{z-index} i \texttt{overflow: hidden} na parentu mogu sakriti overlay.
+  \item S Teleportom: modal se renderira izvan parent DOM-a, direktno u \texttt{<body>}.
+\end{itemize}
+
+\vspace{0.6em}
+\texttt{<Teleport to="body">} premješta sadržaj u \texttt{<body>} element. Komponenta ostaje u Vue stablu (props, events rade normalno), ali DOM node je na drugom mjestu. Ovo rješava z-index i overflow probleme.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Korištenje modala za odjavu}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { ref } from 'vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
+
+const showModal = ref(false)
+const selectedReg = ref(null)
+
+function askWithdraw(reg) {
+  selectedReg.value = reg
+  showModal.value = true
+}
+
+async function confirmWithdraw() {
+  await api.post(
+    `/competitions/${compId}/registrations/${selectedReg.value.id}/withdraw`
+  )
+  showModal.value = false
+  await refreshData()
+}
+</script>
+
+<template>
+  <button @click="askWithdraw(reg)">Odjavi</button>
+  <ConfirmModal :show="showModal"
+    title="Odjava natjecatelja"
+    message="Jeste li sigurni? Odjava se ne moze ponistiti."
+    @confirm="confirmWithdraw"
+    @cancel="showModal = false" />
+</template>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{CSV export}
+\begin{lstlisting}[language=typescript]
+// src/utils/csv.ts
+export function downloadCSV(
+  data: Record<string, unknown>[], filename: string
+) {
+  if (!data.length) return
+
+  const headers = Object.keys(data[0])
+  const rows = data.map((row) =>
+    headers.map((h) => `"${row[h] ?? ''}"`).join(',')
+  )
+
+  const csv = [headers.join(','), ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+\end{lstlisting}
+
+\vspace{0.4em}
+Generiramo CSV na frontendu iz podataka koje već imamo. Za velike datasetove, backend bi mogao imati dedicirani export endpoint.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{CSV export: korištenje u viewu}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { downloadCSV } from '@/utils/csv'
+
+function exportRegistrations() {
+  const rows = registrations.value.map((r) => ({
+    natjecatelj: r.lifter_name,
+    kategorija: r.category,
+    status: r.status,
+    datum_prijave: r.registered_at,
+  }))
+  downloadCSV(rows, `registracije-${compId}.csv`)
+}
+</script>
+
+<template>
+  <button @click="exportRegistrations">
+    Preuzmi CSV
+  </button>
+</template>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Permission-aware UI}
+Frontend prilagođava prikaz ovisno o \textbf{roli korisnika} i \textbf{fazi natjecanja}:
+
+\vspace{0.4em}
+\begin{tabular}{@{}llll@{}}
+  \toprule
+  \textbf{Element} & \textbf{Admin} & \textbf{Club (OPEN)} & \textbf{Club (CLOSED)} \\
+  \midrule
+  Gumb \enquote{Nova prijava} & vidljiv & vidljiv & skriven \\
+  Gumb \enquote{Odjavi} & vidljiv & vidljiv & skriven \\
+  Gumb \enquote{Uredi kategoriju} & vidljiv & vidljiv & skriven \\
+  Link \enquote{Novo natjecanje} & vidljiv & skriven & skriven \\
+  CSV export & vidljiv & skriven & skriven \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Frontend sakriva gumbe za bolji UX, ali backend i dalje odbija nedozvoljene akcije. Nikad se ne oslanjajte samo na frontend za sigurnost.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Disabled vs Hidden}
+Kad korisnik nema pravo na akciju, imamo dva izbora:
+
+\vspace{0.4em}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Hidden (v-if)}
+\begin{itemize}
+  \item Element ne postoji u DOM-u
+  \item Korisnik ne zna da opcija postoji
+  \item Čišći UI
+  \item Koristiti za role-based skrivanje
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Disabled (:disabled)}
+\begin{itemize}
+  \item Element je vidljiv, ali neklikabilan
+  \item Korisnik zna da opcija postoji
+  \item Tooltip objašnjava zašto
+  \item Koristiti za phase-based ograničenja
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Club korisnik ne vidi \enquote{Novo natjecanje} jer tu akciju nikad neće smjeti izvesti. \enquote{Nova prijava} nakon roka je disabled jer ju je ranije mogao izvesti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Faze natjecanja na frontendu}
+Backend šalje fazu natjecanja u API odgovoru. Frontend koristi tu informaciju za prilagodbu UI-ja:
+
+\vspace{0.4em}
+\begin{tabular}{@{}llll@{}}
+  \toprule
+  \textbf{Faza} & \textbf{Nova prijava} & \textbf{Promjena kat.} & \textbf{Odjava} \\
+  \midrule
+  OPEN & Omogućeno & Omogućeno & Omogućeno \\
+  PRELIM\_PASSED & Disabled + tooltip & Omogućeno & Omogućeno \\
+  CLOSED & Hidden & Disabled & Disabled \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Problem: korisnik može otvoriti stranicu u OPEN fazi, otići na kavu i pokušati akciju kad je već PRELIM\_PASSED. Rješenja:
+\begin{itemize}
+  \item Backend i dalje odbija - korisnik dobije grešku
+  \item Periodički re-fetch podataka (polling)
+  \item Prikazati countdown do roka na stranici
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Bulk akcije u tablicama}
+Admin tablica s mnogo zapisa može trebati akcije nad više redova odjednom:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item Checkbox u svakom redu + \enquote{Select All} u headeru
+  \item Toolbar s akcijama se pojavi kad je barem jedan red selektiran
+  \item Akcije: \enquote{Exportaj odabrane}, \enquote{Obriši odabrane}
+  \item Prikaz broja selektiranih: \enquote{5 od 23 odabrano}
+\end{itemize}
+
+\vspace{0.6em}
+Implementacija: \texttt{selectedIds = ref(new Set<number>())}. Toggle dodaje/uklanja ID. \enquote{Select All} dodaje sve ID-eve s trenutne stranice (ne sve stranice). Bulk akcija šalje listu ID-eva na backend.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Disabling akcija po fazi}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { computed } from 'vue'
+
+const canRegister = computed(() =>
+  competition.value.phase === 'open'
+)
+const canModify = computed(() =>
+  ['open', 'prelim_passed'].includes(competition.value.phase)
+)
+</script>
+
+<template>
+  <button @click="register" :disabled="!canRegister"
+    :title="canRegister ? '' : 'Rok za prijave je istekao'">
+    Nova prijava
+  </button>
+  <button @click="withdraw(reg)" v-if="canModify">
+    Odjavi
+  </button>
+</template>
+\end{lstlisting}
+
+\vspace{0.4em}
+Koristimo \texttt{:disabled} umjesto \texttt{v-if} za gumbe koji su vidljivi ali nedostupni - korisnik vidi da opcija postoji, ali nije dozvoljena.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Role-based UI rendering}
+Tri pristupa za prikazivanje elemenata ovisno o roli:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Pristup} & \textbf{Primjer} \\
+  \midrule
+  Direktan v-if & \texttt{v-if="auth.isAdmin"} - jednostavno, ali ponovljeno \\
+  Helper funkcija & \texttt{v-if="canCreate('competition')"} - centralizirana logika \\
+  Zasebni viewovi & \texttt{AdminDashboard.vue} vs \texttt{ClubDashboard.vue} \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Za naš projekt: admin i club imaju zasebne viewove jer je UI značajno drugačiji. Unutar zajedničkih komponenti koristimo \texttt{v-if="auth.isAdmin"} za manje razlike.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Audit trail: zašto pratiti akcije}
+U produkcijskom sustavu treba znati tko je što napravio i kad:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item Tko je odjavio natjecatelja? Admin ili klub?
+  \item Kad je promijenjena kategorija? Prije ili nakon prelim roka?
+  \item Je li admin resetirao lozinku kluba?
+\end{itemize}
+
+\vspace{0.6em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Razina} & \textbf{Kako} \\
+  \midrule
+  Backend logovi & Strukturirani logovi: user\_id, akcija, timestamp, IP \\
+  Baza & \texttt{created\_at}, \texttt{updated\_at}, opcionalno \texttt{updated\_by} \\
+  Frontend & Console.log za debug, ne za audit \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Za ovaj projekt imamo \texttt{registered\_at} na registraciji. U produkciji bismo dodali \texttt{withdrawn\_at}, \texttt{withdrawn\_by} i slično.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Commitovi za Predavanje 10}
+\begin{itemize}
+  \item \texttt{feat(web): add admin competitions CRUD screens}
+  \item \texttt{feat(web): add admin registrations table with filters and pagination}
+  \item \texttt{feat(web): add approve/reject UI with modal and reason}
+  \item \texttt{feat(web): add CSV export button and download flow}
+  \item \texttt{fix(web): disable actions based on competition phase (prelim/final/locked)}
+\end{itemize}
+
+\vspace{0.4em}
+\textbf{Na satu:} gradimo admin ekrane, testiramo filtriranje, gledamo kako se UI mijenja po fazama.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što ide sljedeće (Predavanje 11)}
+\begin{itemize}
+  \item Production build i environment config
+  \item Deploy na Railway ili Render
+  \item CORS konfiguracija
+  \item CI/CD pipeline
+  \item Priprema za 2. obranu
+\end{itemize}
+
+\vspace{0.8em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}
