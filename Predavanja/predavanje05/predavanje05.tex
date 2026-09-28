@@ -2,8 +2,8 @@
 % !TeX root = predavanje05.tex
 \input{../common/preamble.tex}
 
-\title[Razvoj web aplikacija]{Razvoj web aplikacija - Predavanje 5 \\ API dizajn, validacija i CRUD domene}
-\date{02.11.2026.}
+\title[Predavanje 5: Oblikovanje API-ja]{Programiranje za web \\ Predavanje 5: Oblikovanje API-ja i CRUD domene}
+\date{05.11.2026.}
 
 \begin{document}
 
@@ -12,234 +12,246 @@
 % ------------------------------------------------------------
 \begin{frame}{Plan predavanja}
 \begin{enumerate}
-  \item Modeliranje domene: Lifter, Competition, Registration
-  \item CRUD kroz slojeve: router $\rightarrow$ service $\rightarrow$ repository $\rightarrow$ model
-  \item Relacije u async ORM-u: lazy loading zamka i eager loading
-  \item Pydantic scheme: Create, Update, Response varijante
-  \item Validacija i error odgovori (422 i custom errori)
-  \item Paginacija i filtriranje
-  \item Partial update (PATCH vs PUT)
+  \item Od zapisa do resursa
+  \item Sheme
+  \item Popisi
+  \item Od modela do tablice
 \end{enumerate}
 
 \vspace{0.6em}
-Na kraju predavanja imamo kompletne CRUD endpointe za sve entitete domene.
+Dosad je aplikacija znala tko je korisnik i što smije. Sada dobiva zapise nad kojima radi i sučelje kojim ih netko drugi može stvarati, čitati, mijenjati i brisati.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Ishodi učenja}
 Nakon ovog predavanja student može:
+
 \begin{itemize}
-  \item modelirati složenije relacije (Lifter, Competition, Registration)
-  \item dizajnirati REST API s konzistentnim URL-ovima i status codeovima
-  \item razlikovati Create, Update i Response schema
-  \item objasniti zašto async ORM traži eager loading i primijeniti \texttt{selectinload}
-  \item implementirati validaciju u Pydantic schemi
-  \item objasniti PATCH vs PUT i kad koristiti koji
-  \item implementirati paginaciju s limit/offset
+  \item preslikati četiri osnovne operacije nad zapisom u metode i statusne kodove
+  \item obrazložiti izbor između ugniježđene i samostalne rute
+  \item napisati odvojene sheme za unos, izmjenu i odgovor i reći zašto se razlikuju
+  \item dodati provjeru koja nadilazi tip polja i reći gdje je granica sheme
+  \item ograničiti veličinu odgovora straničenjem i filtriranjem kroz parametre upita
+  \item objasniti zašto se povezani zapisi moraju zatražiti unaprijed
+  \item razlikovati \texttt{flush} od \texttt{commit} i reći gdje transakcija počinje i završava
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Kontekst: što imamo, što fali}
-\begin{columns}[T]
-\column{0.45\textwidth}
-\textbf{Imamo (P1-P4)}
-\begin{itemize}
-  \item Club, User modeli
-  \item Auth (JWT login/refresh)
-  \item Role + ownership provjere
-  \item Error handling framework
-\end{itemize}
-
-\column{0.45\textwidth}
-\textbf{Danas dodajemo}
-\begin{itemize}
-  \item Lifter, Competition, Registration
-  \item CRUD za sve entitete
-  \item Scheme (DTO)
-  \item Validacija i paginacija
-\end{itemize}
-\end{columns}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Novi entiteti: ER dijagram (tekst)}
-\begin{itemize}
-  \item \textbf{Club} 1:N \textbf{Lifter} - klub ima više natjecatelja
-  \item \textbf{Club} 1:1 \textbf{User} - klub ima jednog korisnika za prijavu
-  \item \textbf{Competition} 1:N \textbf{Registration} - natjecanje ima više prijava
-  \item \textbf{Lifter} 1:N \textbf{Registration} - natjecatelj može biti prijavljen na više natjecanja
-\end{itemize}
-
-\vspace{0.6em}
-Registration je \textbf{veza} između Liftera i Competitiona - s dodatnim podacima (kategorija, datum prijave).
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile, shrink=5]{Model: \texttt{Lifter}}
-\begin{lstlisting}[language=python]
-class Lifter(Base):
-    __tablename__ = "lifters"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    first_name: Mapped[str] = mapped_column(String(80))
-    last_name: Mapped[str] = mapped_column(String(80))
-    birth_date: Mapped[date] = mapped_column(Date)
-    gender: Mapped[str] = mapped_column(String(1))  # M/F
-
-    club_id: Mapped[int] = mapped_column(
-        ForeignKey("clubs.id"), nullable=False
-    )
-    club: Mapped["Club"] = relationship(back_populates="lifters")
-    registrations: Mapped[list["Registration"]] = relationship(
-        back_populates="lifter"
-    )
-\end{lstlisting}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile, shrink=5]{Model: \texttt{Competition}}
-\begin{lstlisting}[language=python]
-class Competition(Base):
-    __tablename__ = "competitions"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    date: Mapped[date] = mapped_column(Date, nullable=False)
-    location: Mapped[str] = mapped_column(String(200))
-
-    prelim_deadline: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    final_deadline: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-
-    registrations: Mapped[list["Registration"]] = relationship(
-        back_populates="competition"
-    )
-\end{lstlisting}
+\begin{frame}{Domena primjera}
+Sustav prijava klubova na powerlifting natjecanje. Uz klub i račun dolaze tri nova zapisa:
 
 \vspace{0.4em}
-Dva roka: \texttt{prelim\_deadline} i \texttt{final\_deadline}. Pravila rokova dolaze u Predavanju 6.
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  ent/.style={draw=ink, thick, rounded corners, fill=white, inner sep=3mm, text=textclr, minimum width=26mm},
+  lbl/.style={font=\scriptsize, text=mutedclr}
+]
+  \node[ent] (club) {\textbf{Klub}};
+  \node[ent, right=24mm of club] (lifter) {\textbf{Natjecatelj}};
+  \node[ent, below=14mm of lifter] (reg) {\textbf{Prijava}};
+  \node[ent, left=24mm of reg] (comp) {\textbf{Natjecanje}};
+
+  \draw[-{Latex}, ink2, thick] (lifter.west) -- node[lbl, above] {1:N} (club.east);
+  \draw[-{Latex}, ink2, thick] (reg.north) -- node[lbl, right] {1:N} (lifter.south);
+  \draw[-{Latex}, ink2, thick] (reg.west) -- node[lbl, above] {1:N} (comp.east);
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+Strelica pokazuje na nadređenu stranu: natjecatelj pripada klubu, prijava jednom natjecatelju i jednom natjecanju.
+
+\vspace{0.3em}
+Prijava nije samo spojnica dvaju zapisa. Nosi i vlastite podatke, težinsku kategoriju i najbolji zbroj (\texttt{total}), pa je i sama zapis o kojem se vodi računa.
 \end{frame}
 
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Model: \texttt{Registration}}
-\begin{lstlisting}[language=python]
-class Registration(Base):
-    __tablename__ = "registrations"
-    __table_args__ = (
-        UniqueConstraint("lifter_id", "competition_id",
-                         name="uq_lifter_competition"),
-    )
+% ============================================================
+\sekcija{Od zapisa do resursa}{Što je resurs, četiri operacije nad njim, pripadnost u adresi, prava koja ruta objavljuje.}
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    lifter_id: Mapped[int] = mapped_column(
-        ForeignKey("lifters.id"), nullable=False
-    )
-    competition_id: Mapped[int] = mapped_column(
-        ForeignKey("competitions.id"), nullable=False
-    )
-    category: Mapped[str] = mapped_column(String(20))
-    status: Mapped[str] = mapped_column(
-        String(20), default="active"
-    )  # active / withdrawn
-    registered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-\end{lstlisting}
+% ------------------------------------------------------------
+\begin{frame}[shrink=8]{Zapis i resurs}
+Zapis u bazi nema adresu. Postoji kao redak i do njega se dolazi upitom koji zna kako je tablica složena.
 
 \vspace{0.4em}
-\texttt{UniqueConstraint} sprječava duplu prijavu istog liftera na isto natjecanje.
-\end{frame}
+Sučelje prema klijentu ne smije tražiti to znanje. Zato se svaka vrsta zapisa objavljuje kao \textbf{resurs}: nešto što ima svoju adresu i skup radnji koje se nad njom izvode.
 
-% ------------------------------------------------------------
-\begin{frame}{Unique constraint na Registration: zašto?}
-Bez \texttt{UniqueConstraint("lifter\_id", "competition\_id")}:
-\begin{itemize}
-  \item dva konkurentna requesta mogu prijaviti istog liftera dva puta
-  \item \texttt{if} u kodu ne štiti od race conditiona
-  \item baza mora biti autoritet za integritet
-\end{itemize}
-
-\vspace{0.6em}
-Kad se constraint prekrši, baza baca \texttt{IntegrityError}. Service ga hvata i vraća 409 Conflict.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Registracija novih modela}
-Svaki novi model mora biti importiran u \texttt{models/\_\_init\_\_.py}:
-
-\vspace{0.6em}
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.35}
 \begin{tabular}{@{}ll@{}}
   \toprule
-  \textbf{Datoteka} & \textbf{Zašto} \\
+  \textbf{U bazi} & \textbf{Prema klijentu} \\
   \midrule
-  \texttt{models/\_\_init\_\_.py} & da Alembic vidi metadata \\
-  \texttt{main.py} & novi router se registrira s \texttt{include\_router} \\
+  tablica \texttt{lifters}    & resurs na \texttt{/lifters} \\
+  jedan redak                 & \texttt{/lifters/31} \\
+  stupac \texttt{first\_name} & polje u tijelu zahtjeva i odgovora \\
   \bottomrule
 \end{tabular}
+}
+\end{center}
 
-\vspace{0.6em}
-Ako zaboraviš \texttt{models/\_\_init\_\_.py}, \texttt{alembic revision --autogenerate} neće detektirati novu tablicu.
+\vspace{0.5em}
+Preslikavanje ne mora biti jedan na jedan. Resurs smije spojiti podatke iz više tablica, izostaviti stupce koje nitko izvana ne treba, ili uopće ne odgovarati nijednoj tablici.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{REST API dizajn: konzistentnost}
+\begin{frame}[shrink=10]{Četiri operacije nad zapisom}
+Nad svakim se resursom radi isto: stvara se, čita, mijenja i briše. Te četiri operacije nose zajednički naziv CRUD (engl. \emph{create, read, update, delete}) i preslikavaju se u metode i odgovore:
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
 \begin{tabular}{@{}llll@{}}
   \toprule
-  \textbf{Metoda} & \textbf{URL} & \textbf{Akcija} & \textbf{Status} \\
+  \textbf{Operacija} & \textbf{Metoda} & \textbf{Kod} & \textbf{Tijelo odgovora} \\
   \midrule
-  GET & /clubs/\{id\}/lifters & lista & 200 \\
-  POST & /clubs/\{id\}/lifters & kreiraj & 201 \\
-  GET & /clubs/\{id\}/lifters/\{id\} & dohvati & 200 \\
-  PATCH & /clubs/\{id\}/lifters/\{id\} & djelomično ažuriraj & 200 \\
-  DELETE & /clubs/\{id\}/lifters/\{id\} & obriši & 204 \\
+  popis        & \texttt{GET}    & \texttt{200} & niz zapisa \\
+  jedan zapis  & \texttt{GET}    & \texttt{200} & zapis \\
+  stvaranje    & \texttt{POST}   & \texttt{201} & stvoreni zapis \\
+  izmjena      & \texttt{PATCH}  & \texttt{200} & izmijenjeni zapis \\
+  brisanje     & \texttt{DELETE} & \texttt{204} & nema ga \\
   \bottomrule
 \end{tabular}
+}
+\end{center}
 
-\vspace{0.6em}
-Nested URL-ovi: resurs živi \textbf{pod} roditeljskim resursom. Ownership je implicitan u URL-u.
+\vspace{0.5em}
+Stvaranje vraća zapis jer klijent prije odgovora ne zna oznaku koju je baza dodijelila. Brisanje ne vraća ništa, pa uz \texttt{204} tijela nema.
+
+\vspace{0.4em}
+\begin{konvencija}
+Ista se tablica primjenjuje na svaki resurs, pa tko zna kako radi jedan, zna i ostale. To je odluka pri oblikovanju sučelja, ne zahtjev protokola.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Schema dizajn: zašto tri varijante?}
-\begin{tabular}{@{}lp{8cm}@{}}
+\begin{frame}[shrink=15]{Pripadnost u adresi}
+Natjecatelj uvijek pripada nekom klubu. Ta se pripadnost u adresi može izraziti na dva načina:
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}ll@{}}
   \toprule
-  \textbf{Schema} & \textbf{Svrha} \\
+  \textbf{Oblik} & \textbf{Adresa} \\
   \midrule
-  \texttt{LifterCreate} & Input za \texttt{POST}. Sadrži samo polja koja klijent šalje (nema \texttt{id}, \texttt{registered\_at}). \\
-  \midrule
-  \texttt{LifterUpdate} & Input za \texttt{PATCH}. Sva polja su opcionalna (\texttt{Optional}). \\
-  \midrule
-  \texttt{LifterResponse} & Output. Sadrži sve relevantne podatke uključujući \texttt{id}. \\
+  ugniježđena & \texttt{/clubs/12/lifters} \\
+  samostalna  & \texttt{/lifters?club\_id=12} \\
   \bottomrule
 \end{tabular}
+}
+\end{center}
 
 \vspace{0.6em}
-Nikad ne koristimo isti DTO za input i output. Input validira, output prezentira.
+U prvom obliku pripadnost je dio adrese, pa je uvijek prisutna i ne može se izostaviti. U drugom je uvjet pretrage: izostavi li se, ruta vraća natjecatelje svih klubova, što je upravo ono što provjera vlasništva mora spriječiti.
+
+\vspace{0.4em}
+\begin{konvencija}[Izbor, ne pravilo]
+Ugniježđeni oblik odgovara odnosu u kojem podređeni zapis bez nadređenoga nema smisla. Samostalni je prikladniji kad se zapis dohvaća po više različitih kriterija, jer bi inače zahtijevao više ugniježđenih adresa za istu vrstu zapisa. Ovdje su natjecatelji ugniježđeni pod klubom, a natjecanja stoje samostalno.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Schema: \texttt{LifterCreate} i \texttt{LifterResponse}}
-\begin{lstlisting}[language=python]
-from pydantic import BaseModel, Field, field_validator
-from datetime import date
-from typing import Literal
+\begin{frame}[fragile,shrink=12]{Gdje se ugnježđivanje zapisuje}
+Ruta ne nosi cijelu adresu. Datoteka s rutama natjecatelja zna samo za \texttt{/} i \texttt{/\{lifter\_id\}}, a ostatak dolazi pri uključivanju u aplikaciju:
 
+\begin{lstlisting}[language=python]
+# app/main.py
+app.include_router(clubs_router, prefix="/clubs")
+app.include_router(lifters_router,
+                   prefix="/clubs/{club_id}/lifters")
+app.include_router(competitions_router, prefix="/competitions")
+app.include_router(registrations_router,
+                   prefix="/competitions/{comp_id}/registrations")
+\end{lstlisting}
+
+\vspace{0.3em}
+Time je oblik sučelja vidljiv na jednom mjestu. Iz ovog se popisa čita koja je pripadnost ugniježđena, bez otvaranja ijedne datoteke s rutama.
+
+\vspace{0.2em}
+Oznaka iz prefiksa dolazi u funkciju rute kao običan argument, pa \texttt{club\_id} ne treba nigdje posebno izvlačiti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Pravo koje ruta objavljuje}
+Natjecanja čita svatko tko je prijavljen, a mijenja ih samo administrator. Ta se razlika ne vidi u tijelu funkcije nego u njezinu potpisu:
+
+\begin{lstlisting}[language=python]
+# app/routers/competitions.py
+@router.get("/", response_model=list[CompetitionResponse])
+async def list_competitions(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await competition_service.list_competitions(db)
+
+@router.post("/", response_model=CompetitionResponse, status_code=201)
+async def create_competition(
+    body: CompetitionCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_role("admin")),
+):
+    return await competition_service.create_competition(db, body)
+\end{lstlisting}
+
+\vspace{0.2em}
+Čitanje traži samo utvrđen identitet, stvaranje traži ulogu. Pravo je time dio opisa rute, pa se čita zajedno s metodom i putanjom, a ne traži se po kodu.
+\end{frame}
+
+% ============================================================
+\sekcija{Sheme}{Zašto jedna shema nije dovoljna, unos i odgovor, izmjena i neposlana polja, provjere koje nadilaze tip, dokle shema seže.}
+
+% ------------------------------------------------------------
+\begin{frame}[shrink=10]{Isti zapis, različit skup polja}
+Natjecatelj je u bazi jedan zapis, ali ono što putuje u tijelu zahtjeva i u tijelu odgovora nije isti skup polja. Što stoji u adresi, u tijelo ne ulazi:
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}llll@{}}
+  \toprule
+  \textbf{Polje} & \textbf{Stvaranje} & \textbf{Izmjena} & \textbf{Odgovor} \\
+  \midrule
+  \texttt{id}       & nema ga   & u adresi       & da \\
+  ime i prezime     & obavezno  & ako se mijenja & da \\
+  datum rođenja     & obavezno  & ako se mijenja & da \\
+  spol              & obavezno  & ako se mijenja & da \\
+  \texttt{club\_id} & u adresi  & u adresi       & da \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.5em}
+Jedna shema za sve troje ne prolazi: morala bi ista polja istodobno tražiti i ne tražiti, a uz to sadržavati \texttt{id} koji klijent pri stvaranju nema čime ispuniti.
+
+\vspace{0.3em}
+Zato natjecatelj ima tri sheme: \texttt{LifterCreate}, \texttt{LifterUpdate} i \texttt{LifterResponse}.
+
+\vspace{0.3em}
+\begin{konvencija}
+Broj shema nije propisan nego slijedi iz broja različitih situacija. Prijava u ovom projektu ima i četvrtu, smanjeni oblik natjecatelja unutar odgovora, a prijava korisnika nema nijednu od te tri.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Shema za unos i odgovor}
+\begin{lstlisting}[language=python]
+# app/schemas/lifter.py
 class LifterCreate(BaseModel):
     first_name: str = Field(min_length=1, max_length=80)
     last_name: str = Field(min_length=1, max_length=80)
     birth_date: date
     gender: Literal["M", "F"]
-
-    @field_validator("birth_date")
-    @classmethod
-    def must_be_past(cls, v):
-        if v >= date.today():
-            raise ValueError("Birth date must be in the past")
-        return v
 
 class LifterResponse(BaseModel):
     id: int
@@ -251,381 +263,319 @@ class LifterResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 \end{lstlisting}
+
+\vspace{0.2em}
+Ulazna shema nema \texttt{id} ni \texttt{club\_id}: prvi dodjeljuje baza, a drugi je već u adresi rute. Postavka \texttt{from\_attributes} dopušta da se izlazna shema popuni izravno iz zapisa koji je vratio ORM.
+
+\vspace{0.2em}
+Izlazna shema pritom nije samo opis. Odgovor prolazi kroz nju, pa polje koje u njoj ne stoji ne može izaći ni greškom.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Schema: \texttt{LifterUpdate} (partial update)}
+\begin{frame}[fragile,shrink=12]{Izmjena i neposlana polja}
 \begin{lstlisting}[language=python]
+# app/schemas/lifter.py
 class LifterUpdate(BaseModel):
-    first_name: str | None = Field(
-        None, min_length=1, max_length=80
-    )
-    last_name: str | None = Field(
-        None, min_length=1, max_length=80
-    )
+    first_name: str | None = Field(default=None, min_length=1, max_length=80)
+    last_name: str | None = Field(default=None, min_length=1, max_length=80)
     birth_date: date | None = None
-    gender: str | None = Field(None, pattern="^[MF]$")
-\end{lstlisting}
+    gender: str | None = Field(default=None, pattern=r"^[MF]$")
 
-\vspace{0.6em}
-Sva polja su \texttt{None} po defaultu. U serviceu ažuriramo samo ona koja su poslana:
-\begin{lstlisting}[language=python]
+# app/services/lifter_service.py
 for field, value in body.model_dump(exclude_unset=True).items():
     setattr(lifter, field, value)
 \end{lstlisting}
+
+\vspace{0.3em}
+Sva su polja neobavezna, pa klijent šalje ona koja mijenja. Time nastaje dvoznačnost: izostalo polje i polje poslano kao \texttt{null} u shemi izgledaju jednako, a znače različito.
+
+\vspace{0.2em}
+\texttt{exclude\_unset} razlikuje to dvoje: u rječnik ulaze samo polja koja su doista poslana. Bez toga bi izmjena jednog polja obrisala sva ostala. Prazno tijelo shema propušta, pa zapis ostaje nepromijenjen, a odgovor je i dalje \texttt{200}.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{PATCH vs PUT}
-\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+\begin{frame}[shrink=8]{\texttt{PATCH} i \texttt{PUT}}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}lll@{}}
   \toprule
-  & \textbf{PUT} & \textbf{PATCH} \\
+  \textbf{Metoda} & \textbf{Klijent šalje} & \textbf{Ishod} \\
   \midrule
-  Semantika & zamijeni cijeli resurs & ažuriraj samo poslana polja \\
-  Validacija & sva polja obavezna & samo poslana polja \\
-  Kad koristiti & rijetko u SPA & gotovo uvijek \\
+  \texttt{PUT}   & cijeli zapis     & zapis je zamijenjen poslanim \\
+  \texttt{PATCH} & samo izmijenjeno & ostala polja ostaju kakva su bila \\
   \bottomrule
 \end{tabular}
+}
+\end{center}
 
 \vspace{0.6em}
-U praksi SPA gotovo uvijek šalje parcijalne podatke. PATCH je prirodniji izbor.
+Razlika je posljedica, ne ukus: \texttt{PUT} je idempotentan jer isti zahtjev ponovno daje isto stanje, a \texttt{PATCH} nije nužno, jer ishod ovisi o tome kakav je zapis zatekao.
+
+\vspace{0.4em}
+\texttt{PUT} pritom traži da klijent poznaje cijeli zapis. Pošalje li nepotpun, izostavljena polja se gube. Ovdje se zato svugdje koristi \texttt{PATCH}.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile, shrink=5]{Repository: CRUD operacije}
-\begin{lstlisting}[language=python]
-async def get_by_id(db: AsyncSession, lifter_id: int) -> Lifter | None:
-    result = await db.execute(
-        select(Lifter).where(Lifter.id == lifter_id)
-    )
-    return result.scalar_one_or_none()
+\begin{frame}[fragile,shrink=12]{Provjere koje nadilaze tip}
+Tip polja hvata pogrešan oblik, ali ne i besmislenu vrijednost. Datum rođenja u budućnosti je ispravan datum:
 
+\begin{lstlisting}[language=python]
+# app/schemas/lifter.py
+class LifterCreate(BaseModel):
+    birth_date: date
+
+    @field_validator("birth_date")
+    @classmethod
+    def must_be_past(cls, v: date) -> date:
+        if v >= date.today():
+            raise ValueError("Datum rodenja mora biti u proslosti")
+        return v
+\end{lstlisting}
+
+\vspace{0.3em}
+Isto vrijedi za kategoriju prijave. Ona je niz znakova, jer postoje i oznake poput \texttt{120+}, pa tip ne može nabrojiti dopuštene vrijednosti. Validator provjerava je li poslana vrijednost u popisu i imenuje je u poruci ako nije.
+
+\vspace{0.2em}
+Kad takva provjera padne, odgovor ima isti oblik kao i pogreška u tipu: imenuje polje i navodi razlog. Sloj s poslovnim pravilima time nikada ne prima vrijednost koja nema smisla.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Dokle shema seže}
+Shema vidi poslani sadržaj i ono što proces sam zna, primjerice današnji datum. Može usporediti i dva polja istog zahtjeva:
+
+\begin{lstlisting}[language=python]
+# app/schemas/competition.py
+@field_validator("final_deadline")
+@classmethod
+def final_after_prelim(cls, v, info):
+    prelim = info.data.get("prelim_deadline")
+    if prelim and v <= prelim:
+        raise ValueError("final_deadline mora biti nakon prelim_deadline")
+    return v
+\end{lstlisting}
+
+\vspace{0.3em}
+Ono što ne može jest pogledati u bazu. Validator je obična funkcija bez sesije, a u asinkronom radu unutar nje nema ni čekanja odgovora baze.
+
+\vspace{0.2em}
+Granica je time jasna: shema prosuđuje vrijednost samu za sebe, ne u odnosu na druge zapise. Je li natjecatelj već prijavljen, bez baze se ne zna, i to je posao sloja iznad nje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Odgovor koji nosi povezani zapis}
+Popis prijava u kojem stoji samo \texttt{lifter\_id} klijentu ne znači mnogo; za svako ime trebao bi novi zahtjev. Zato odgovor nosi i sam povezani zapis, ali suženo:
+
+\begin{lstlisting}[language=python]
+# app/schemas/registration.py
+class LifterBrief(BaseModel):
+    first_name: str
+    last_name: str
+
+    model_config = {"from_attributes": True}
+
+class RegistrationResponse(BaseModel):
+    id: int
+    lifter_id: int
+    competition_id: int
+    category: str
+    total: int
+    status: str
+    lifter: LifterBrief
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{LifterBrief} je isti natjecatelj s manje polja. Datum rođenja i klub ovdje nikome ne trebaju, a shema odgovora jedino je mjesto na kojem se taj izbor provodi.
+\end{frame}
+
+% ============================================================
+\sekcija{Popisi}{Zašto popis ne vraća sve, straničenje i filtriranje, redoslijed, povezani zapisi u popisu.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Popis ima granicu}
+Ruta koja vraća popis prvo mora odgovoriti koliko zapisa vraća. Odgovor „sve" radi dok ih je malo, a s rastom kvari tri stvari odjednom: upit čita cijelu tablicu, odgovor raste, a klijent prima više nego što može prikazati. Zato granica ulazi odmah:
+
+\begin{lstlisting}[language=python]
+# app/routers/lifters.py
+@router.get("/", response_model=list[LifterResponse])
+async def list_lifters(
+    club_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin", "club")),
+    gender: str | None = Query(default=None, pattern=r"^[MF]$"),
+    limit: int = Query(default=20, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    ...
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{limit} kaže koliko zapisa, \texttt{offset} koliko ih preskočiti. Vraćanje popisa u dijelovima naziva se straničenje (engl. \emph{pagination}).
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[shrink=8]{Zadane vrijednosti i gornja granica}
+\begin{itemize}
+  \item \textbf{Obje vrijednosti imaju zadanu.} Klijent koji o njima ne zna ništa ipak dobiva ograničen odgovor, pa se ruta ne može slučajno koristiti neograničeno.
+  \item \textbf{Gornja granica \texttt{le=100} je zaštita.} Bez nje klijent zatraži milijun zapisa i ruta se vraća na ponašanje s početka.
+  \item \textbf{Filtar prolazi istu provjeru kao tijelo.} \texttt{gender} ima uzorak \texttt{\^{}[MF]\$}, pa neispravna vrijednost ne dolazi do upita.
+\end{itemize}
+
+\vspace{0.6em}
+Parametri upita time nisu iznimka: opisani su jednako strogo kao i polja sheme, i jednako ih odbija framework prije nego funkcija počne raditi.
+
+\vspace{0.4em}
+\begin{konvencija}
+Nazivi \texttt{limit} i \texttt{offset} nisu propisani. Sučelja koriste i \texttt{page} i \texttt{per\_page}, a neka vraćaju i ukupan broj zapisa uz popis. Bitno je da izbor bude isti na svim rutama.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{Upit koji to izvodi}
+\begin{lstlisting}[language=python]
+# app/repositories/lifter_repo.py
+stmt = select(Lifter).where(Lifter.club_id == club_id)
+if gender is not None:
+    stmt = stmt.where(Lifter.gender == gender)
+stmt = stmt.order_by(Lifter.id).limit(limit).offset(offset)
+\end{lstlisting}
+
+\vspace{0.3em}
+Upit se gradi postupno: uvjet pripadnosti stoji uvijek, uvjet spola samo ako je filtar poslan. Sloj \codefile{repositories} time ostaje jedino mjesto koje zna kako se do zapisa dolazi.
+
+\vspace{0.3em}
+\texttt{order\_by} nije ukras. Bez zadanog redoslijeda baza ga ne jamči, pa isti zapis može doći i na prvoj i na drugoj stranici, dok drugi ne dođe ni na jednu.
+
+\vspace{0.3em}
+\begin{konvencija}
+Uz \texttt{offset} baza pri svakom zahtjevu preskače sve prethodne retke, pa duboke stranice postaju spore. Drugi pristup pamti oznaku zadnjeg viđenog zapisa i traži one iza nje. Brži je i otporan na umetanje, ali ne dopušta skok na proizvoljnu stranicu. Ovdje se koristi \texttt{offset}, jer su popisi kratki.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Povezani zapis u popisu}
+Prijave se vraćaju zajedno s natjecateljem. Veza opisana u modelu dopušta da se povezani zapis čita kao svojstvo, primjerice \texttt{registration.lifter}, a ORM ga tada dohvaća zasebnim upitom.
+
+\vspace{0.3em}
+U asinkronom radu to ne prolazi: čitanje svojstva nije mjesto na kojem se smije čekati odgovor baze, pa umjesto podataka slijedi iznimka. Povezani se zapisi zato traže unaprijed, u istom upitu:
+
+\begin{lstlisting}[language=python]
+# app/repositories/registration_repo.py
+stmt = (
+    select(Registration)
+    .options(selectinload(Registration.lifter))
+    .where(Registration.competition_id == comp_id)
+)
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{selectinload} znači: dohvati prijave, pa jednim dodatnim upitom sve njihove natjecatelje. Dakle dva upita umjesto jednog po prijavi. Bez toga bi popis od pedeset prijava izveo pedeset i jedan upit, što se u razvoju s dvjema prijavama ne primijeti.
+\end{frame}
+
+% ============================================================
+\sekcija{Od modela do tablice}{Zapis opisan u kodu, migracija koja tablicu stvara, upis i granica transakcije.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=15]{Zapis opisan u kodu}
+Svaki resurs ima svoj model. Najviše govori prijava, jer ona nosi i vezu i vlastite podatke:
+
+\begin{lstlisting}[language=python]
+# app/models/registration.py
+class Registration(Base):
+    __tablename__ = "registrations"
+    __table_args__ = (
+        UniqueConstraint("lifter_id", "competition_id",
+                         name="uq_lifter_competition"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lifter_id: Mapped[int] = mapped_column(ForeignKey("lifters.id"))
+    competition_id: Mapped[int] = mapped_column(
+        ForeignKey("competitions.id")
+    )
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+\end{lstlisting}
+
+\vspace{0.2em}
+Dva strana ključa nose vezu, \texttt{category} i \texttt{total} vlastite podatke, a \texttt{registered\_at} popunjava baza, pa vrijeme upisa ne ovisi o satu poslužitelja. Ograničenje jedinstvenosti kaže da isti natjecatelj ne može biti dvaput na istom natjecanju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=10]{Migracija koja tablicu stvara}
+Model opisan u Pythonu još nije tablica. Alembic uspoređuje stanje baze s onim što vidi u \texttt{Base.metadata}, a tamo dolaze samo razredi koji su negdje uvezeni:
+
+\begin{lstlisting}[language=python]
+# app/models/__init__.py
+from app.core.database import Base
+from app.models.club import Club
+from app.models.competition import Competition
+from app.models.lifter import Lifter
+from app.models.registration import Registration
+from app.models.user import User
+\end{lstlisting}
+
+\vspace{0.3em}
+Izostane li redak, \texttt{alembic revision -{}-autogenerate} neće prijaviti pogrešku. Napravit će praznu migraciju, jer razliku između modela i baze nije ni vidio.
+
+\vspace{0.2em}
+Nova tablica tako ne nastaje pokretanjem aplikacije nego migracijom, jednako kao i prva tablica u projektu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=12]{Upis i granica transakcije}
+\begin{lstlisting}[language=python]
+# app/repositories/lifter_repo.py
 async def create(db: AsyncSession, lifter: Lifter) -> Lifter:
     db.add(lifter)
     await db.flush()
     return lifter
 
-async def delete(db: AsyncSession, lifter: Lifter) -> None:
-    await db.delete(lifter)
-
-async def get_by_club(
-    db: AsyncSession, club_id: int
-) -> list[Lifter]:
-    result = await db.execute(
-        select(Lifter).where(Lifter.club_id == club_id)
-    )
-    return list(result.scalars().all())
+# app/core/deps.py
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 \end{lstlisting}
+
+\vspace{0.2em}
+\texttt{db.add} najavljuje zapis sesiji, \texttt{db.flush} šalje naredbu upisa bazi, pa zapis dobiva oznaku i vidljiv je daljnjim upitima. \texttt{commit} ga čini trajnim i izvodi se tek kad cijela obrada prođe bez iznimke.
+
+\vspace{0.2em}
+Odatle pravilo koje vrijedi kroz cijeli projekt: \textbf{jedan zahtjev je jedna transakcija}. Da repozitorij sam radi \texttt{commit}, niz od dvaju upisa ne bi bio jedna cjelina, pa bi nakon pogreške dio zapisa ostao upisan.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{flush vs commit}
+\begin{frame}[shrink=10]{Sažetak}
 \begin{itemize}
-  \item \texttt{flush()} - šalje SQL u bazu, ali \textbf{ne committa} transakciju
-  \begin{itemize}
-    \item dodjeljuje \texttt{id} objektu
-    \item aktivira constraint-e (IntegrityError se pojavi ovdje)
-  \end{itemize}
-  \item \texttt{commit()} - potvrđuje transakciju
-  \begin{itemize}
-    \item radi \texttt{get\_db()} dependency automatski na kraju requesta
-  \end{itemize}
-\end{itemize}
-
-\vspace{0.6em}
-U repositoryju radimo \texttt{flush()}, commit ostavljamo dependencyju.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Zamka async ORM-a: lazy loading ne radi}
-\begin{lstlisting}[language=python]
-lifter = await repo.get_by_id(db, 1)
-print(lifter.club.name)
-# sqlalchemy.exc.MissingGreenlet: greenlet_spawn
-# has not been called; can't call await_only() here
-\end{lstlisting}
-
-\vspace{0.4em}
-U sinkronom SQLAlchemyju pristup \texttt{lifter.club} tiho okine novi SELECT - to je \textbf{lazy loading}. U async svijetu implicitni I/O nije dopušten, pa isti pristup baca \texttt{MissingGreenlet}.
-
-\vspace{0.4em}
-Posljedica: svaku relaciju kojoj pristupate morate \textbf{eksplicitno učitati} u upitu. Ovo je najčešća greška u async SQLAlchemy projektima - pogodit će vas čim Response schema dobije ugniježđeni objekt ili service pročita \texttt{lifter.club.name}.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Rješenje: eager loading}
-\begin{lstlisting}[language=python]
-from sqlalchemy.orm import selectinload, joinedload
-
-# kolekcija (1:N): selectinload - drugi SELECT ... IN
-result = await db.execute(
-    select(Club)
-    .options(selectinload(Club.lifters))
-    .where(Club.id == club_id)
-)
-
-# jedan objekt (N:1): joinedload - JOIN u istom upitu
-result = await db.execute(
-    select(Lifter)
-    .options(joinedload(Lifter.club))
-    .where(Lifter.id == lifter_id)
-)
-\end{lstlisting}
-
-\vspace{0.4em}
-Eager loading rješava i \textbf{N+1 problem}: petlja koja za 50 liftera čita \texttt{lifter.club} radi 51 upit. Sa \texttt{selectinload} sve stane u dva upita, s \texttt{joinedload} u jedan.
-
-\vspace{0.4em}
-Pravilo za projekt: repository metoda koja vraća objekt čije relacije netko dalje čita mora ih učitati kroz \texttt{options()}.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile, shrink=5]{Service: CRUD s ownership provjerom}
-\begin{lstlisting}[language=python]
-async def create_lifter(
-    db: AsyncSession, club_id: int,
-    body: LifterCreate, current_user: User,
-) -> Lifter:
-    if current_user.role == "club":
-        if current_user.club_id != club_id:
-            raise AppError("forbidden", "Pristup odbijen", 403)
-
-    lifter = Lifter(
-        first_name=body.first_name,
-        last_name=body.last_name,
-        birth_date=body.birth_date,
-        gender=body.gender,
-        club_id=club_id,
-    )
-    return await lifter_repo.create(db, lifter)
-\end{lstlisting}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile, shrink=5]{Router: kompletni CRUD}
-\begin{lstlisting}[language=python]
-@router.post("/", status_code=201, response_model=LifterResponse)
-async def create_lifter(
-    club_id: int,
-    body: LifterCreate,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role("admin", "club")),
-):
-    return await lifter_service.create_lifter(db, club_id, body, user)
-
-@router.get("/{lifter_id}", response_model=LifterResponse)
-async def get_lifter(
-    club_id: int,
-    lifter_id: int,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    return await lifter_service.get_lifter(db, club_id, lifter_id, user)
-
-@router.delete("/{lifter_id}", status_code=204)
-async def delete_lifter(
-    club_id: int,
-    lifter_id: int,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role("admin", "club")),
-):
-    await lifter_service.delete_lifter(db, club_id, lifter_id, user)
-\end{lstlisting}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Validacija: što Pydantic radi automatski}
-\begin{itemize}
-  \item Tipovi: \texttt{str}, \texttt{int}, \texttt{date} - ako ne paše, 422
-  \item Constraints: \texttt{min\_length}, \texttt{max\_length}, \texttt{pattern}
-  \item Required vs optional polja
-  \item Nested modeli
-\end{itemize}
-
-\vspace{0.6em}
-Pydantic 422 response uključuje \texttt{detail} s opisom svakog polja koje ne prolazi validaciju.
-Frontend može prikazati greške po polju.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Pydantic: custom validator}
-\begin{lstlisting}[language=python]
-from pydantic import field_validator
-
-class CompetitionCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    date: date
-    prelim_deadline: datetime
-    final_deadline: datetime
-
-    @field_validator("final_deadline")
-    @classmethod
-    def final_after_prelim(cls, v, info):
-        prelim = info.data.get("prelim_deadline")
-        if prelim and v <= prelim:
-            raise ValueError(
-                "final_deadline mora biti nakon prelim_deadline"
-            )
-        return v
-\end{lstlisting}
-
-\vspace{0.4em}
-Validator se poziva pri kreiranju scheme. Ako ne prođe - 422 s porukom.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Schema: \texttt{RegistrationCreate} s kategorijama}
-\begin{lstlisting}[language=python]
-MALE_CATEGORIES = ["59", "66", "74", "83", "93", "105", "120", "120+"]
-FEMALE_CATEGORIES = ["47", "52", "57", "63", "69", "76", "84", "84+"]
-
-class RegistrationCreate(BaseModel):
-    lifter_id: int
-    category: str
-
-    @field_validator("category")
-    @classmethod
-    def valid_category(cls, v):
-        all_cats = MALE_CATEGORIES + FEMALE_CATEGORIES
-        if v not in all_cats:
-            raise ValueError(f"Invalid category: {v}")
-        return v
-\end{lstlisting}
-
-\vspace{0.4em}
-Kategorije prate IPF standarde. Cross-validaciju (spol natjecatelja vs kategorija) radimo u \textbf{service sloju}, ne u schemi.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Hvatanje IntegrityError}
-Kad baza odbije operaciju (unique, foreign key), SQLAlchemy baca \texttt{IntegrityError}.
-
-\vspace{0.6em}
-\begin{tabular}{@{}llp{6cm}@{}}
-  \toprule
-  \textbf{Constraint} & \textbf{Status} & \textbf{Poruka} \\
-  \midrule
-  Unique & 409 & \enquote{Natjecatelj je vec prijavljen na ovo natjecanje} \\
-  Foreign key & 400 & \enquote{Klub ne postoji} \\
-  NOT NULL & 422 & obično uhvati Pydantic prije baze \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Service hvata \texttt{IntegrityError} i pretvara u \texttt{AppError} s razumljivom porukom.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Paginacija: limit + offset}
-\begin{lstlisting}[language=python]
-@router.get("/", response_model=list[LifterResponse])
-async def list_lifters(
-    club_id: int,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-    limit: int = Query(default=20, le=100),
-    offset: int = Query(default=0, ge=0),
-):
-    return await lifter_service.list_lifters(
-        db, club_id, user, limit=limit, offset=offset
-    )
-\end{lstlisting}
-
-\vspace{0.4em}
-\begin{lstlisting}[language=python]
-# u repositoryju
-stmt = select(Lifter).limit(limit).offset(offset)
-\end{lstlisting}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Paginacija: limit/offset vs cursor}
-\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
-  \toprule
-  & \textbf{Limit/offset} & \textbf{Cursor} \\
-  \midrule
-  Implementacija & jednostavna & složenija \\
-  Kad se podaci mijenjaju & može preskočiti/duplikat & stabilan \\
-  Kad koristiti & mali skupovi, admin UI & feed, veliki skupovi \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Za naš projekt limit/offset je sasvim dovoljan.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Filtriranje: query parametri}
-Primjer: \texttt{GET /clubs/3/lifters?gender=M}
-
-\vspace{0.6em}
-\begin{itemize}
-  \item \texttt{club\_id} dolazi iz URL patha (nested URL)
-  \item Dodatni filteri (\texttt{gender}) su query parametri - opcionalni
-  \item Repository gradi \texttt{WHERE} klauzulu dinamički
-  \item Ne treba posebni search engine - SQLAlchemy je dovoljan za ovo
+  \item Resurs je vrsta zapisa objavljena pod vlastitom adresom; preslikavanje iz tablice ne mora biti jedan na jedan.
+  \item Nad svakim se resursom ponavljaju iste četiri operacije; stvaranje vraća zapis jer oznaku dodjeljuje baza, brisanje ne vraća ništa.
+  \item Ugniježđena adresa nosi pripadnost i ne može se izostaviti; kod samostalne je pripadnost uvjet pretrage i mora se provjeriti kao i svaki drugi.
+  \item Unos, izmjena i odgovor tri su različite sheme, a \texttt{exclude\_unset} razlikuje neposlano polje od poslanog praznog.
+  \item Shema prosuđuje vrijednost samu za sebe; pravilo koje traži uvid u bazu pripada sloju iznad nje.
+  \item Popis se vraća u dijelovima, s gornjom granicom i zadanim redoslijedom; povezani zapisi traže se unaprijed.
+  \item \texttt{flush} šalje upis, \texttt{commit} ga čini trajnim, a izvodi ga ovisnost koja drži sesiju. Jedan zahtjev je jedna transakcija.
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Filtriranje u repositoryju}
-\begin{lstlisting}[language=python]
-async def list_lifters(
-    db: AsyncSession,
-    club_id: int,
-    gender: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> list[Lifter]:
-    stmt = select(Lifter).where(Lifter.club_id == club_id)
-    if gender is not None:
-        stmt = stmt.where(Lifter.gender == gender)
-    stmt = stmt.limit(limit).offset(offset)
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
-\end{lstlisting}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Commitovi za Predavanje 5}
+\begin{frame}{Što slijedi}
 \begin{itemize}
-  \item \texttt{feat(api): add Lifter, Competition, Registration models + migration}
-  \item \texttt{feat(api): add schemas for all entities (create/update/response) with validators}
-  \item \texttt{feat(api): implement lifter CRUD (nested /clubs/\{id\}/lifters) with pagination}
-  \item \texttt{feat(api): implement competition CRUD (admin-write, all-read)}
-  \item \texttt{feat(api): implement registration CRUD (nested /competitions/\{id\}/registrations)}
-  \item \texttt{test(api): add CRUD, validation, constraint, duplicate and ownership tests}
+  \item \textbf{12.11.2026.} Predavanje 6, poslovna pravila: faze natjecanja, rokovi i operacije koje o njima ovise.
+  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
+  \item \textbf{26.11.2026.} Predavanje 7, arhitektura jednostranične aplikacije.
 \end{itemize}
 
-\vspace{0.4em}
-\textbf{Na satu:} prolazimo diffeve. Testiramo u Swaggeru: CRUD, validacija, paginacija, nested URL-ovi.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Mini checklista: što mora raditi do kraja sata}
-\begin{enumerate}
-  \item Novi modeli u bazi (\texttt{alembic upgrade head})
-  \item CRUD endpointi za Lifter, Competition, Registration
-  \item Pydantic validacija vraća 422 za krivi input
-  \item Unique constraint vraća 409 za duplu registraciju
-  \item Paginacija radi na listama
-\end{enumerate}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Što ide sljedeće (Predavanje 6)}
-\begin{itemize}
-  \item Faze natjecanja: OPEN, PRELIM\_PASSED, CLOSED
-  \item Tko smije što u kojoj fazi (nova prijava, odjava, promjena kategorije)
-  \item Soft status: odjava je \texttt{status = "withdrawn"}, ne DELETE
-  \item \texttt{freezegun} za testiranje vremenski ovisne logike
-  \item \textbf{Pred obranu 1} - sve mora raditi
-\end{itemize}
-
-\vspace{0.8em}
-\begin{center}
-\Large Pitanja?
-\end{center}
+\vspace{0.5em}
+Do sljedećega predavanja: dodati natjecatelja svojem klubu, prijaviti ga na natjecanje, pa pozvati popis prijava s \texttt{limit=1} i usporediti odgovor s onim bez parametra.
 \end{frame}
 
 \end{document}

@@ -1,6 +1,0 @@
-\babel@toc {croatian}{}\relax 
-\beamer@sectionintoc {1}{Od zahtjeva do odgovora}{5}{0}{1}
-\beamer@sectionintoc {2}{Ugovor prema klijentu}{20}{0}{2}
-\beamer@sectionintoc {3}{Kostur projekta}{30}{0}{3}
-\beamer@sectionintoc {4}{Dijagnostika i kvaliteta}{38}{0}{4}
-\beamer@sectionintoc {5}{Rad s verzijama koda}{43}{0}{5}

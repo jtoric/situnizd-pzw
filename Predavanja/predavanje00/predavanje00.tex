@@ -2,7 +2,7 @@
 % !TeX root = predavanje00.tex
 \input{../common/preamble.tex}
 
-\title[Predavanje 0: O predmetu]{Razvoj web aplikacija \\ Predavanje 0: O predmetu}
+\title[Predavanje 0: O predmetu]{Programiranje za web \\ Predavanje 0: O predmetu}
 \date{08.10.2026.}
 
 \begin{document}
@@ -91,7 +91,7 @@ Svaka od tih provjera je pravilo koje aplikacija treba provoditi umjesto čovjek
 \textbf{Entiteti}
 \begin{itemize}
   \item \textbf{Klub}: prijavljuje natjecatelje
-  \item \textbf{Korisnik}: prijava u sustav, uloga \texttt{admin} ili \texttt{club}
+  \item \textbf{Korisnik}: račun za prijavu, uloga \texttt{admin} ili \texttt{club}; svaki klub ima jedan
   \item \textbf{Natjecatelj}: pripada točno jednom klubu
   \item \textbf{Natjecanje}: datum održavanja i dva roka
   \item \textbf{Prijava}: veza natjecatelja i natjecanja
@@ -101,7 +101,7 @@ Svaka od tih provjera je pravilo koje aplikacija treba provoditi umjesto čovjek
 \textbf{Pravila nad modelom}
 \begin{itemize}
   \item klub vidi i mijenja samo svoje natjecatelje i svoje prijave
-  \item administrator vidi prijave svih klubova
+  \item organizator vidi prijave svih klubova
   \item isti natjecatelj ne može imati dvije aktivne prijave na istom natjecanju
   \item težinska kategorija bira se iz popisa kategorija saveza IPF
 \end{itemize}
@@ -268,8 +268,8 @@ Sloj se prepoznaje po tome što ga mijenja: promjena adrese dira \codefile{route
 		1  & 08.10. & Arhitektura backenda i kostur projekta \\
 		2  & 15.10. & Modeliranje podataka, ORM i migracije \\
 		3  & 22.10. & Autentikacija i sigurnost (JWT) \\
-		4  & 29.10. & Autorizacija, uloge i vlasništvo nad zapisom \\
-		5  & 05.11. & Oblikovanje API-ja, validacija i CRUD domene \\
+		4  & 29.10. & Autorizacija i vlasništvo nad zapisom \\
+		5  & 05.11. & Oblikovanje API-ja i CRUD domene \\
 		6  & 12.11. & Poslovna pravila i faze u backendu \\
 		   & 19.11. & \textbf{Obrana prvog dijela projekta} \\
 		7  & 26.11. & Arhitektura jednostranične aplikacije (Vue) \\

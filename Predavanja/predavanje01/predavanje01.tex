@@ -2,7 +2,7 @@
 % !TeX root = predavanje01.tex
 \input{../common/preamble.tex}
 
-\title[Predavanje 1: Arhitektura backenda]{Razvoj web aplikacija \\ Predavanje 1: Arhitektura backenda i kostur projekta}
+\title[Predavanje 1: Arhitektura backenda]{Programiranje za web \\ Predavanje 1: Arhitektura backenda i kostur projekta}
 \date{08.10.2026.}
 
 \begin{document}
@@ -171,14 +171,18 @@ Tu rutu ne poziva korisnik nego nadzorni alat: Docker je zove pri provjeri stanj
 
 class RegistrationCreate(BaseModel):
     lifter_id: int
-    weight_class: Literal[59, 66, 74, 83, 93, 105, 120]
+    category: str
+    total: int = Field(ge=0)
 \end{lstlisting}
 
 \vspace{0.4em}
 Shema opisuje što ruta prima. Zahtjev koji joj ne odgovara ne dolazi do funkcije: framework ga odbija i u odgovoru imenuje polje koje nije prošlo.
 
 \vspace{0.3em}
-Ograničenje stoji u tipu polja, pa provjera ne postoji kao zaseban redak koda koji se može zaboraviti. U našem primjeru tip nabraja dopuštene težinske kategorije.
+Ograničenje stoji u samoj deklaraciji polja, pa provjera ne postoji kao zaseban redak koda koji se može zaboraviti: \texttt{lifter\_id} mora biti cijeli broj, a \texttt{total} ne smije biti negativan.
+
+\vspace{0.3em}
+Pravilo koje se deklaracijom ne da izraziti, primjerice popis dopuštenih težinskih kategorija, traži izričitu provjeru.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -269,7 +273,6 @@ def insert(competition_id, data):
         **data.model_dump(),
     )
     session.add(row)
-    session.commit()
     return row
 \end{lstlisting}
 
@@ -287,7 +290,7 @@ Upit nad bazom mogao bi stajati i u funkciji s pravilima. Odvojen, donosi dvoje:
 \end{itemize}
 
 \vspace{0.4em}
-Isti sloj drži i granice transakcije: niz upisa koji mora proći u cijelosti ili nikako ovdje je jedna cjelina. Da je razasut po pravilima, dio bi zapisa mogao ostati upisan nakon pogreške.
+Isti sloj drži i transakciju: niz upisa koji mora proći u cijelosti ili nikako ovdje je jedna cjelina. Da je razasut po pravilima, dio bi zapisa mogao ostati upisan nakon pogreške.
 \end{frame}
 
 % ------------------------------------------------------------

@@ -82,9 +82,10 @@
 \arrayrulecolor{lineclr}
 
 % ---------- Kolegij, autori i logo ----------
-\newcommand{\kolegij}{Razvoj web aplikacija}
+\newcommand{\kolegij}{Programiranje za web}
 \author{doc.\,dr.\,sc. Tomislav Petković \and mag.\,ing. Josip Torić}
-\titlegraphic{\includegraphics[height=2.1cm]{../common/SIT_logo_tekst1.pdf}}
+\newcommand{\znak}[2]{\raisebox{-0.5\height}{\includegraphics[height=#1]{#2}}}
+\titlegraphic{\znak{2.1cm}{../common/SIT_logo_tekst1.pdf}\hspace{1.8em}\znak{1.8cm}{../common/UNIZD_logo.pdf}}
 
 % ---------- Zaglavlje ----------
 % Jedna puna traka: lijevo sekcija, desno podsekcija.

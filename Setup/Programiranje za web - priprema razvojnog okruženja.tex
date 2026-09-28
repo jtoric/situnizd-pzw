@@ -1,0 +1,303 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage[croatian]{babel}
+\usepackage[a4paper,margin=2.2cm,top=2.4cm,bottom=2.4cm]{geometry}
+\usepackage{xcolor}
+\usepackage{array,tabularx,booktabs,colortbl}
+\usepackage{enumitem}
+\usepackage{fancyvrb}
+\usepackage[most]{tcolorbox}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{soul}
+\usepackage{needspace}
+\usepackage[hidelinks]{hyperref}
+
+\setmainfont{IBMPlexSans}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setsansfont{IBMPlexSans}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setmonofont{IBMPlexMono}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic, Scale=0.9]
+
+\definecolor{ink}{HTML}{0C4685}
+\definecolor{ink2}{HTML}{6E7BAA}
+\definecolor{tint}{HTML}{EAEEF6}
+\definecolor{tekst}{HTML}{1A222E}
+\definecolor{muted}{HTML}{6B7484}
+\definecolor{pozadina}{HTML}{F6F7F9}
+\definecolor{linije}{HTML}{D9DEE7}
+
+\color{tekst}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\linespread{1.12}
+\hypersetup{colorlinks=true,urlcolor=ink,linkcolor=ink}
+\sethlcolor{tint}
+
+\titleformat{\section}{\Large\bfseries\color{ink}}{}{0pt}{}
+\titleformat{\subsection}{\large\bfseries\color{ink}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.4em}
+\titlespacing*{\subsection}{0pt}{1.1em}{0.3em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyhead[L]{\footnotesize\color{muted}Programiranje za web - priprema razvojnog okruženja}
+\fancyfoot[R]{\footnotesize\color{muted}Stranica \thepage\ od \pageref*{LastPage}}
+
+\newcommand{\code}[1]{{\ttfamily\small #1}}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\renewcommand{\arraystretch}{1.35}
+
+\newenvironment{kod}
+  {\VerbatimEnvironment
+   \begin{tcolorbox}[colback=pozadina,colframe=linije,boxrule=0.4pt,arc=2pt,
+     left=6pt,right=6pt,top=3pt,bottom=3pt]
+   \begin{Verbatim}[fontsize=\small]}
+  {\end{Verbatim}\end{tcolorbox}}
+
+\newenvironment{ispis}
+  {\VerbatimEnvironment
+   \begin{tcolorbox}[colback=pozadina,colframe=linije,boxrule=0.4pt,arc=2pt,
+     left=6pt,right=6pt,top=3pt,bottom=3pt]
+   \begin{Verbatim}[fontsize=\footnotesize]}
+  {\end{Verbatim}\end{tcolorbox}}
+
+\newcommand{\zaglavlje}{\rowcolor{tint}}
+
+\begin{document}
+
+{\raggedright\hyphenpenalty=10000\color{ink}\fontsize{22}{26}\selectfont\bfseries Programiranje za web - priprema razvojnog okruženja\par}
+\vspace{0.3em}
+{\color{muted}28. rujna 2026. \textperiodcentered{} Josip Torić\par}
+\vspace{0.4em}
+
+\section{Uvod}
+
+Do prvog predavanja \textbf{8.\ listopada 2026.} na svom računalu instalirajte sve alate
+s popisa i pokrenite radni primjer iz mape \code{pzw-provjera}. Ako svaka naredba ispiše
+ono što je navedeno, okruženje je spremno za cijeli kolegij.
+
+Ako nešto ne radi, pogledajte odjeljak \hyperref[sec:problemi]{\emph{Česti problemi}} na kraju
+uputa. Ako to ne pomogne, javite se asistentu Josipu Toriću
+(\href{mailto:jtoric@unizd.hr}{jtoric@unizd.hr}) \ul{prije prvog predavanja} kako bismo
+osigurali neometan početak nastave.
+
+\section{Popis softvera}
+
+Instalirajte šest alata i ekstenzije iz tablice, svaki prema službenim uputama za svoj
+operacijski sustav. Nakon svake instalacije zatvorite i ponovno otvorite terminal, odnosno
+cijeli VS Code, da se osvježi PATH.
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{2.6cm}P{2.6cm}LP{4.2cm}}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Alat} & \textbf{Verzija} & \textbf{Za što služi} & \textbf{Upute za instalaciju}\\
+\midrule
+Git & najnovija & verzioniranje koda i predaja projekta & \href{https://git-scm.com/downloads}{git-scm.com/downloads}\\
+Python & 3.11 ili novija, preporuka 3.13 & backend u FastAPI-ju & \href{https://www.python.org/downloads/}{python.org/downloads}\\
+uv & najnovija & virtualna okruženja i paketi & \href{https://docs.astral.sh/uv/getting-started/installation/}{docs.astral.sh/uv}\\
+Docker Desktop & najnovija & PostgreSQL baza u kontejneru, uključuje Docker Compose & \href{https://docs.docker.com/desktop/}{docs.docker.com/desktop}\\
+Node.js & 24 LTS, minimalno 22.18 & frontend: Vue, Vite i TypeScript & \href{https://nodejs.org/en/download}{nodejs.org/download}\\
+VS Code & najnovija & editor & \href{https://code.visualstudio.com/download}{code.visualstudio.com}\\
+Ekstenzije za VS Code & najnovije & Python (Microsoft), Vue - Official, SQLTools + PostgreSQL driver & Extensions panel u VS Code-u, prečac Ctrl+Shift+X\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Napomene:
+\begin{itemize}[leftmargin=1.2em,itemsep=0.2em,topsep=0pt]
+  \item \textbf{Windows:} u Python installeru označite \emph{Add python.exe to PATH}.
+        Docker Desktop traži WSL~2. Installer ga obično nudi sam, a ako ne, slijedite
+        \href{https://learn.microsoft.com/windows/wsl/install}{upute za WSL}.
+  \item \textbf{macOS:} sve osim Docker Desktopa možete instalirati kroz Homebrew:
+        \code{brew install git python uv node}.
+  \item \textbf{Linux:} umjesto Docker Desktopa dovoljni su
+        \href{https://docs.docker.com/engine/install/}{Docker Engine i Compose plugin}.
+        Korisnika dodajte u grupu \code{docker}.
+\end{itemize}
+
+Nakon instalacije Gita jednom postavite ime i e-mail. Koristite isti e-mail kao na GitHubu:
+
+\begin{kod}
+git config --global user.name "Ime Prezime"
+git config --global user.email "vas.email@example.com"
+\end{kod}
+
+\subsection{Provjera verzija}
+
+U bilo kojem terminalu:
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{8cm}L}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Naredba} & \textbf{Očekivani ispis}\\
+\midrule
+\code{git --version} & \code{git version 2.x}\\
+\code{python --version}, na macOS-u i Linuxu \code{python3 --version} & \code{Python 3.11} ili novija\\
+\code{uv --version} & \code{uv 0.x.y}\\
+\code{docker --version} & \code{Docker version 2x.y.z}\\
+\code{docker compose version} & \code{Docker Compose version v2.x} ili novija\\
+\code{node --version} & \code{v24.x} ili \code{v22.18} i novija\\
+\code{npm --version} & \code{10.x} ili novija\\
+\code{code --version} & broj verzije VS Code-a\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Brojevi verzija smiju biti i veći od navedenih.
+
+\section{Radni primjer}
+
+Radni primjer se nalazi u mapi \code{pzw-provjera} i sadrži iste slojeve koje ćemo
+graditi kroz semestar:
+
+\begin{kod}
+pzw-provjera/
+  docker-compose.yml    # PostgreSQL baza u Dockeru
+  api/                  # FastAPI backend koji čita iz baze
+  web/                  # Vue + TypeScript frontend
+\end{kod}
+
+Mapu otvorite u VS Code-u (\emph{File → Open Folder}), a naredbe pokrećite u njegovu
+terminalu (\emph{Terminal → New Terminal}).
+
+\subsection{1. Baza}
+
+Pokrenite Docker Desktop i pričekajte da u izborniku piše \emph{Engine running}.
+U mapi \code{pzw-provjera}:
+
+\begin{kod}
+docker compose up -d db
+docker compose ps
+\end{kod}
+
+\needspace{6\baselineskip}
+Prvo pokretanje preuzima \emph{image} od oko 150 MB pa traje minutu-dvije. Očekivani ispis
+druge naredbe je red s \code{db} u kojem piše \code{Up} i \code{0.0.0.0:5432->5432/tcp},
+na primjer:
+
+\begin{SaveVerbatim}{psispis}
+NAME                IMAGE         COMMAND                  SERVICE   CREATED         STATUS         PORTS
+pzw-provjera-db-1   postgres:17   "docker-entrypoint.s…"   db        7 seconds ago   Up 6 seconds   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+\end{SaveVerbatim}
+\begin{tcolorbox}[colback=pozadina,colframe=linije,boxrule=0.4pt,arc=2pt,
+  left=6pt,right=6pt,top=3pt,bottom=3pt]
+\resizebox{\linewidth}{!}{\BUseVerbatim{psispis}}
+\end{tcolorbox}
+
+\subsection{2. Backend}
+
+\begin{kod}
+cd api
+uv venv
+
+# aktivacija - Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+# aktivacija - macOS / Linux
+source .venv/bin/activate
+
+uv pip install -r requirements.txt
+uvicorn main:app --reload
+\end{kod}
+
+Nakon zadnje naredbe očekivani ispis je:
+
+\begin{ispis}
+INFO:     Will watch for changes in these directories: ['...\\pzw-provjera\\api']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [9296] using WatchFiles
+INFO:     Started server process [16616]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+\end{ispis}
+
+Brojevi procesa u uglatim zagradama razlikovat će se kod vas. U pregledniku otvorite:
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{6cm}L}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Adresa} & \textbf{Očekivani ispis}\\
+\midrule
+\url{http://127.0.0.1:8000/health} & \code{\{"status":"ok","database":"PostgreSQL 17..."\}}\\
+\url{http://127.0.0.1:8000/docs} & Swagger UI s endpointom \code{GET /health}\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Server ostavite da radi, a za sljedeći korak otvorite novi terminal gumbom \textbf{+}
+u panelu terminala.
+
+\subsection{3. Frontend}
+
+Iz mape \code{pzw-provjera}:
+
+\begin{kod}
+cd web
+npm install
+npm run type-check
+npm run dev
+\end{kod}
+
+\code{npm run type-check} ne smije ispisati nijednu grešku. Nakon \code{npm run dev}
+u pregledniku otvorite\\\url{http://localhost:5173}. Očekivani ispis je Vue stranica s naslovom
+\textbf{You did it!}
+
+\subsection{Završetak}
+
+Po uspješnoj provjeri okruženja zaustavite oba servera s Ctrl+C u njihovim terminalima
+i ugasite bazu naredbom \code{docker compose down} u mapi \code{pzw-provjera}. Na predavanjima ćemo krenuti
+graditi projekt iznova.
+
+\needspace{12\baselineskip}
+\section{Česti problemi}\label{sec:problemi}
+
+Prije svega zatvorite i ponovno otvorite terminal, odnosno cijeli VS Code. Ako to ne
+pomogne, ponovno pokrenite računalo.
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{4.6cm}P{3.6cm}L}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Simptom} & \textbf{Uzrok} & \textbf{Rješenje}\\
+\midrule
+\code{python} nije prepoznat ili otvara Microsoft Store na Windowsima & Python nije u PATH-u &
+  Ponovno pokrenite installer i označite \emph{Add python.exe to PATH}; u \emph{Settings →
+  Apps → Advanced app settings → App execution aliases} isključite aliase za \code{python.exe}\\
+\code{Activate.ps1 cannot be loaded because running scripts is disabled} & PowerShell blokira skripte &
+  Jednom pokrenite \code{Set-ExecutionPolicy -Scope CurrentUser RemoteSigned}\\
+\code{uvicorn} nije prepoznat & Virtualno okruženje nije aktivirano &
+  Aktivirajte ga; ispred prompta mora pisati \code{(api)} ili \code{(.venv)}. Alternativa
+  bez aktivacije: \code{uv run uvicorn main:app --reload}\\
+\code{failed to connect to the docker API} ili \code{Cannot connect to the Docker daemon} &
+  Docker Desktop nije pokrenut & Pokrenite ga i pričekajte \emph{Engine running}\\
+\code{WSL 2 installation is incomplete} ili greška o virtualizaciji &
+  Nedostaje WSL~2 ili je virtualizacija isključena &
+  U PowerShellu kao administrator pokrenite \code{wsl --install}; ako ne pomogne, uključite
+  virtualizaciju VT-x ili AMD-V u BIOS-u\\
+\code{Bind for 0.0.0.0:5432 failed: port is already allocated} &
+  Port 5432 drži lokalni PostgreSQL ili drugi kontejner &
+  \code{docker ps} pokaže kontejner koji treba zaustaviti; inače u \code{docker-compose.yml}
+  stavite \code{"5433:5432"}, a u \code{api/main.py} \code{localhost:5433}\\
+\code{/health} vraća 500, u terminalu \code{ConnectionRefusedError} &
+  Baza nije pokrenuta ili se još diže &
+  \code{docker compose ps}; pričekajte nekoliko sekundi i osvježite\\
+\code{npm} ili \code{node} nije prepoznat &
+  Node.js nije instaliran ili je VS Code otvoren prije instalacije &
+  Instalirajte Node.js, pa potpuno zatvorite i ponovno otvorite VS Code; terminal
+  u VS Code-u vidi novi PATH tek nakon toga\\
+\code{npm install} javlja \code{Unsupported engine} & Prestara verzija Node.js-a &
+  Instalirajte Node.js 24 LTS\\
+\code{code} nije prepoznat na macOS-u & VS Code nije dodan u PATH &
+  U VS Code-u: Command Palette → \emph{Shell Command: Install 'code' command in PATH}\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{document}
