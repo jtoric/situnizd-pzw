@@ -219,7 +219,7 @@ Vue 3, Vite i TypeScript \;|\; Vue Router (rute) \;|\; Pinia (stanje) \;|\; Axio
 \end{block}
 
 \begin{block}{Alati i okolina}
-Docker Compose (baza) \;|\; Git i GitHub Actions (CI) \;|\; uv (Python okolina) \;|\; pytest (testovi) \;|\; ruff (statička analiza) \;|\; Railway ili Render (produkcija)
+Docker Compose (baza) \;|\; Git i GitHub Actions (CI) \;|\; pytest (testovi) \;|\; ruff (statička analiza) \;|\; Railway ili Render (postavljanje u rad)
 \end{block}
 
 \vspace{0.2em}
@@ -297,7 +297,7 @@ Tijekom semestra svaki student izrađuje vlastitu aplikaciju, po uzoru na refere
 \end{itemize}
 
 \vspace{0.4em}
-Predaja je u dva dijela, svaki nosi 45 bodova: prvi obuhvaća backend, drugi cjelovitu aplikaciju postavljenu u produkciju. Studenti koji ne predaju tijekom nastave predaju u ispitnim rokovima u veljači.
+Predaja je u dva dijela, svaki nosi 40 bodova: prvi obuhvaća backend, drugi cjelovitu aplikaciju postavljenu u rad. Studenti koji ne predaju tijekom nastave predaju u ispitnim rokovima u veljači.
 \end{frame}
 
 % ------------------------------
@@ -322,26 +322,23 @@ Tema mora sadržavati uloge i pravila. Aplikacija koja zapise samo unosi i prika
   \toprule
   \textbf{Komponenta} & \textbf{Bodovi} \\
   \midrule
-  Prvi dio projekta (backend) & 45 \\
-  Drugi dio projekta (cjelovita aplikacija i produkcija) & 45 \\
-  Dolasci na predavanja & 10 \\
+  Prvi dio projekta (backend) & 40 \\
+  Drugi dio projekta (cjelovita aplikacija postavljena u rad) & 40 \\
+  Usmeni ispit & 20 \\
   \midrule
   \textbf{Ukupno} & \textbf{100} \\
   \bottomrule
 \end{tabular}
 
 \vspace{0.6em}
-Dolazak na predavanje nosi 1 bod. Predavanja ima 12, a priznaje se najviše 10 bodova, pa se dva termina mogu propustiti bez gubitka bodova.
-
-\vspace{0.3em}
-Dolazak nije uvjet za izlazak na obranu, ali projekt sam nosi najviše 90 bodova.
+Prema pravilniku studija, za uspješno polaganje kolegija nužno je prisustvovati 80\% predavanja.
 \end{frame}
 
 % ------------------------------
 \begin{frame}{Obrana projekta}
 Obrana se sastoji od prikaza rada aplikacije, pregleda repozitorija i objašnjenja dijelova koda koje odabere nastavnik. Moguća je i manja izmjena uživo: dodavanje polja, migracija te prilagodba modela i sučelja.
 
-\begin{block}{Pitanja koja se postavljaju}
+\begin{block}{Primjer pitanja na obrani projekta}
 \begin{itemize}
   \item Na kojem se mjestu provjerava vlasništvo nad zapisom?
   \item Kako backend odbija izmjenu nakon isteka roka?
@@ -378,7 +375,7 @@ Kod koji student ne može objasniti ne donosi bodove.
   \item Git
   \item Python 3.11 ili noviji
   \item Docker Desktop s alatom Docker Compose, za pokretanje baze
-  \item Node.js 22 ili noviji
+  \item Node.js 18 ili noviji
   \item uređivač koda po izboru; na predavanjima se koristi VS Code
 \end{itemize}
 
@@ -389,23 +386,29 @@ Okolina se postavlja prije prvoga predavanja s kodom. Instalacija tijekom nastav
 % ------------------------------
 \begin{frame}[fragile,shrink=5]{Pokretanje projekta}
 \begin{lstlisting}[language=bash]
-# 1) Database (PostgreSQL in a container)
+# 1) Environment variables
+cp .env.example .env         # PowerShell: Copy-Item .env.example .env
+
+# 2) Database (PostgreSQL in a container)
 docker compose up -d db
 
-# 2) Backend
+# 3) Backend
 cd api
-uv venv
-source .venv/bin/activate
-uv pip install -r requirements.txt
-alembic upgrade head        # apply migrations
-python -m app.seed          # seed data
+python -m venv .venv
+source .venv/bin/activate    # PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+alembic upgrade head         # apply migrations
+python -m app.seed           # seed data
 uvicorn app.main:app --reload
 
-# 3) Frontend
+# 4) Frontend
 cd ../web
 npm install
 npm run dev
 \end{lstlisting}
+
+\vspace{0.3em}
+\codefile{.env.example} je u repozitoriju i služi kao popis varijabli; \codefile{.env} s vlastitim vrijednostima ostaje na računalu i ne ulazi u repozitorij. Nakon pokretanja backend odgovara na \texttt{/health}, a opis sučelja stoji na \texttt{/docs}.
 \end{frame}
 
 % ------------------------------

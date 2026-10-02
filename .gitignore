@@ -10,6 +10,9 @@
 *.fdb_latexmk
 *.synctex.gz
 
+# Arhive (paketi za studente se pakiraju po potrebi, ne commitaju se)
+*.zip
+
 # OS
 .DS_Store
 Thumbs.db

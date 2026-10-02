@@ -91,7 +91,7 @@ Iz te razlike slijedi i mjesto provjere: uloga se može provjeriti prije nego bu
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=8]{Modeli autorizacije}
+\begin{frame}{Modeli autorizacije}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{8pt}
@@ -148,7 +148,7 @@ Ovdje se uloga čita iz baze, jer \texttt{get\_current\_user} zapis o korisniku 
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Kako provjeravamo ulogu}
+\begin{frame}[fragile]{Kako provjeravamo ulogu}
 \begin{lstlisting}[language=python]
 # app/core/deps.py
 def require_role(*allowed_roles: str):
@@ -207,7 +207,7 @@ Vlasništvo je time poslovno pravilo, a ne svojstvo HTTP zahtjeva, pa stoji u sl
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Provjera u servisu}
+\begin{frame}[fragile]{Provjera u servisu}
 \begin{lstlisting}[language=python]
 # app/services/club_service.py
 async def _get_or_404(db, club_id: int) -> Club:
@@ -228,7 +228,7 @@ Redoslijed nije slučajan: prvo se utvrdi postoji li zapis, pa tek onda smije li
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Sužavanje popisa}
+\begin{frame}[fragile]{Sužavanje popisa}
 Zahtjev za popisom ne imenuje nijedan zapis, pa nema zapisa za koji bi se moglo reći da je tuđi. Umjesto odbijanja, odgovor se sužava:
 
 \begin{lstlisting}[language=python]
@@ -248,7 +248,7 @@ To je i razlog zašto popis nikada ne smije dohvatiti sve pa filtrirati u odgovo
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Izmjena oznake u adresi}
+\begin{frame}[fragile]{Izmjena oznake u adresi}
 Klub 12 otvori popis svojih natjecatelja. Preglednik pošalje:
 
 \begin{lstlisting}

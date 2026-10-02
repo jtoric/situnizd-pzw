@@ -52,7 +52,7 @@ Natjecatelji, natjecanja i prijave dolaze poslije. Prvo se postavlja temelj na k
 \sekcija{Baze podataka}{Pohrana izvan aplikacije, vrste baza, struktura relacijske baze, povezivanje zapisa i ključevi.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Pohrana izvan aplikacije}
+\begin{frame}[fragile]{Pohrana izvan aplikacije}
 Ruta iz prethodnog predavanja vraćala je popis zapisan u kodu:
 
 \begin{lstlisting}[language=python]
@@ -311,7 +311,7 @@ Uvjet se provjerava neovisno o izvoru izmjene: pri upisu iz aplikacije, pri ruč
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=12]{Istodobni zahtjevi i jedinstvenost}
+\begin{frame}{Istodobni zahtjevi i jedinstvenost}
 Uobičajen redoslijed u kodu je: provjeri postoji li već korisnik s tom adresom, pa upiši ako ne postoji. Dva istodobna zahtjeva tada mogu proći oba:
 
 \vspace{0.5em}
@@ -360,9 +360,6 @@ Transakcija je niz operacija koje sustav izvodi kao jednu: ili sve budu potvrđe
 
 \vspace{0.5em}
 Time nepotpun niz izmjena s prethodnog slajda ne može nastati: ili su sva tri retka u bazi, ili nijedan.
-
-\vspace{0.4em}
-U web aplikaciji transakcija u pravilu traje koliko i jedan zahtjev. U ovom projektu otvara je i zatvara ovisnost koja stvara sesiju: potvrđuje promjene ako je ruta vratila odgovor, a poništava ih ako je iz nje izašla iznimka. Slojevi \codefile{services} i \codefile{repositories} rade unutar nje i ne potvrđuju ništa sami, pa se niz upisa koji pripada jednoj operaciji poništava u cjelini.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -399,7 +396,7 @@ Primarni ključ i ograničenje \texttt{UNIQUE} indeks stvaraju sami, jer bez nje
 \sekcija{Objektno-relacijsko preslikavanje}{Uloga ORM-a, modeli, odnos modela i sheme, veza s bazom i sesija.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Uloga ORM-a}
+\begin{frame}[fragile]{Uloga ORM-a}
 Baza prima SQL. Aplikacija radi s objektima. ORM (engl. \emph{object-relational mapping}) preslikava jedno u drugo: klasu u tablicu, primjerak klase u redak, svojstvo u stupac.
 
 \begin{lstlisting}[language=sql]
@@ -418,7 +415,7 @@ Drugi zapis proizvodi prvi. ORM ne uklanja potrebu za poznavanjem SQL-a: kad je 
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Model: \codefile{Club}}
+\begin{frame}[fragile]{Model: \codefile{Club}}
 \begin{lstlisting}[language=python]
 # app/models/club.py
 
@@ -493,7 +490,7 @@ Skup se može ograničiti na tri mjesta, a izbor mjesta određuje i tko je obuhv
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Prvo mjesto: tip stupca u bazi}
+\begin{frame}[fragile]{Prvo mjesto: tip stupca u bazi}
 \begin{lstlisting}[language=python]
 # app/models/user.py
 role: Mapped[str] = mapped_column(
@@ -512,7 +509,7 @@ Vrijednost izvan popisa odbija se bez obzira na to odakle dolazi. Dodavanje tre�
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Drugo mjesto: uvjet nad tablicom}
+\begin{frame}[fragile]{Drugo mjesto: uvjet nad tablicom}
 \begin{lstlisting}[language=python]
 # app/models/user.py
 __table_args__ = (
@@ -531,7 +528,7 @@ Razlika prema prvom mjestu je u obliku, ne u dosegu: \texttt{CHECK} prima proizv
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Treće mjesto: shema na ulazu u aplikaciju}
+\begin{frame}[fragile]{Treće mjesto: shema na ulazu u aplikaciju}
 \begin{lstlisting}[language=python]
 class UserCreate(BaseModel):
     role: Literal["admin", "club"]
@@ -553,7 +550,7 @@ Nijedno mjesto nije propisano. U ovom projektu popis nije zapisan nigdje: stupac
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Veza s bazom i sesija}
+\begin{frame}[fragile]{Veza s bazom i sesija}
 \begin{lstlisting}[language=python]
 # app/core/database.py
 engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
@@ -648,7 +645,7 @@ def downgrade() -> None:
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Naredbe}
+\begin{frame}[fragile]{Naredbe}
 \begin{lstlisting}[language=bash]
 # create a migration from the difference between models and database
 alembic revision --autogenerate -m "init clubs and users"
@@ -685,7 +682,7 @@ Doseg naredbe \texttt{downgrade} pritom je ograničen: brisanje stupca ne može 
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=15]{Čitanje migracije prije pokretanja}
+\begin{frame}[fragile]{Čitanje migracije prije pokretanja}
 Nakon preimenovanja stupca \texttt{email} u \texttt{username}, \texttt{autogenerate} zapisuje ovo:
 
 \begin{lstlisting}[language=python]
@@ -707,7 +704,7 @@ Zato se svaka nastala migracija pročita prije pokretanja. U datoteci je isprava
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Dodavanje indeksa}
+\begin{frame}[fragile]{Dodavanje indeksa}
 Indeks se traži uz stupac u modelu, a u shemu ulazi migracijom:
 
 \begin{lstlisting}[language=python]

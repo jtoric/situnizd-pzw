@@ -53,7 +53,7 @@ Ista se struktura pojavljuje u mnogim sustavima: korisnik vidi dio podataka, a o
 \sekcija{Od zahtjeva do odgovora}{Što putuje mrežom, jednostavan backend, obrada zahtjeva, i sloj po sloj koji je obavlja.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{HTTP zahtjev i odgovor}
+\begin{frame}[fragile]{HTTP zahtjev i odgovor}
 Zahtjev je tekst: metoda, putanja, zaglavlja i, po potrebi, tijelo.
 
 \begin{lstlisting}
@@ -76,7 +76,7 @@ Backend je program koji prima prvi tekst i sastavlja drugi.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Primjer jednostavnog backenda}
+\begin{frame}[fragile]{Primjer jednostavnog backenda}
 \begin{lstlisting}[language=python]
 from fastapi import APIRouter
 
@@ -128,7 +128,7 @@ Slojevi su odgovor na pitanje \textbf{gdje u kodu svaki korak stoji}. Svaki kora
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Sloj ruta: \codefile{routers}}
+\begin{frame}[fragile]{Sloj ruta: \codefile{routers}}
 \begin{lstlisting}[language=python]
 # app/routers/registrations.py
 
@@ -146,7 +146,7 @@ Dobro napisana ruta je minimalna. Iz putanje uzima broj natjecanja, iz tijela za
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Ruta bez sloja ispod sebe}
+\begin{frame}[fragile]{Ruta bez sloja ispod sebe}
 Rute ne moraju pozivati sloj \codefile{services}, na primjer:
 
 \begin{lstlisting}[language=python]
@@ -165,7 +165,7 @@ Tu rutu ne poziva korisnik nego nadzorni alat: Docker je zove pri provjeri stanj
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Sloj shema: \codefile{schemas}}
+\begin{frame}[fragile]{Sloj shema: \codefile{schemas}}
 \begin{lstlisting}[language=python]
 # app/schemas/registration.py
 
@@ -200,7 +200,7 @@ Uz to, provjera se dogodi prije nego funkcija počne raditi, pa poslovna pravila
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=15]{Sloj poslovnih pravila: \codefile{services}}
+\begin{frame}[fragile]{Sloj poslovnih pravila: \codefile{services}}
 \begin{lstlisting}[language=python]
 # app/services/registration.py
 
@@ -220,7 +220,7 @@ def create(competition_id, data, user):
 U ovom sloju stoje odluke o tome smije li se izmjena izvesti. Funkcija prima obične vrijednosti, a ne zahtjev, i ne piše upite nad bazom. Kad pravilo ne prolazi, podiže iznimku i zaustavlja obradu prije nego išta bude upisano.
 \end{frame}
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=15]{Zašto nam treba sloj \codefile{services}}
+\begin{frame}[fragile]{Zašto nam treba sloj \codefile{services}}
 Prijava natjecatelja, izmjena prijave i odjava tri su rute, a sve tri prije izmjene moraju provjeriti je li rok prošao. Bez sloja \codefile{services} iste ili slične provjere moramo napisati u kodu svake od tih ruta:
 
 \begin{lstlisting}[language=python]
@@ -263,7 +263,7 @@ Cijena podjele je veći broj datoteka i jedan poziv više po zahtjevu. Isplati s
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Sloj pristupa bazi: \codefile{repositories}}
+\begin{frame}[fragile]{Sloj pristupa bazi: \codefile{repositories}}
 \begin{lstlisting}[language=python]
 # app/repositories/registration.py
 
@@ -534,7 +534,7 @@ Mi ćemo koristiti podjelu po sloju: u aplikacijama s ulogama, stanjima i rokovi
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Struktura repozitorija}
+\begin{frame}[fragile]{Struktura repozitorija}
 \begin{lstlisting}[language=bash]
 repo/
   api/                 # backend (FastAPI)
@@ -625,7 +625,7 @@ Ovdje se postavke iz prethodnog slajda i upotrebljavaju. Posljednji redak stvara
 \begin{lstlisting}[language=bash]
 services:
   db:
-    image: postgres:17
+    image: postgres:16
     environment:
       POSTGRES_DB: pl_reg
       POSTGRES_USER: pl_user
@@ -644,7 +644,7 @@ Zapis određuje istu inačicu PostgreSQL-a za sve, neovisno o operacijskom susta
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Pokretanje i provjera}
+\begin{frame}[fragile]{Pokretanje i provjera}
 \begin{lstlisting}[language=bash]
 docker compose up -d db      # database
 
@@ -686,7 +686,7 @@ Aplikacija usput zapisuje što je radila. Taj zapisnik (engl. \emph{log}) jedini
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Postavljanje zapisivanja}
+\begin{frame}[fragile]{Postavljanje zapisivanja}
 \begin{lstlisting}[language=python]
 # app/core/logging.py
 import logging
@@ -763,6 +763,42 @@ Kad se pojavi pogreška koje prije nije bilo, pretraga povijesti pokazuje u koje
 \end{frame}
 
 % ------------------------------------------------------------
+\begin{frame}[shrink=10]{Oblik poruke commita}
+Poruke u ovom projektu imaju isti oblik: vrsta promjene, dio sustava u zagradi, pa namjera.
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{9pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lL{6.6cm}@{}}
+  \toprule
+  \textbf{Vrsta} & \textbf{Kad se koristi} \\
+  \midrule
+  \texttt{feat}     & nova mogućnost vidljiva prema van \\
+  \texttt{fix}      & ispravak ponašanja koje je bilo pogrešno \\
+  \texttt{refactor} & promjena koda bez promjene ponašanja \\
+  \texttt{test}     & dodani ili izmijenjeni testovi \\
+  \texttt{docs}     & dokumentacija \\
+  \texttt{chore}    & alati, konfiguracija, zavisnosti \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.5em}
+U zagradi stoji dio sustava, \texttt{api}, \texttt{web} ili \texttt{ci}, a za promjene u korijenu repozitorija zagrada izostaje. Iz same se poruke time vidi koju stranu promjena dira:
+
+\vspace{0.2em}
+\texttt{feat(api): add JWT utilities (create/decode access + refresh tokens)}
+
+\vspace{0.4em}
+\begin{konvencija}[Konvencija: Conventional Commits]
+Ovaj oblik nije dio gita niti ga ijedan standard propisuje. Riječ je o raširenom dogovoru koji olakšava pretragu povijesti i samostalno sastavljanje popisa promjena. Projekt koji odabere drukčiji oblik ništa ne krši, sve dok ga se drži dosljedno.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
 \begin{frame}{Kako čitati razliku}
 \begin{enumerate}
   \item Poruka commita: koji je cilj promjene.
@@ -777,7 +813,7 @@ Redoslijed je namjeran: prva tri koraka kažu mijenja li se ugovor prema klijent
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Korisne naredbe}
+\begin{frame}[fragile]{Korisne naredbe}
 \begin{lstlisting}[language=bash]
 # history, one line per commit
 git log --oneline --decorate

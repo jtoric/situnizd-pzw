@@ -48,7 +48,7 @@ Korisnik ima adresu e-pošte za prijavu, hash lozinke, ulogu i, ako pripada klub
 \sekcija{Identitet u protokolu bez pamćenja}{Zašto zahtjev ne zna tko ga šalje, zaštita prijenosa, autentikacija i autorizacija, sjednica i token.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{HTTP ne pamti pošiljatelja}
+\begin{frame}[fragile]{HTTP ne pamti pošiljatelja}
 Svaki HTTP zahtjev dolazi sam za sebe. Poslužitelj iz njega vidi metodu, putanju, zaglavlja i tijelo, i ništa više:
 
 \begin{lstlisting}
@@ -124,7 +124,7 @@ Razlika je u tome tko čuva podatke o prijavi, a iz nje slijedi sve ostalo.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Sjednica}
+\begin{frame}[fragile]{Sjednica}
 \begin{center}
 \begin{tikzpicture}[
   font=\scriptsize,
@@ -155,7 +155,7 @@ Oznaka je samo ključ prema onome što poslužitelj pamti. Brisanjem zapisa prij
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Token}
+\begin{frame}[fragile]{Token}
 \begin{center}
 \begin{tikzpicture}[
   font=\scriptsize,
@@ -258,7 +258,7 @@ Vrijednost se bira tako da provjera ostane podnošljiva na poslužitelju; ono š
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Provjera lozinke u kodu}
+\begin{frame}[fragile]{Provjera lozinke u kodu}
 \begin{lstlisting}[language=python]
 # app/core/security.py
 import bcrypt
@@ -292,7 +292,7 @@ Zato se duljina lozinke ograničava u shemi na ulazu, ili se prije hashiranja pr
 \sekcija{Implementacija tokena}{Sadržaj i potpis, podatci u tokenu, izdavanje, vijek tokena i dvije vrste.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=15]{Sadržaj tokena}
+\begin{frame}[fragile]{Sadržaj tokena}
 JSON Web Token (JWT, RFC 7519) je niz od triju dijelova:
 
 \begin{lstlisting}
@@ -361,7 +361,7 @@ Sadržaj se zato drži što manjim: ono što je potrebno za odluku, i ništa št
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Izdavanje tokena}
+\begin{frame}[fragile]{Izdavanje tokena}
 Nakon uspješne prijave poslužitelj sastavi sadržaj, doda trenutak isteka i potpiše cjelinu:
 
 \begin{lstlisting}[language=python]
@@ -405,7 +405,7 @@ Jednim tokenom bira se jedno ili drugo. Rješenje je izdati dva, s različitim v
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Access token}
+\begin{frame}[fragile]{Access token}
 Putuje uz svaki zahtjev i nosi sve što je potrebno za odluku o pravima:
 
 \begin{lstlisting}[language=json]
@@ -421,7 +421,7 @@ Istekne li, poslužitelj ga odbija s \texttt{401} i klijent zna da mu treba novi
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Refresh token}
+\begin{frame}[fragile]{Refresh token}
 Šalje se samo na rutu za obnovu i nosi najmanje što je potrebno:
 
 \begin{lstlisting}[language=json]
@@ -582,7 +582,7 @@ Cijena je jedan upit po zahtjevu, po primarnom ključu. Aplikacije kojima je i t
 
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Obnova tokena}
+\begin{frame}[fragile]{Obnova tokena}
 \begin{lstlisting}[language=python]
 # app/services/auth_service.py
 async def refresh_tokens(db, refresh_token: str) -> tuple[str, str]:
