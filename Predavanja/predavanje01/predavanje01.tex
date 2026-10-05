@@ -12,7 +12,7 @@
 % ------------------------------------------------------------
 \begin{frame}{Plan predavanja}
 \begin{enumerate}
-  \item Od zahtjeva do odgovora: što backend radi i kako se dijeli u slojeve
+  \item Od zahtjeva do odgovora: što \emph{backend} radi i kako se dijeli u slojeve
   \item Ugovor prema klijentu: rute, statusni kodovi, sheme
   \item Kostur projekta: struktura, konfiguracija, pokretanje
   \item Dijagnostika i kvaliteta: zapisnik, pogreške, statička analiza
@@ -90,7 +90,7 @@ def list_competitions():
 \end{lstlisting}
 
 \vspace{0.4em}
-Framework (ovdje FastAPI) povezuje par metode i putanje s funkcijom. Funkcija vraća podatke, a framework ih pretvara u JSON, dodaje zaglavlja i statusni kod \texttt{200}. Funkcija pridružena putanji naziva se \textbf{ruta}.
+\emph{Framework} (ovdje FastAPI) povezuje par metode i putanje s funkcijom. Funkcija vraća podatke, a framework ih pretvara u JSON, dodaje zaglavlja i statusni kod \texttt{200}. Funkcija pridružena putanji naziva se \textbf{ruta}.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -140,7 +140,7 @@ def create_registration(
 \end{lstlisting}
 
 \vspace{0.3em}
-Dobro napisana ruta je minimalna. Iz putanje uzima broj natjecanja, iz tijela zahtjeva već provjerene podatke, iz tokena korisnika, i sve to predaje sloju \codefile{services}.
+Dobro napisana ruta je minimalna. Iz putanje uzima broj natjecanja, iz tijela zahtjeva već provjerene podatke, iz \emph{tokena} korisnika, i sve to predaje sloju \codefile{services}.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -526,7 +526,7 @@ Taj opis ne piše se ručno. FastAPI ga sastavlja iz istih shema i tipova koji s
 \end{itemize}
 
 \vspace{0.4em}
-Korist od prvoga dana: API se isprobava bez pisanja ijednog klijenta, a kad u drugom dijelu kolegija dođe frontend, ugovor između njega i backenda već je zapisan.
+Korist od prvoga dana: API se isprobava bez pisanja ijednog klijenta, a kad u drugom dijelu kolegija dođe \emph{frontend}, ugovor između njega i backenda već je zapisan.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -581,7 +581,7 @@ repo/
 
 \vspace{0.4em}
 \begin{konvencija}[Izbor, ne pravilo]
-Backend i frontend ovdje stoje u istom repozitoriju. Promjena koja dira obje strane tada je jedan commit umjesto dvaju usklađenih u dvama repozitorijima. Odvojeni repozitoriji imaju svoje razloge, primjerice različite timove i različit ritam izdanja.
+Backend i frontend ovdje stoje u istom repozitoriju. Promjena koja dira obje strane tada je jedan \emph{commit} umjesto dvaju usklađenih u dvama repozitorijima. Odvojeni repozitoriji imaju svoje razloge, primjerice različite timove i različit ritam izdanja.
 \end{konvencija}
 \end{frame}
 

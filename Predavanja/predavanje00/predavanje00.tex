@@ -191,7 +191,7 @@ Natjecanje se održava 14.03.2027.; preliminarni rok istječe 14.02.2027. u 23:5
 \end{center}
 
 \vspace{0.3em}
-Preglednik ne pristupa bazi izravno. Svaki podatak koji korisnik vidi prošao je kroz backend, koji je pritom provjerio tko je korisnik i što smije.
+Preglednik ne pristupa bazi izravno. Svaki podatak koji korisnik vidi prošao je kroz \emph{backend}, koji je pritom provjerio tko je korisnik i što smije.
 \end{frame}
 
 % ------------------------------
@@ -199,7 +199,7 @@ Preglednik ne pristupa bazi izravno. Svaki podatak koji korisnik vidi prošao je
 \begin{itemize}
   \item Baza je izvor istine o podatcima; ograničenja zapisana u shemi provode se neovisno o tome koji ih kod pokušava prekršiti.
   \item Backend je mjesto na kojem se pravilo provodi: prije svake izmjene provjeravaju se identitet, uloga, vlasništvo nad zapisom i faza natjecanja.
-  \item Frontend pravila prikazuje, ali ih ne provodi. Onemogućen gumb korisniku štedi uzaludan pokušaj, ali ne sprječava zahtjev poslan mimo sučelja.
+  \item \emph{Frontend} pravila prikazuje, ali ih ne provodi. Onemogućen gumb korisniku štedi uzaludan pokušaj, ali ne sprječava zahtjev poslan mimo sučelja.
 \end{itemize}
 
 \vspace{0.4em}
@@ -369,7 +369,7 @@ Uporaba AI alata i vanjskih izvora dopuštena je. Uvjet je da student razumije i
 Za svaki preuzeti isječak koda treba znati:
 \begin{itemize}
   \item koji problem rješava i uz koje pretpostavke
-  \item kako se ponaša u rubnim slučajevima: prazan ulaz, istekao token, istodobni zahtjevi
+  \item kako se ponaša u rubnim slučajevima: prazan ulaz, istekao \emph{token}, istodobni zahtjevi
   \item koji ga test pokriva
 \end{itemize}
 
@@ -429,8 +429,6 @@ npm run dev
 \vspace{0.5em}
 Nakon pokretanja backend odgovara na \texttt{/health}, a opis sučelja stoji na \texttt{/docs}. Sučelje je dostupno na adresi koju ispiše \texttt{npm run dev}.
 
-\vspace{0.5em}
-Prijava se isprobava računima iz početnih podataka, koji su navedeni u datoteci \codefile{README.md}.
 \end{frame}
 
 % ------------------------------

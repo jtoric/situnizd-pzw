@@ -41,7 +41,7 @@ Sustav prijava klubova na powerlifting natjecanje. Danas su potrebna samo dva po
 
 \begin{itemize}
   \item \textbf{Klub} ima naziv i grad.
-  \item \textbf{Korisnik} prijavljuje se u sustav i ima ulogu. Organizator ne pripada nijednom klubu, a svaki klub ima jedan račun koji pripada samo njemu.
+  \item \textbf{Korisnik} je račun za prijavu u sustav i nosi ulogu. Uloga je \texttt{admin} ili \texttt{club}. Račun s ulogom \texttt{admin} je organizator natjecanja i ne pripada nijednom klubu; račun s ulogom \texttt{club} pripada točno jednom klubu, a svaki klub ima jedan takav račun.
 \end{itemize}
 
 \vspace{0.4em}
@@ -62,7 +62,7 @@ def list_competitions():
 \end{lstlisting}
 
 \vspace{0.4em}
-Takav popis postoji samo u memoriji procesa, iz čega slijedi troje:
+Ovakvo zapisivanje koristi samo memoriju procesa pa:
 
 \begin{itemize}
   \item novi zapis traži izmjenu koda i ponovno pokretanje
@@ -240,12 +240,12 @@ Naredbe koje baza prima dijele se u tri skupine prema tome na što se odnose:
 \end{center}
 
 \vspace{0.5em}
-Aplikacija u radu koristi drugu i treću skupinu. Prva se izvodi pri postavljanju baze i pri svakoj kasnijoj promjeni oblika podataka, a kako se te promjene vode, tema je četvrte cjeline.
+Aplikacija u radu koristi drugu i treću skupinu. Prva se izvodi pri postavljanju baze i pri svakoj kasnijoj promjeni oblika podataka.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Vrijeme kao podatak}
-Rokovi, trenutci prijave i vremena izmjene zapisuju se kao datum i vrijeme. Za to postoje dva tipa stupca, i razlika među njima nije formalna:
+Rokovi, trenutci prijave i vremena izmjene zapisuju se kao datum i vrijeme. Njih možemo zapisati kao:
 
 \vspace{0.6em}
 \begin{center}
@@ -264,21 +264,15 @@ Rokovi, trenutci prijave i vremena izmjene zapisuju se kao datum i vrijeme. Za t
 \end{center}
 
 \vspace{0.6em}
-Prva vrijednost ne određuje trenutak. Ponoć u Zadru i ponoć u Londonu zapisuju se jednako, a razlikuju se za sat. Druga vrijednost nosi odmak od koordiniranoga svjetskog vremena (UTC), pa je trenutak jednoznačan bez obzira na to tko zapis čita.
+\texttt{timestamp} ne određuje trenutak jednoznačno. Ponoć u Zadru i ponoć u Londonu zapisuju se jednako, a razlikuju se za sat. \texttt{timestamptz} nosi odmak od koordiniranoga svjetskog vremena (UTC), pa je trenutak jednoznačan bez obzira na to tko zapis čita i gdje.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Tko provodi pravilo o zoni}
-PostgreSQL vrijednost u stupcu \texttt{timestamptz} pohranjuje kao trenutak u UTC-u i pri čitanju je prikazuje u zoni koju traži onaj koji čita. Pretvorba u lokalno vrijeme time je posao prikaza, a ne pohrane.
+PostgreSQL vrijednost u stupcu \texttt{timestamptz} pohranjuje kao trenutak u UTC-u, bez zone. Pri čitanju je prikazuje u zoni koju sesija traži postavkom \texttt{TimeZone}; nije li postavljena, vrijedi zadana zona poslužitelja. Pretvorba u lokalno vrijeme time je posao prikaza, a ne pohrane.
 
 \vspace{0.5em}
-Jedno se pritom ne događa samo od sebe: \textbf{baza ne odbija vrijednost bez oznake zone}. Primi li je, tumači je u zoni koju ima poslužitelj, i upis prolazi. Pogreška se ne vidi odmah nego tek u vrijednosti koja je za sat ili dva pomaknuta.
-
-\vspace{0.5em}
-Zahtjev da vrijednost nosi oznaku zone provodi se u aplikaciji, shemom na ulazu, jednako kao i svako drugo pravilo o obliku podataka.
-
-\vspace{0.4em}
-Posljedica je konkretna: rok koji istječe u ponoć po lokalnom vremenu i rok koji istječe u ponoć po UTC-u razlikuju se za sat ili dva, a razlika je vidljiva samo onima koji zahtjev pošalju u tom razmaku.
+Pritom je potrebno biti oprezan: \textbf{baza ne odbija vrijednost bez oznake zone}. Tumači je u istoj toj zoni i upis prolazi. Zahtjev da vrijednost nosi oznaku zone provodi se u aplikaciji, shemom na ulazu, jednako kao i svako drugo pravilo o obliku podataka.
 \end{frame}
 
 % ============================================================
@@ -451,8 +445,6 @@ class User(Base):
     club: Mapped[Optional[Club]] = relationship(back_populates="users")
 \end{lstlisting}
 
-\vspace{0.2em}
-\texttt{club\_id} dopušta izostanak vrijednosti jer organizator ne pripada klubu. Zapisuje se hash lozinke, nikada sama lozinka.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -542,10 +534,6 @@ class UserCreate(BaseModel):
 \vspace{0.4em}
 Odgovor imenuje polje koje nije prošlo, a promjena popisa ne traži migraciju. Zauzvrat, upis koji ne dolazi kroz aplikaciju, primjerice iz konzole baze, ovim uvjetom nije obuhvaćen.
 
-\vspace{0.3em}
-\begin{konvencija}[Izbor, ne pravilo]
-Nijedno mjesto nije propisano. U ovom projektu popis nije zapisan nigdje: stupac \texttt{role} je \texttt{String(20)}, a komentar u modelu to obrazlaže time da je bez nabrajanja jednostavnije za početak.
-\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
@@ -593,7 +581,7 @@ Upit prema bazi traje, a proces za to vrijeme nema što raditi. Dva su načina d
 \end{itemize}
 
 \vspace{0.5em}
-Izbor nije stvar ukusa nego mora biti dosljedan kroz cijeli sloj pristupa bazi: asinkroni kod traži upravljački program koji podržava takav rad. Adresa za spajanje ga i imenuje, pa \texttt{postgresql+asyncpg://} označava asinkroni, a \texttt{postgresql://} obični.
+Pristup mora biti dosljedan kroz cijeli sloj pristupa bazi: asinkroni kod traži upravljački program koji podržava takav rad. Adresa za spajanje ga i imenuje, pa \texttt{postgresql+asyncpg://} označava asinkroni, a \texttt{postgresql://} obični.
 
 \vspace{0.3em}
 U ovom se projektu radi asinkrono, pa su i funkcije koje dodiruju bazu označene s \texttt{async}, a njihovi pozivi s \texttt{await}.
@@ -604,18 +592,18 @@ U ovom se projektu radi asinkrono, pa su i funkcije koje dodiruju bazu označene
 
 % ------------------------------------------------------------
 \begin{frame}{Razilaženje modela i baze}
-Dodavanje stupca u model mijenja Python kod. Tablica u bazi ostaje kakva je bila, pa prvi upit koji taj stupac spominje pada.
+Dodavanje stupca u model mijenja Python kod. Tablica u bazi ostaje kakva je bila, pa prvi upit koji taj stupac spominje ne prolazi.
 
 \vspace{0.5em}
 Brisanje i ponovno stvaranje tablica rješava to samo dok je baza prazna. Čim u njoj postoje podatci, potreban je zapis koji staru shemu prevodi u novu bez gubitka sadržaja.
 
 \vspace{0.5em}
-Migracija je takav zapis: datoteka u repozitoriju koja opisuje jednu promjenu sheme. Iz toga slijedi troje:
+Migracija je takav zapis: datoteka u repozitoriju koja opisuje jednu promjenu sheme. To osigurava da:
 
 \begin{itemize}
   \item svaki član tima izvodi iste promjene istim redoslijedom
   \item produkcijska baza prolazi kroz iste korake kao razvojna
-  \item promjena sheme vidljiva je u povijesti, uz kod koji ju je tražio
+  \item promjena sheme ostaje vidljiva u povijesti, uz kod koji ju je tražio
 \end{itemize}
 \end{frame}
 
@@ -749,6 +737,9 @@ if club is None:
 
 \vspace{0.2em}
 Provjera prije upisa čini postupak ponovljivim: drugo pokretanje ne stvara drugi klub i ne pada na ograničenju \texttt{UNIQUE}. \texttt{flush} šalje upis bazi prije potvrde transakcije, da klub dobije \texttt{id} koji korisniku treba kao strani ključ.
+
+\vspace{0.3em}
+Punjenje se pokreće naredbom \texttt{python -m app.seed}, i to nakon \texttt{alembic upgrade head}, jer upisuje retke u tablice koje migracija tek stvara.
 \end{frame}
 
 % ------------------------------------------------------------
