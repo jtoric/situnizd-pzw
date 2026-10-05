@@ -185,7 +185,7 @@ Odgovara li potpis, sadržaju se vjeruje jer ga nitko bez ključa nije mogao sas
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=8]{Usporedba}
+\begin{frame}{Usporedba}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{7pt}
@@ -204,10 +204,10 @@ Odgovara li potpis, sadržaju se vjeruje jer ga nitko bez ključa nije mogao sas
 }
 \end{center}
 
-\vspace{0.5em}
+\vspace{0.12em}
 Izbor se svodi na to što je skuplje: zajednička pohrana koju svaki primjerak aplikacije mora doseći, ili to što se korisniku pristup ne može oduzeti prije nego mu token istekne.
 
-\vspace{0.3em}
+\vspace{0.12em}
 U ovom se projektu koristi token.
 \end{frame}
 
@@ -333,7 +333,7 @@ Tko dođe do cijelog tokena, njime se služi kao da je vlasnik. Token je time iz
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=8]{Podatci u tokenu}
+\begin{frame}{Podatci u tokenu}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{8pt}
@@ -353,10 +353,10 @@ Tko dođe do cijelog tokena, njime se služi kao da je vlasnik. Token je time iz
 }
 \end{center}
 
-\vspace{0.5em}
+\vspace{0.12em}
 Uloga i klub u tokenu štede upit nad bazom pri svakoj provjeri prava. Cijena je zastarjelost: promijeni li organizator ulogu računu, token izdan prije toga i dalje nosi staru vrijednost do isteka.
 
-\vspace{0.3em}
+\vspace{0.12em}
 Sadržaj se zato drži što manjim: ono što je potrebno za odluku, i ništa što se često mijenja.
 \end{frame}
 
@@ -482,7 +482,7 @@ Koraci od četvrtoga nadalje ponavljaju se u svakom zahtjevu. Prijava se pritom 
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Ruta za prijavu}
+\begin{frame}[fragile]{Ruta za prijavu}
 \begin{lstlisting}[language=python]
 # app/routers/auth.py
 @router.post("/login", response_model=TokenResponse)
@@ -490,7 +490,6 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = await auth_service.authenticate_user(db, body.username, body.password)
     access, refresh = auth_service.create_tokens(user)
     return TokenResponse(access_token=access, refresh_token=refresh)
-
 # app/services/auth_service.py
 async def authenticate_user(db, username: str, password: str) -> User:
     user = await user_repo.get_by_username(db, username)
@@ -500,8 +499,8 @@ async def authenticate_user(db, username: str, password: str) -> User:
         raise AppError("invalid_credentials", "...", 401)
     return user
 \end{lstlisting}
+\vspace{-0.4em}
 
-\vspace{0.2em}
 Ruta prima i vraća, a odluka o tome je li prijava valjana pripada sloju \codefile{services}.
 \end{frame}
 
@@ -520,7 +519,7 @@ Iznimka su odgovori namijenjeni prijavljenom korisniku nad vlastitim podatcima, 
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=15]{Provjera pri svakom zahtjevu}
+\begin{frame}[fragile]{Provjera tokena pri svakom zahtjevu}
 \begin{lstlisting}[language=python]
 # app/core/deps.py
 async def get_current_user(
@@ -535,18 +534,31 @@ async def get_current_user(
         raise AppError("token_expired", "...", 401)
     if payload.get("type") != "access":
         raise AppError("invalid_credentials", "...", 401)
+\end{lstlisting}
+
+\vspace{0.3em}
+Nad tokenom radimo tri provjere: je li uopće poslan, može li se dekodirati i je li riječ o pristupnom tokenu. Nijedna ne dira bazu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Od tokena do korisnika}
+\begin{lstlisting}[language=python]
+# app/core/deps.py, nastavak
     user = await user_repo.get_by_id(db, int(payload["sub"]))
     if not user or not user.is_active:
         raise AppError("invalid_credentials", "...", 401)
     return user
 \end{lstlisting}
 
-\vspace{0.2em}
+\vspace{0.4em}
+Oznaka iz polja \texttt{sub} služi za dohvat zapisa, a zatim se provjerava je li račun aktivan.
+
+\vspace{0.4em}
 Ruta koja traži prijavljenog korisnika navodi ovu ovisnost i dobiva zapis iz baze, a ne sadržaj tokena.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Kako ruta dolazi do korisnika}
+\begin{frame}[fragile]{Kako ruta dolazi do korisnika}
 Funkcija \texttt{get\_current\_user} stoji u \codefile{core}, a ruta je u \codefile{routers} ne poziva. Umjesto toga navodi je u svom potpisu:
 
 \begin{lstlisting}[language=python]
@@ -556,11 +568,11 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 \end{lstlisting}
 
-\vspace{0.3em}
-\texttt{Depends} znači: prije nego pozoveš \texttt{get\_me}, pozovi \texttt{get\_current\_user} i ono što vrati predaj kao argument \texttt{current\_user}. Takva se najava naziva \textbf{ovisnost} (engl. \emph{dependency}), a poziva je framework.
+\vspace{-0.3em}
+\texttt{Depends} znači: prije poziva \texttt{get\_me} pozovi \texttt{get\_current\_user} i ono što vrati predaj kao argument \texttt{current\_user}. Takva se najava naziva \textbf{ovisnost} (engl. \emph{dependency}), a poziva je framework.
 
-\vspace{0.3em}
-Iz toga slijedi troje:
+\vspace{-0.3em}
+Iz toga slijedi:
 
 \begin{itemize}
   \item Provjera se izvodi samo u rutama koje je navedu. Ruta za prijavu i provjera dostupnosti je ne navode, pa im token ni ne treba.
@@ -632,7 +644,7 @@ U ovom projektu djeluju prve dvije: vijek od petnaest minuta i provjera polja \t
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=15]{Gdje token stoji na klijentu}
+\begin{frame}{Pohrana tokena u pregledniku}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{8pt}
@@ -650,10 +662,18 @@ U ovom projektu djeluju prve dvije: vijek od petnaest minuta i provjera polja \t
 }
 \end{center}
 
-\vspace{0.5em}
-\textbf{XSS} je izvođenje tuđeg JavaScripta u stranici; takav kod čita sve što i vlastiti, pa i \texttt{localStorage}. \textbf{CSRF} je zahtjev koji tuđa stranica šalje u ime prijavljenog korisnika; preglednik kolačić prilaže sam, pa zahtjev prolazi kao vjerodostojan.
-
 \vspace{0.4em}
+Obje su pohrane izložene, ali različitim napadima. Njih imenuje posljednja dva retka tablice.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{XSS i CSRF}
+\textbf{XSS} je izvođenje tuđeg JavaScripta u stranici: takav kod čita sve što i vlastiti, pa i \texttt{localStorage}.
+
+\vspace{0.6em}
+\textbf{CSRF} je zahtjev koji tuđa stranica šalje u ime prijavljenog korisnika; preglednik kolačić prilaže sam, pa zahtjev prolazi kao vjerodostojan.
+
+\vspace{0.8em}
 \begin{konvencija}[Izbor, ne pravilo]
 Nijedna pohrana nije sigurna po sebi; bira se koji je napad vjerojatniji i čime se dopunjuje. U ovom projektu tokeni stoje u \texttt{localStorage}, uz kratak vijek pristupnog tokena.
 \end{konvencija}

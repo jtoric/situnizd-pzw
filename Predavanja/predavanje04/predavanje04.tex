@@ -119,10 +119,10 @@ Ovdje se koristi RBAC uz provjeru vlasništva, jer su uloge dvije i pravila se n
 \sekcija{Provjera uloge}{Odakle dolazi uloga, kako se provjerava, uporaba u ruti.}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=10]{Odakle dolazi uloga}
+\begin{frame}{Odakle dolazi uloga}
 Uloga mora biti poznata pri svakom zahtjevu, a doći može s dvaju mjesta:
 
-\vspace{0.6em}
+\vspace{0.4em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{8pt}
@@ -138,12 +138,15 @@ Uloga mora biti poznata pri svakom zahtjevu, a doći može s dvaju mjesta:
 }
 \end{center}
 
-\vspace{0.5em}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Token nosi staro stanje}
 Token nosi ono što je vrijedilo u trenutku izdavanja. Oduzme li se korisniku pravo, token izdan prije toga i dalje nosi staru ulogu dok ne istekne. Zapis u bazi nosi novu vrijednost odmah, ali za njega treba upit.
 
-\vspace{0.4em}
+\vspace{0.8em}
 \begin{konvencija}[Izbor, ne pravilo]
-Ovdje se uloga čita iz baze, jer \texttt{get\_current\_user} zapis o korisniku ionako dohvaća da provjeri je li račun aktivan; upit je time već plaćen. Aplikacije s vrlo velikim brojem zahtjeva odlučuju iz tokena i prihvaćaju da promjena prava kasni do njegova isteka.
+U našem se projektu uloga čita iz baze, jer \texttt{get\_current\_user} zapis o korisniku ionako dohvaća da provjeri je li račun aktivan; upit je time već plaćen. Aplikacije s vrlo velikim brojem zahtjeva odlučuju iz tokena i prihvaćaju da promjena prava kasni do njegova isteka.
 \end{konvencija}
 \end{frame}
 
@@ -167,7 +170,7 @@ Unutar sebe \texttt{checker} navodi \texttt{get\_current\_user} kao svoju ovisno
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Uporaba u ruti}
+\begin{frame}[fragile]{Uporaba u ruti}
 \begin{lstlisting}[language=python]
 # app/routers/clubs.py
 @router.post("/", response_model=ClubResponse, status_code=201)
@@ -177,7 +180,6 @@ async def create_club(
     admin: User = Depends(require_role("admin")),
 ):
     ...
-
 @router.get("/", response_model=list[ClubResponse])
 async def list_clubs(
     db: AsyncSession = Depends(get_db),
@@ -329,10 +331,7 @@ Za podatke kojima samo postojanje nije tajna, \texttt{403} je jasniji jer korisn
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=8]{Provjere koje se ne oslanjaju jedna na drugu}
-Ista se pogreška zaustavlja na više mjesta, jer nijedno od njih nije nepogrešivo:
-
-\vspace{0.5em}
+\begin{frame}{Zaštita u više slojeva}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{8pt}
@@ -351,18 +350,18 @@ Ista se pogreška zaustavlja na više mjesta, jer nijedno od njih nije nepogreš
 \end{center}
 
 \vspace{0.6em}
-Sučelje je pritom pogodnost, ne zaštita: ono što ne prikaže i dalje se može poslati izravno na API.
+Ne smijemo se oslanjati na zaštitu preko sučelja: ono što ne prikaže i dalje se može poslati izravno na API.
 
 \vspace{0.3em}
-Ostala tri mjesta brane različite stvari, pa nijedno ne zamjenjuje drugo. Provjera uloge ne zaustavlja dohvat tuđeg zapisa, a ograničenje u bazi ne zna ništa o tome tko je poslao zahtjev.
+Provjera uloge ne zaustavlja dohvat tuđeg zapisa, a ograničenje u bazi ne zna ništa o tome tko je poslao zahtjev.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Što se mora provjeriti}
-Propust u autorizaciji ne javlja se kao pogreška: zahtjev prolazi i odgovor izgleda ispravno. Vidi se samo ako se pošalje zahtjev koji ne bi smio proći.
+\begin{frame}{Zahtjevi koji ne bi smjeli proći}
+Rutu obično isprobavamo kao korisnik koji na nju ima pravo, i tada sve radi. Izostane li provjera prava, ništa se ne mijenja: zahtjev i dalje prolazi, a odgovor izgleda jednako. Propust se pokaže tek kad isti zahtjev pošaljemo kao korisnik koji na njega nema pravo.
 
 \vspace{0.5em}
-Za svaku rutu potrebna su tri slučaja:
+Zato za svaku rutu moramo testirati:
 
 \begin{itemize}
   \item bez tokena ili s neispravnim tokenom, uz očekivani \texttt{401}

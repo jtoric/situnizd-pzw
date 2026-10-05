@@ -434,10 +434,9 @@ Prva tri retka opisuju stupce i ograničenja koja ulaze u shemu tablice. Posljed
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Model: \codefile{User}}
+\begin{frame}[fragile]{Model: \codefile{User}}
 \begin{lstlisting}[language=python]
 # app/models/user.py
-
 class User(Base):
     __tablename__ = "users"
 
@@ -621,12 +620,11 @@ Migracija je takav zapis: datoteka u repozitoriju koja opisuje jednu promjenu sh
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=15]{Sadržaj migracije}
+\begin{frame}[fragile]{Sadržaj migracije}
 \begin{lstlisting}[language=python]
 # alembic/versions/001_init_clubs_and_users.py
 revision = "001"
 down_revision = None
-
 def upgrade() -> None:
     op.create_table(
         "clubs",
@@ -635,7 +633,6 @@ def upgrade() -> None:
         sa.Column("city", sa.String(length=80), nullable=False),
         sa.UniqueConstraint("name"),
     )
-
 def downgrade() -> None:
     op.drop_table("clubs")
 \end{lstlisting}
@@ -726,9 +723,18 @@ Indeks se dodaje na stupce po kojima se često filtrira, tipično na strane klju
 
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Početni podatci}
-Za isprobavanje aplikacije potrebni su organizator, jedan klub i račun toga kluba. Migracija ih ne stvara jer mijenja oblik tablica, a ne njihov sadržaj; postupak koji ih upisuje naziva se punjenje početnim podatcima (engl. \emph{seeding}).
+\begin{frame}{Početni podatci}
+Za isprobavanje aplikacije potrebni su organizator, klub i račun toga kluba. Migracija ih ne stvara jer ona samo mijenja oblik tablica, a ne sadržaj.
 
+\vspace{0.5em}
+Ti se zapisi mogu upisati i ručno, ali tada svaki član tima ima svoje: druge nazive, druge lozinke i druge oznake, pa ono što radi kod jednoga ne radi kod drugoga. Uz to nestaju pri svakom brisanju baze, a baza se briše često, pri isprobavanju migracija i pri prelasku na drugu granu.
+
+\vspace{0.5em}
+Zato upis ide naredbom koja se smije pokrenuti bilo koliko puta i svaki put dati isto stanje. Taj se postupak naziva punjenje početnim podatcima (engl. \emph{seeding}).
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ponovljivo punjenje}
 \begin{lstlisting}[language=python]
 # app/seed.py
 result = await session.execute(

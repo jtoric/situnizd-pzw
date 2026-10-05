@@ -13,7 +13,7 @@
 \begin{frame}{Plan predavanja}
 \begin{enumerate}
   \item Predmet kolegija i ishodi učenja
-  \item Referentna aplikacija: prijave klubova na natjecanje
+  \item Referentna aplikacija: prijava klubova na natjecanje
   \item Arhitektura i tehnologije
   \item Organizacija nastave i vrednovanje
   \item Radna okolina i način rada
@@ -28,7 +28,7 @@ Kolegij je organiziran oko jedne aplikacije koja se razvija od prve do posljednj
 
 % ------------------------------
 \begin{frame}{Predmet kolegija}
-Web aplikacija je program kojemu korisnik pristupa preglednikom, a čiji podatci ostaju pohranjeni i nakon što korisnik zatvori karticu. Iz toga slijede tri odvojena dijela:
+Web aplikacija je program kojemu korisnik pristupa preglednikom, a čiji podatci ostaju pohranjeni i nakon što korisnik zatvori karticu. Za to su nam potrebni:
 
 \begin{itemize}
   \item \textbf{frontend} (klijentski dio): prikaz podataka u pregledniku i unos korisnika
@@ -63,14 +63,14 @@ Nakon položenog kolegija student može:
 \end{itemize}
 
 \vspace{0.4em}
-Nedostatak jednog od navedenih znanja nije prepreka, ali traži više samostalnog rada u prvim tjednima.
+
 \end{frame}
 
 % ==============================
-\sekcija{Referentna aplikacija}{Problem prijava na natjecanje, model domene, faze i rokovi, svojstva domene relevantna za kolegij.}
+\sekcija{Referentna aplikacija}{Zadatak, model domene, faze i rokovi, svojstva domene relevantna za kolegij.}
 
 % ------------------------------
-\begin{frame}{Problem: prijave klubova na natjecanje}
+\begin{frame}{Zadatak: aplikacija za prijavu na natjecanje}
 Organizator powerlifting natjecanja prikuplja prijave od klubova. Bez aplikacije prijave stižu e-poštom i tablicama u Excelu, pa organizator ručno provjerava:
 
 \begin{itemize}
@@ -134,7 +134,7 @@ Preliminarni rok organizatoru daje popis potreban za raspored vaganja i natjecat
 
 % ------------------------------
 \begin{frame}{Radni primjer: četiri zahtjeva istoga kluba}
-Natjecanje se održava 14.03.2027.; preliminarni rok istječe 14.02.2027. u 23:59 (28 dana ranije), finalni 07.03.2027. u 23:59 (7 dana ranije). Ilustrativno.
+Natjecanje se održava 14.03.2027.; preliminarni rok istječe 14.02.2027. u 23:59 (28 dana ranije), finalni 07.03.2027. u 23:59 (7 dana ranije).
 
 \vspace{0.5em}
 {\footnotesize
@@ -152,13 +152,12 @@ Natjecanje se održava 14.03.2027.; preliminarni rok istječe 14.02.2027. u 23:5
 }
 
 \vspace{0.5em}
-{\small\begin{sloppypar}Statusni kod \texttt{409 Conflict} znači da su poslani podatci ispravni, ali je operacija u sukobu sa stanjem resursa. Ishod ovisi o trenutku zahtjeva, a ne o tome što sučelje prikazuje.\end{sloppypar}}
 \end{frame}
 
 % ------------------------------
 \begin{frame}{Svojstva domene relevantna za kolegij}
 \begin{itemize}
-  \item dvije uloge koje vide različit skup podataka, pa se autorizacija provjerava pri svakom zahtjevu
+  \item postoje dvije uloge, pa se autorizacija provjerava pri svakom zahtjevu
   \item vlasništvo nad zapisom: klub A ne smije dohvatiti natjecatelja kluba B
   \item pravila ovisna o vremenu: isti zahtjev prolazi ili ne prolazi ovisno o fazi
   \item relacije i ograničenja jedinstvenosti, koja provodi baza, a ne aplikacijski kod
@@ -166,7 +165,6 @@ Natjecanje se održava 14.03.2027.; preliminarni rok istječe 14.02.2027. u 23:5
 \end{itemize}
 
 \vspace{0.4em}
-{\small CRUD (engl. \emph{create, read, update, delete}) označava četiri osnovne operacije nad zapisom. Aplikacija koja izvodi samo njih ne pokriva nijedno od navedenih svojstava.}
 \end{frame}
 
 % ==============================
@@ -219,7 +217,7 @@ Vue 3, Vite i TypeScript \;|\; Vue Router (rute) \;|\; Pinia (stanje) \;|\; Axio
 \end{block}
 
 \begin{block}{Alati i okolina}
-Docker Compose (baza) \;|\; Git i GitHub Actions (CI) \;|\; pytest (testovi) \;|\; ruff (statička analiza) \;|\; Railway ili Render (postavljanje u rad)
+Docker Compose (baza) \;|\; Git i GitHub Actions (CI) \;|\; uv (Python okolina) \;|\; pytest (testovi) \;|\; ruff (statička analiza) \;|\; Railway ili Render (postavljanje u rad)
 \end{block}
 
 \vspace{0.2em}
@@ -252,14 +250,15 @@ Ovo je jedna moguća kombinacija tehnologija. Ista se načela primjenjuju i uz d
 \end{columns}
 
 \vspace{0.2em}
-Sloj se prepoznaje po tome što ga mijenja: promjena adrese dira \codefile{routers/}, promjena pravila \codefile{services/}, promjena oblika podataka \codefile{models/} i migracije.
 \end{frame}
 
 % ==============================
 \sekcija{Organizacija nastave}{Raspored predavanja, zahtjevi na studentski projekt, bodovanje, obrana, akademska čestitost.}
 
 % ------------------------------
-\begin{frame}[shrink=15]{Raspored predavanja}
+\begin{frame}{Raspored predavanja}
+{\footnotesize
+	\renewcommand{\arraystretch}{1.0}
 	\begin{tabular}{@{}lll@{}}
 		\toprule
 		\textbf{Pred.} & \textbf{Datum} & \textbf{Tema} \\
@@ -282,6 +281,7 @@ Sloj se prepoznaje po tome što ga mijenja: promjena adrese dira \codefile{route
 		   & 21.01. & \textbf{Obrana drugog dijela projekta} \\
 		\bottomrule
 	\end{tabular}
+}
 \end{frame}
 
 % ------------------------------
@@ -297,7 +297,7 @@ Tijekom semestra svaki student izrađuje vlastitu aplikaciju, po uzoru na refere
 \end{itemize}
 
 \vspace{0.4em}
-Predaja je u dva dijela, svaki nosi 40 bodova: prvi obuhvaća backend, drugi cjelovitu aplikaciju postavljenu u rad. Studenti koji ne predaju tijekom nastave predaju u ispitnim rokovima u veljači.
+Predaja je u dva dijela, svaki nosi 40 bodova: prvi obuhvaća backend, drugi cjelovitu aplikaciju postavljenu u rad.
 \end{frame}
 
 % ------------------------------
@@ -318,20 +318,31 @@ Tema mora sadržavati uloge i pravila. Aplikacija koja zapise samo unosi i prika
 
 % ------------------------------
 \begin{frame}{Bodovanje}
-\begin{tabular}{@{}lr@{}}
+\begin{tabular}{@{}lrr@{}}
   \toprule
-  \textbf{Komponenta} & \textbf{Bodovi} \\
+  \textbf{Komponenta} & \textbf{Bodovi} & \textbf{Prag} \\
   \midrule
-  Prvi dio projekta (backend) & 40 \\
-  Drugi dio projekta (cjelovita aplikacija postavljena u rad) & 40 \\
-  Usmeni ispit & 20 \\
+  Prvi dio projekta (backend) & 40 & 15 \\
+  Drugi dio projekta (cjelovita aplikacija u radu) & 40 & 15 \\
+  Usmeni ispit & 20 & 10 \\
   \midrule
-  \textbf{Ukupno} & \textbf{100} \\
+  \textbf{Ukupno} & \textbf{100} & \\
   \bottomrule
 \end{tabular}
 
 \vspace{0.6em}
-Prema pravilniku studija, za uspješno polaganje kolegija nužno je prisustvovati 80\% predavanja.
+\begin{center}
+\begin{tabular}{@{}lr@{}}
+  \toprule
+  \textbf{Bodovi} & \textbf{Ocjena} \\
+  \midrule
+  50 do 59   & dovoljan (2) \\
+  60 do 74   & dobar (3) \\
+  75 do 87   & vrlo dobar (4) \\
+  88 do 100  & izvrstan (5) \\
+  \bottomrule
+\end{tabular}
+\end{center}
 \end{frame}
 
 % ------------------------------
@@ -363,7 +374,6 @@ Za svaki preuzeti isječak koda treba znati:
 \end{itemize}
 
 \vspace{0.3em}
-Kod koji student ne može objasniti ne donosi bodove.
 \end{frame}
 
 % ==============================
@@ -374,17 +384,18 @@ Kod koji student ne može objasniti ne donosi bodove.
 \begin{itemize}
   \item Git
   \item Python 3.11 ili noviji
+  \item uv, za virtualnu okolinu i instalaciju paketa
   \item Docker Desktop s alatom Docker Compose, za pokretanje baze
   \item Node.js 18 ili noviji
   \item uređivač koda po izboru; na predavanjima se koristi VS Code
 \end{itemize}
 
 \vspace{0.5em}
-Okolina se postavlja prije prvoga predavanja s kodom. Instalacija tijekom nastave oduzima vrijeme predviđeno za gradivo.
+Okolina se postavlja prije prvoga predavanja s kodom.
 \end{frame}
 
 % ------------------------------
-\begin{frame}[fragile,shrink=5]{Pokretanje projekta}
+\begin{frame}[fragile]{Pokretanje projekta: baza i backend}
 \begin{lstlisting}[language=bash]
 # 1) Environment variables
 cp .env.example .env         # PowerShell: Copy-Item .env.example .env
@@ -394,21 +405,32 @@ docker compose up -d db
 
 # 3) Backend
 cd api
-python -m venv .venv
+uv venv
 source .venv/bin/activate    # PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 alembic upgrade head         # apply migrations
 python -m app.seed           # seed data
 uvicorn app.main:app --reload
+\end{lstlisting}
 
+\vspace{0.3em}
+\codefile{.env.example} je u repozitoriju i služi kao popis varijabli; \codefile{.env} s vlastitim vrijednostima ostaje na računalu i ne ulazi u repozitorij.
+\end{frame}
+
+% ------------------------------
+\begin{frame}[fragile]{Pokretanje projekta: frontend i provjera}
+\begin{lstlisting}[language=bash]
 # 4) Frontend
 cd ../web
 npm install
 npm run dev
 \end{lstlisting}
 
-\vspace{0.3em}
-\codefile{.env.example} je u repozitoriju i služi kao popis varijabli; \codefile{.env} s vlastitim vrijednostima ostaje na računalu i ne ulazi u repozitorij. Nakon pokretanja backend odgovara na \texttt{/health}, a opis sučelja stoji na \texttt{/docs}.
+\vspace{0.5em}
+Nakon pokretanja backend odgovara na \texttt{/health}, a opis sučelja stoji na \texttt{/docs}. Sučelje je dostupno na adresi koju ispiše \texttt{npm run dev}.
+
+\vspace{0.5em}
+Prijava se isprobava računima iz početnih podataka, koji su navedeni u datoteci \codefile{README.md}.
 \end{frame}
 
 % ------------------------------
@@ -453,7 +475,7 @@ Objema stranama zajedničko je načelo: svako se pravilo zapisuje na jednome mje
   \item Web aplikacija ima tri dijela; pravila provodi backend, a baza je izvor istine o podatcima.
   \item Referentna domena su prijave klubova na natjecanje: dvije uloge, vlasništvo nad zapisom te tri faze određene dvama rokovima.
   \item Faza određuje ishod zahtjeva: nova prijava prolazi samo u fazi \texttt{OPEN}, promjena kategorije i odjava i u fazi \texttt{PRELIM\_PASSED}, a nakon finalnoga roka nijedna izmjena.
-  \item Studentski projekt nosi 90 od 100 bodova i predaje se u dva dijela, a dolasci na predavanja preostalih 10.
+  \item Studentski projekt nosi 80 od 100 bodova i predaje se u dva dijela, a usmeni ispit preostalih 20.
   \item Na obrani se ocjenjuje objašnjenje odluka ugrađenih u kod.
 \end{itemize}
 \end{frame}
@@ -467,7 +489,6 @@ Objema stranama zajedničko je načelo: svako se pravilo zapisuje na jednome mje
 \end{itemize}
 
 \vspace{0.5em}
-Do sljedećega predavanja: postaviti radnu okolinu i otvoriti repozitorij projekta.
 \end{frame}
 
 \end{document}
