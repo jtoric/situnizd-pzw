@@ -1,98 +1,110 @@
-## **Predavanje 1 — Backend: arhitektura \+ skeleton \+ dev okruženje**
+## **Predavanje 1 — Backend: arhitektura \+ skeleton \+ dev okruženje** (tag `predavanje-01`)
 
-1. `chore: init monorepo (api, web) with tooling configs`
+1. `chore: init monorepo (api, web) with gitignore and readme`
 
-2. `chore: add docker-compose postgres and env example files`
+2. `chore: add docker-compose postgres and env example`
 
-3. `feat(api): bootstrap FastAPI app with health check and version`
+3. `chore(api): add requirements and ruff config`
 
-4. `refactor(api): add app factory and basic module structure (routers/services/core)`
+4. `feat(api): bootstrap FastAPI app factory with settings and health check`
 
-5. `docs: add local dev guide and project conventions`
+5. `feat(api): add logging setup`
 
----
+6. `feat(api): add AppError and consistent error response format`
 
-## **Predavanje 2 — Backend: DB modeliranje \+ ORM \+ migracije**
-
-1. `feat(api): add SQLAlchemy engine/session and Base model`
-
-2. `feat(api): add Club and User models + relationships`
-
-3. `chore(api): add Alembic and initial migration`
-
-4. `feat(api): add seed command (admin + demo club)`
-
-5. `docs: document database workflow (migrations, seed, reset)`
+7. `docs: add local dev guide and project conventions`
 
 ---
 
-## **Priprema za autentikaciju (fix commitovi)**
+## **Predavanje 2 — Backend: DB modeliranje \+ ORM \+ migracije** (tag `predavanje-02`)
 
-*Pred 1-2 su live. Ovi commitovi pripremaju model za auth i ostatak backen­da.*
+1. `feat(api): add async SQLAlchemy engine, session and get_db dependency`
 
-1. `refactor(api): rename User.email to User.username, add is_active field + migration`
+2. `feat(api): add Club and User models with relationship`
 
-2. `feat(api): add contact_email and contact_phone to Club + migration`
+3. `chore(api): add Alembic configured for async engine`
 
-3. `chore(api): add second club to seed, replace passlib with bcrypt, add freezegun`
+4. `feat(api): add initial migration for clubs and users`
 
----
+5. `feat(api): add idempotent seed command (admin + demo club)`
 
-## **Predavanje 3 — Backend: autentikacija (JWT) \+ security osnove**
-
-1. `feat(api): add bcrypt helpers, auth schemas and user repository`
-
-2. `feat(api): add JWT utilities (create/decode access + refresh tokens)`
-
-3. `feat(api): add auth service and login/refresh endpoints`
-
-4. `feat(api): add get_current_user dependency and /auth/me endpoint`
-
-5. `test(api): add auth tests (login, refresh, expired token, protected endpoint)`
+6. `docs: document database workflow (migrations, seed, reset)`
 
 ---
 
-## **Predavanje 4 — Backend: autorizacija \+ ownership**
+## **Predavanje 3 — Backend: autentikacija (JWT) \+ security osnove** (tag `predavanje-03`)
+
+1. `refactor(api): rename User.email to username, add is_active + migration`
+
+2. `feat(api): add bcrypt password verification`
+
+3. `feat(api): add JWT utilities (create/decode access + refresh tokens)`
+
+4. `feat(api): add auth service with login and refresh endpoints`
+
+5. `feat(api): add get_current_user dependency and /auth/me endpoint`
+
+6. `test(api): add pytest setup with separate test database`
+
+7. `test(api): add auth tests (login, refresh, expired token, protected endpoint)`
+
+---
+
+## **Predavanje 4 — Backend: autorizacija \+ ownership** (tag `predavanje-04`)
 
 1. `feat(api): add require_role dependency factory`
 
 2. `feat(api): add club schemas and repository`
 
-3. `feat(api): add admin club endpoints (create with auto-login, list, update, reset-password)`
+3. `feat(api): add admin club endpoints (create with login account, update, reset-password)`
 
-4. `feat(api): enforce ownership checks in service layer`
+4. `feat(api): enforce club ownership in service layer (get club, narrowed list)`
 
-5. `test(api): add role and ownership tests (admin/club/cross-club)`
+5. `chore(api): add second demo club to seed`
+
+6. `test(api): add role and ownership tests (admin/club/cross-club)`
 
 ---
 
-## **Predavanje 5 — Backend: API dizajn \+ CRUD svih entiteta \+ validacija**
+## **Predavanje 5 — Backend: API dizajn \+ CRUD svih entiteta \+ validacija** (tag `predavanje-05`)
 
 1. `feat(api): add Lifter, Competition, Registration models + migration`
 
-2. `feat(api): add schemas for all entities (create/update/response) with validators`
+2. `feat(api): add lifter schemas (create/update/response) with validators`
 
-3. `feat(api): implement lifter CRUD (nested /clubs/{id}/lifters) with pagination`
+3. `fix(api): reject explicit null in PATCH bodies instead of failing in the database`
 
-4. `feat(api): implement competition CRUD (admin-write, all-read)`
+4. `feat(api): implement lifter CRUD (nested /clubs/{club_id}/lifters) with pagination`
 
-5. `feat(api): implement registration CRUD (nested /competitions/{id}/registrations)`
+5. `feat(api): implement competition CRUD (admin-write, all-read) with deadline validation`
 
-6. `test(api): add CRUD, validation, constraint, duplicate and ownership tests`
+6. `feat(api): implement registration CRUD (nested /competitions/{comp_id}/registrations)`
+
+7. `feat(api): paginate clubs list like other list endpoints`
+
+8. `chore(api): seed demo lifters and competition`
+
+9. `test(api): add CRUD, validation, pagination and ownership tests`
 
 ---
 
-## **Predavanje 6 — Backend: poslovna pravila \+ workflow (pred obranu)**
+## **Predavanje 6 — Backend: poslovna pravila \+ workflow (pred obranu)** (tag `predavanje-06`)
 
 1. `feat(api): add Phase enum and get_competition_phase helper`
 
-2. `feat(api): enforce phase rules on registration create and category update`
+2. `test(api): pin registration tests to OPEN phase with freezegun`
 
-3. `feat(api): add withdraw endpoint with status transition and phase check`
+3. `feat(api): enforce phase rules on registration create and category update`
 
-4. `test(api): add phase-based tests with freezegun (OPEN/PRELIM/CLOSED)`
+4. `feat(api): translate duplicate registration into 409`
 
-5. `test(api): add withdrawal and edge case tests`
+5. `feat(api): add withdraw and reactivate endpoints with status transitions and phase check`
+
+6. `test(api): add phase-based tests with freezegun (OPEN/PRELIM_PASSED/CLOSED)`
+
+7. `test(api): add withdrawal, reactivation and duplicate tests`
+
+8. `docs: add API overview, phase matrix, error codes and lecture tags`
 
 ---
 
@@ -184,7 +196,9 @@
 
 ---
 
-## **API površina (23 endpointa)**
+## **API površina (24 endpointa)**
+
+Svi popisi imaju `limit` (zadano 20, najviše 100) i `offset`.
 
 ### Auth (3)
 | Metoda | URL | Opis | Pristup |
@@ -197,7 +211,7 @@
 | Metoda | URL | Opis | Pristup |
 |--------|-----|------|---------|
 | GET | /clubs | Lista klubova | admin: svi, club: samo svoj |
-| POST | /clubs | Kreiraj klub (auto-kreira login) | admin |
+| POST | /clubs | Kreiraj klub i njegov login račun | admin |
 | GET | /clubs/{club_id} | Detalji kluba | ownership |
 | PATCH | /clubs/{club_id} | Ažuriraj klub | admin |
 | POST | /clubs/{club_id}/reset-password | Resetiraj lozinku kluba | admin |
@@ -205,28 +219,29 @@
 ### Lifters (5)
 | Metoda | URL | Opis | Pristup |
 |--------|-----|------|---------|
-| GET | /clubs/{club_id}/lifters | Lista natjecatelja | ownership + paginacija |
+| GET | /clubs/{club_id}/lifters | Lista natjecatelja, filtar gender | ownership + paginacija |
 | POST | /clubs/{club_id}/lifters | Dodaj natjecatelja | ownership |
 | GET | /clubs/{club_id}/lifters/{id} | Detalji natjecatelja | ownership |
 | PATCH | /clubs/{club_id}/lifters/{id} | Ažuriraj natjecatelja | ownership |
-| DELETE | /clubs/{club_id}/lifters/{id} | Obriši natjecatelja | ownership |
+| DELETE | /clubs/{club_id}/lifters/{id} | Obriši natjecatelja (409 ako ima prijava) | ownership |
 
 ### Competitions (4)
 | Metoda | URL | Opis | Pristup |
 |--------|-----|------|---------|
-| GET | /competitions | Lista natjecanja | authenticated |
+| GET | /competitions | Lista natjecanja (s izračunatom fazom) | authenticated |
 | POST | /competitions | Kreiraj natjecanje | admin |
 | GET | /competitions/{id} | Detalji natjecanja | authenticated |
 | PATCH | /competitions/{id} | Ažuriraj natjecanje | admin |
 
-### Registrations (5)
+### Registrations (6)
 | Metoda | URL | Opis | Pristup |
 |--------|-----|------|---------|
-| GET | /competitions/{id}/registrations | Lista prijava | admin: sve, club: svoje |
+| GET | /competitions/{id}/registrations | Lista prijava, filtar status | admin: sve, club: svoje |
 | POST | /competitions/{id}/registrations | Nova prijava | ownership, OPEN faza |
 | GET | /competitions/{id}/registrations/{id} | Detalji prijave | ownership |
-| PATCH | /competitions/{id}/registrations/{id} | Promjena kategorije | ownership, OPEN/PRELIM |
+| PATCH | /competitions/{id}/registrations/{id} | Promjena kategorije/totala | ownership, OPEN/PRELIM |
 | POST | /competitions/{id}/registrations/{id}/withdraw | Odjava natjecatelja | ownership, OPEN/PRELIM |
+| POST | /competitions/{id}/registrations/{id}/reactivate | Vraćanje odjavljene prijave | ownership, OPEN/PRELIM |
 
 ### Health (1)
 | Metoda | URL | Opis | Pristup |
@@ -239,7 +254,7 @@
 |-----------|------|---------------|--------|
 | Nova prijava | ✓ | ✗ | ✗ |
 | Promjena kategorije | ✓ | ✓ | ✗ |
-| Odjava (→withdrawn) | ✓ | ✓ | ✗ |
+| Odjava (→withdrawn) i povratak (→active) | ✓ | ✓ | ✗ |
 | Pregled prijava | ✓ | ✓ | ✓ |
 
 ### IPF težinske kategorije

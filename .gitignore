@@ -16,3 +16,6 @@
 # OS
 .DS_Store
 Thumbs.db
+
+# Referentni projekt v2 je zaseban repo; lokalno stoji ovdje, ali se ne prati
+Projekt v2/
