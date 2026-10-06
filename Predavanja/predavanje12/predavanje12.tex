@@ -1,0 +1,647 @@
+% !TeX program = lualatex
+% !TeX root = predavanje12.tex
+\input{../common/preamble.tex}
+
+\title[Programiranje za web]{Programiranje za web - Predavanje 12 \\ Production, deploy i završni polish}
+\date{11.01.2027.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Razlika dev vs production okruženje
+  \item Environment varijable i konfiguracija
+  \item CORS: što je i zašto treba
+  \item Deploy backenda na Railway
+  \item Deploy frontenda (statički build)
+  \item CI/CD pipeline
+  \item Priprema za 2. obranu
+  \item Commitovi za ovo predavanje
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja: aplikacija je dostupna na javnom URL-u, s CI pipelineom koji provjerava kod.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+\begin{itemize}
+  \item objasniti razliku između dev i production konfiguracije
+  \item konfigurirati CORS na backendu za komunikaciju s frontendom
+  \item deployati FastAPI backend na Railway ili Render
+  \item konfigurirati Vite build za produkciju s environment varijablama
+  \item postaviti osnovni CI pipeline za lint, testove i build
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Dev vs Production}
+\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Development} & \textbf{Production} \\
+  \midrule
+  Backend & \texttt{uvicorn --reload}, localhost:8000 & Gunicorn + Uvicorn workers, javni URL \\
+  Frontend & Vite dev server, localhost:5173 & Statički build (\texttt{dist/}) \\
+  Baza & Docker lokalno & Managed PostgreSQL \\
+  Debug & Swagger UI, detalji grešaka & Bez Swaggera, generičke greške \\
+  Env & \texttt{.env} file & Platform env vars \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Nikad ne deployajte s \texttt{--reload} ili s \texttt{DEBUG=True}. Production konfiguracija skriva detalje grešaka od korisnika.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Production mindset}
+Razvoj i produkcija zahtijevaju različit način razmišljanja:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Development} & \textbf{Production} \\
+  \midrule
+  Greške & Detaljan stack trace & Generička poruka korisniku, detalji u logovima \\
+  Padanje & Prihvatljivo - restart & Mora se oporaviti automatski \\
+  Podaci & Seed podaci, testni & Pravi korisnici, pravi podaci \\
+  Sigurnost & Relaksirano & Sve zaključano \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Princip: \textbf{fail gracefully}. Umjesto bijelog ekrana, korisnik vidi \enquote{Nešto je pošlo po krivu, pokušajte kasnije}. Detalji greške idu u logove, ne korisniku.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Security checklist za deploy}
+\begin{enumerate}
+  \item \textbf{HTTPS svugdje} - nikad HTTP u produkciji (Railway/Render to rade automatski)
+  \item \textbf{Env vars za tajne} - JWT\_SECRET, DATABASE\_URL nikad u kodu
+  \item \textbf{Jaki JWT\_SECRET} - minimalno 32 znaka, random generirani
+  \item \textbf{CORS ograničen} - samo vaš frontend origin, ne \texttt{*}
+  \item \textbf{Swagger isključen} - \texttt{docs\_url=None} u produkciji
+  \item \textbf{Dependency audit} - \texttt{pip audit} i \texttt{npm audit} za poznate ranjivosti
+\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{12-Factor App: relevantni principi}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Princip} & \textbf{Što znači za nas} \\
+  \midrule
+  Config u envu & Sve konfigurabilno kroz env varijable, ne hardkodirano \\
+  Stateless procesi & Server ne čuva stanje između requestova (session je u tokenu) \\
+  Port binding & Aplikacija sluša na portu koji joj je zadan (\texttt{\$PORT}) \\
+  Dev/prod paritet & Lokalni dev je što sličniji produkciji \\
+  Logovi kao stream & \texttt{print}/\texttt{logging} na stdout, platforma ih skuplja \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Ovi principi nisu akademski - Railway i Render ih očekuju. Aplikacija koja ih slijedi deploya se bez problema, aplikacija koja ih ne slijedi zahtijeva workarounde.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Environment varijable: backend}
+\begin{lstlisting}[language=python]
+# app/core/config.py
+from pydantic_settings import (
+    BaseSettings, SettingsConfigDict
+)
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
+    DATABASE_URL: str
+    JWT_SECRET: str
+    CORS_ORIGINS: str = "http://localhost:5173"
+    DEBUG: bool = False
+
+settings = Settings()
+\end{lstlisting}
+
+\vspace{0.4em}
+Pydantic \texttt{BaseSettings} automatski čita iz env varijabli. U developmentu koristi \texttt{.env} file, u produkciji čita iz platform env vars.
+
+\vspace{0.4em}
+\texttt{.env} nikad ne smije biti committan u git - stavite ga u \texttt{.gitignore}. U repozitoriju držite \texttt{.env.example} s praznim vrijednostima.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Environment varijable: frontend (Vite)}
+\begin{lstlisting}[language=bash]
+# .env.development
+VITE_API_URL=http://localhost:8000
+
+# .env.production
+VITE_API_URL=https://moj-api.railway.app
+\end{lstlisting}
+
+\begin{lstlisting}[language=typescript]
+// src/api/client.ts
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+Vite automatski učitava \texttt{.env.development} u dev modu i \texttt{.env.production} za build. Sve varijable moraju počinjati s \texttt{VITE\_} da budu dostupne u kodu.
+
+\vspace{0.4em}
+Ove varijable se ugrađuju u build (\texttt{npm run build}) - nisu runtime, nego build-time.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{CORS: Cross-Origin Resource Sharing}
+Browser blokira requestove s jedne domene na drugu (Same-Origin Policy). CORS je mehanizam koji dopušta iznimke.
+
+\vspace{0.4em}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Scenario} & \textbf{Origin} & \textbf{Blocked?} \\
+  \midrule
+  Dev frontend $\rightarrow$ dev backend & :5173 $\rightarrow$ :8000 & Da (različiti portovi) \\
+  Prod frontend $\rightarrow$ prod backend & app.com $\rightarrow$ api.app.com & Da (različita subdomena) \\
+  Postman $\rightarrow$ backend & nema origin & Ne (nije browser) \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Backend mora eksplicitno dopustiti origine s kojih prima requestove. Bez CORS konfiguracije, frontend neće moći komunicirati s API-jem iz browsera.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{CORS konfiguracija u FastAPI}
+\begin{lstlisting}[language=python]
+# app/main.py
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS.split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+\end{lstlisting}
+
+\vspace{0.4em}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Parametar} & \textbf{Značenje} \\
+  \midrule
+  \texttt{allow\_origins} & Koji origini smiju slati requestove \\
+  \texttt{allow\_credentials} & Smiju li se slati cookieji \\
+  \texttt{allow\_methods} & Koje HTTP metode (GET, POST...) \\
+  \texttt{allow\_headers} & Koji headeri (Authorization...) \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+Nikad ne koristite \texttt{allow\_origins=["*"]} u produkciji - to dopušta bilo kojoj stranici da šalje requestove na vaš API.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Preflight request: kad i zašto}
+Browser šalje \textbf{OPTIONS} request prije stvarnog requesta u određenim situacijama:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{4cm}p{5cm}@{}}
+  \toprule
+  & \textbf{Simple request} & \textbf{Preflighted request} \\
+  \midrule
+  Metode & GET, POST, HEAD & PUT, PATCH, DELETE \\
+  Headeri & Samo standardni & Custom headeri (Authorization) \\
+  Content-Type & form-data, text/plain & application/json \\
+  Preflight & Ne & Da - OPTIONS prvo \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Naši API pozivi šalju \texttt{Authorization} header i \texttt{Content-Type: application/json} - svaki request je preflighted. Browser prvo pita \enquote{smijem li?} (OPTIONS), backend odgovori s CORS headerima, tek onda ide stvarni request.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Content Security Policy}
+CSP je HTTP header koji kaže browseru odakle smije učitavati resurse:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item \textbf{Bez CSP-a}: maliciozna skripta može učitati JavaScript s bilo kojeg URL-a
+  \item \textbf{S CSP-om}: browser odbija sve resurse koji nisu s odobrenih origina
+\end{itemize}
+
+\vspace{0.6em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Direktiva} & \textbf{Kontrolira} \\
+  \midrule
+  \texttt{default-src 'self'} & Sve resurse s istog origina \\
+  \texttt{script-src 'self'} & JavaScript samo s našeg servera \\
+  \texttt{connect-src} & API pozivi - ovdje dodajemo backend URL \\
+  \texttt{img-src} & Odakle smiju dolaziti slike \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+CSP je dodatni sloj zaštite od XSS-a. Čak i ako napadač ubaci skriptu, browser je neće izvršiti ako origin nije odobren.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Deploy opcije}
+\begin{tabular}{@{}llll@{}}
+  \toprule
+  \textbf{Platforma} & \textbf{Backend} & \textbf{Frontend} & \textbf{Baza} \\
+  \midrule
+  Railway & Python buildpack & Static site & Railway PostgreSQL \\
+  Render & Python, Docker & Static site & Render PostgreSQL \\
+  Fly.io & Docker & CDN & Fly PostgreSQL \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Railway i Render imaju besplatne tierove dovoljne za studentski projekt. Odaberite jednu platformu i držite se nje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Deploy backenda na Railway}
+\begin{lstlisting}[language=bash]
+# 1. Dodajte Procfile u api/
+# Procfile
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+# 2. requirements.txt: rucno odrzavana lista
+#    direktnih ovisnosti (fastapi, uvicorn,
+#    sqlalchemy, asyncpg, alembic, pyjwt, bcrypt...)
+#    Ne generirajte ga s "uv pip freeze" - to zaledi
+#    i tranzitivne ovisnosti i tesko se odrzava.
+
+# 3. Na Railway:
+#    - New Project > Deploy from GitHub repo
+#    - Root directory: api
+#    - Add PostgreSQL plugin
+#    - Set env vars: DATABASE_URL, JWT_SECRET, CORS_ORIGINS
+\end{lstlisting}
+
+\vspace{0.4em}
+Railway automatski detektira Python projekt, instalira dependencije i pokreće \texttt{Procfile} naredbu. \texttt{\$PORT} je env varijabla koju Railway postavlja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Deploy frontenda}
+\begin{lstlisting}[language=bash]
+# 1. Build za produkciju
+cd web
+npm run build     # generira dist/ folder
+
+# 2. dist/ sadrzi staticke fileove:
+#    index.html, assets/main-abc123.js, assets/style-def456.css
+
+# 3. Na Railway/Render:
+#    - New Static Site > Deploy from GitHub
+#    - Build command: npm run build
+#    - Publish directory: dist
+#    - Set VITE_API_URL env var
+\end{lstlisting}
+
+\vspace{0.4em}
+SPA routing zahtijeva konfiguraciju: sve rute moraju servirati \texttt{index.html}. Na Railway/Render postavite \textbf{fallback} na \texttt{index.html} za 404 stranice.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{CDN i caching strategija}
+Statički asseti (JS, CSS, slike) se serviraju s CDN-a za brži pristup:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item Vite generira hashirane nazive: \texttt{main-abc123.js}
+  \item Hash se mijenja samo kad se kod promijeni
+  \item Server može cachirati hashirane fileove zauvijek (\texttt{Cache-Control: immutable})
+  \item Novi deploy = novi hash = browser automatski dohvati novu verziju
+\end{itemize}
+
+\vspace{0.6em}
+\texttt{index.html} se \textbf{nikad ne cachira} (ili s kratkim max-age) jer sadrži linkove na hashirane assete. Kad se deploy promijeni, novi index.html referencira nove fileove.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Build optimizacije}
+\texttt{npm run build} generira optimizirani bundle za produkciju:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Optimizacija} & \textbf{Što radi} \\
+  \midrule
+  Tree shaking & Uklanja nekorišteni kod iz bundlea \\
+  Code splitting & Lazy-loaded rute postaju zasebni chunkovi \\
+  Minification & Skraćuje nazive varijabli, uklanja whitespace \\
+  CSS extraction & CSS u zasebnom fileu (paralelno učitavanje) \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Rezultat: umjesto jednog velikog JS filea, dobijemo glavni chunk + chunk po ruti. Korisnik preuzima samo kod za stranicu koju gleda.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Performance budžet}
+Koliko JavaScripta je previše?
+
+\vspace{0.4em}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Bundle veličina} & \textbf{Procjena} \\
+  \midrule
+  < 100 KB (gzipped) & Odlično \\
+  100-250 KB & Prihvatljivo za SPA \\
+  250-500 KB & Treba optimizirati \\
+  > 500 KB & Problem - korisnici na sporom internetu čekaju \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Alati za analizu: \texttt{npx vite-bundle-visualizer} pokazuje koji paketi zauzimaju koliko prostora. Često su krivci: moment.js, lodash (cijeli), UI biblioteke. Vue + Vue Router + Pinia + Axios zajedno su oko 50 KB gzipped - razumno.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{SPA fallback: zašto je potreban}
+Kad korisnik direktno upiše \texttt{app.com/clubs/5/lifters}:
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item Browser šalje GET \texttt{/clubs/5/lifters} web serveru
+  \item Web server traži file \texttt{clubs/5/lifters/index.html} - ne postoji
+  \item Bez fallbacka: \textbf{404 Not Found}
+  \item S fallbackom: servira \texttt{index.html} $\rightarrow$ Vue Router preuzima $\rightarrow$ renderira \texttt{LiftersView}
+\end{enumerate}
+
+\vspace{0.6em}
+Ovo je razlika između MPA (server zna rute) i SPA (klijent zna rute). Server mora sve nepoznate rute preusmjeriti na \texttt{index.html}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{Migracije na produkcijskoj bazi}
+\begin{lstlisting}[language=bash]
+# Na Railway: dodajte u start komandu
+# Procfile
+release: cd api && alembic upgrade head
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{release} komanda se izvršava \textbf{prije} pokretanja aplikacije, pri svakom deployu. Alembic automatski primijeni sve pending migracije.
+
+\vspace{0.6em}
+Nikad ručno ne mijenjajte production bazu. Sve promjene idu kroz migracije:
+\begin{enumerate}
+  \item Lokalno: \texttt{alembic revision --autogenerate -m "opis"}
+  \item Testirajte lokalno: \texttt{alembic upgrade head}
+  \item Commitajte migraciju
+  \item Deploy - \texttt{release} komanda automatski pokrene migraciju
+\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile,shrink=5]{CI pipeline: GitHub Actions}
+\begin{lstlisting}[language=bash]
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv pip install --system -r api/requirements.txt
+      - run: cd api && ruff check . && ruff format --check .
+      - run: cd api && pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: cd web && npm ci
+      - run: cd web && npm run lint
+      - run: cd web && npm run type-check
+      - run: cd web && npm run test -- --run
+      - run: cd web && npm run build
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{CI/CD: što i zašto}
+\begin{tabular}{@{}lp{10cm}@{}}
+  \toprule
+  \textbf{Korak} & \textbf{Što provjerava} \\
+  \midrule
+  Lint (ruff/eslint) & Formatiranje, stilske greške, potencijalni bugovi \\
+  Testovi & pytest i Vitest iz Predavanja 11 - logika radi, nema regresija \\
+  Build (npm run build) & Frontend se kompajlira bez grešaka \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Pipeline se pokreće na svaki push i PR. Ako bilo koji korak padne, commit je označen crvenim X-om. Ovako broken kod ne dolazi u produkciju.
+
+\vspace{0.4em}
+Za ovaj kolegij CI nije obavezan, ali je bonus. Ako ga postavite, pokazuje zrelost projekta na obrani.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{CD: Continuous Deployment}
+CI provjerava kvalitetu koda. CD automatski deploya kod koji prođe provjere:
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item Push na \texttt{main} branch
+  \item CI pokrene lint + testove + build
+  \item Ako sve prođe $\rightarrow$ automatski deploy na produkciju
+  \item Ako padne $\rightarrow$ deploy se ne dogodi, developer dobije obavijest
+\end{enumerate}
+
+\vspace{0.6em}
+Railway i Render automatski deployaju svaki push na main - to je CD bez ikakve konfiguracije. Za složenije sustave koristimo staging environment (test server) prije produkcije.
+
+\vspace{0.4em}
+Rollback strategija: ako novi deploy pokvari aplikaciju, revertamo commit i pushamo - automatski se deploya prethodna verzija.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Monitoring u produkciji}
+Aplikacija u produkciji mora biti nadgledana:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{4cm}p{5cm}@{}}
+  \toprule
+  \textbf{Što} & \textbf{Alat} & \textbf{Zašto} \\
+  \midrule
+  Error tracking & Sentry & Hvata exceptions i šalje alert \\
+  Uptime monitoring & UptimeRobot & Provjera je li server živ (health check) \\
+  Logovi & Railway logs & Debug problema u produkciji \\
+  Performance & Lighthouse & Brzina učitavanja frontenda \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+Bez monitoringa ne znate da aplikacija ne radi dok vam se student ne javi. Health check endpoint (\texttt{GET /health}) je minimum - monitoring alat ga pinguje svake minute.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Logging strategija}
+\begin{itemize}
+  \item \textbf{Strukturirani logovi}: JSON format s timestamp, level, message, context
+  \item \textbf{Log levels}: DEBUG (dev), INFO (normalne operacije), WARNING (sumnjivo), ERROR (greška)
+  \item \textbf{Što logirati}: login pokušaji, CRUD akcije, greške, spori upiti
+  \item \textbf{Što ne logirati}: lozinke, tokene, osobne podatke (GDPR)
+\end{itemize}
+
+\vspace{0.6em}
+U produkciji logovi idu na stdout - platforma (Railway) ih skuplja i prikazuje u dashboardu. Ne pišite u fileove na serveru - kontejneri su efemerni.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Checklist prije deploya}
+\begin{enumerate}
+  \item \texttt{.env} je u \texttt{.gitignore} (nikad committan)
+  \item \texttt{.env.example} postoji s praznim vrijednostima
+  \item CORS origins postavljeni na frontend URL (ne \texttt{*})
+  \item Swagger UI isključen u produkciji (\texttt{docs\_url=None} kad \texttt{DEBUG=False})
+  \item \texttt{JWT\_SECRET} je dugačak random string (ne \texttt{secret123})
+  \item Frontend build radi: \texttt{npm run build} bez grešaka
+  \item \texttt{VITE\_API\_URL} postavljen na production backend URL
+  \item Migracije se automatski pokreću pri deployu
+  \item Health check endpoint radi: \texttt{GET /health}
+\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Database backup i recovery}
+Podaci u produkciji su najvredniji dio aplikacije:
+
+\vspace{0.4em}
+\begin{itemize}
+  \item \textbf{Automatizirani backupi}: Railway/Render rade dnevne backupe managed PostgreSQL-a
+  \item \textbf{Point-in-time recovery}: mogućnost vraćanja baze na bilo koji trenutak u zadnjih X dana
+  \item \textbf{Testiranje restora}: backup koji nikad niste testirali nije backup
+\end{itemize}
+
+\vspace{0.6em}
+Scenarij: pogrešna migracija obriše stupac s podacima. Bez backupa - izgubljeni podaci. S backupom - restore na stanje prije migracije. Zato nikad ne radite \texttt{DROP COLUMN} bez prethodne provjere i backupa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[shrink=10]{Što dalje nakon kolegija}
+Tehnologije koje nadograđuju ono što ste naučili:
+
+\vspace{0.4em}
+\begin{tabular}{@{}lp{8cm}@{}}
+  \toprule
+  \textbf{Tehnologija} & \textbf{Zašto} \\
+  \midrule
+  Nuxt & Server-side rendering za Vue - SEO, brži first paint \\
+  Docker & Kontejnerizacija: isti environment lokalno i na serveru \\
+  WebSockets & Real-time komunikacija bez pollinga (chat, live score) \\
+  PWA & Progressive Web App - offline support, instalacija na mobitel \\
+  GraphQL / tRPC & Type-safe API komunikacija bez pisanja duplog koda \\
+  TanStack Query & Server-state s cachingom i retryjem - zamjenjuje ručni loading/error kod iz P9 \\
+  \bottomrule
+\end{tabular}
+
+\vspace{0.6em}
+TypeScript i testiranje (Vitest, Playwright) su dio ovog kolegija. Ono što ste naučili je solidan temelj - svaka od ovih tehnologija nadograđuje iste principe.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Commitovi za Predavanje 12}
+\begin{itemize}
+  \item \texttt{chore: configure production env and CORS settings for deployment}
+  \item \texttt{feat(web): add build-time env config and runtime API base handling}
+  \item \texttt{ci: add pipeline for lint/test/build (api + web)}
+  \item \texttt{docs: add deploy guide (Railway) and production checklist}
+  \item \texttt{refactor: final cleanup, remove dead code, tighten types}
+\end{itemize}
+
+\vspace{0.4em}
+\textbf{Na satu:} deployamo aplikaciju na Railway, gledamo logove, testiramo javni URL.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Priprema za 2. obranu (18.01.)}
+\begin{enumerate}
+  \item Aplikacija je deployana i dostupna na javnom URL-u
+  \item Demonstrirate: login, CRUD, pravila, error stanja
+  \item Pokažete Network tab u DevToolsima - requestovi i responsovi
+  \item Budite spremni objasniti:
+  \begin{itemize}
+    \item Kako frontend hendla 401? Gdje je interceptor?
+    \item Što se dogodi kad korisnik ručno upiše admin URL?
+    \item Gdje držite stanje? Zašto store, a ne lokalni ref?
+    \item Kako ste konfigurirali CORS i zašto?
+    \item Kako radi deploy pipeline?
+  \end{itemize}
+  \item Mini promjena uživo: dodaj polje u formu, prikaži novi podatak
+\end{enumerate}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Rekapitulacija: cijeli stack}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Backend (P1-P6)}
+\begin{enumerate}
+  \item Skeleton, config, health
+  \item Modeli, ORM, migracije
+  \item Autentikacija (JWT)
+  \item Autorizacija (role, ownership)
+  \item CRUD, validacija, paginacija
+  \item Poslovna pravila, workflow
+\end{enumerate}
+
+\column{0.48\textwidth}
+\textbf{Frontend (P7-P12)}
+\begin{enumerate}
+  \setcounter{enumi}{6}
+  \item SPA, router, layout
+  \item API komunikacija, auth flow
+  \item State management, forme
+  \item Admin tablice, filteri, UI
+  \item Testiranje: Vitest, Playwright
+  \item Deploy, CORS, CI/CD
+\end{enumerate}
+\end{columns}
+
+\vspace{0.4em}
+12 predavanja, jedan cjeloviti full-stack projekt. Svako predavanje dodaje novi sloj na postojeći rad.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Završne napomene}
+\begin{itemize}
+  \item Projekt je \textbf{vaš} - tema je vaš izbor, ali zahtjevi su jasni
+  \item Koristite AI za učenje, ne za izbjegavanje razmišljanja
+  \item Kod koji ne razumijete je kod koji ne možete obraniti
+  \item Pitajte kad zapnete - na predavanjima ili mailom
+\end{itemize}
+
+\vspace{0.8em}
+\begin{center}
+\Large Pitanja?
+\end{center}
+\end{frame}
+
+\end{document}

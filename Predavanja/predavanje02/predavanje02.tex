@@ -1,0 +1,768 @@
+% !TeX program = lualatex
+% !TeX root = predavanje02.tex
+\input{../common/preamble.tex}
+
+\title[Predavanje 2: Modeliranje podataka]{Programiranje za web \\ Predavanje 2: Modeliranje podataka, ORM i migracije}
+\date{15.10.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Baze podataka: vrste, struktura, povezivanje zapisa
+  \item Ograničenja i transakcije
+  \item Objektno-relacijsko preslikavanje
+  \item Migracije i početni podatci
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja baza ima tablice \texttt{clubs} i \texttt{users}, migracija je zapisana u repozitoriju, a početni podatci se stvaraju jednom naredbom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+
+\begin{itemize}
+  \item razdvojiti pojmove domene u tablice i povezati ih stranim ključem
+  \item obrazložiti izbor relacijske baze i izbor primarnog ključa
+  \item objasniti zašto ograničenje stoji u shemi baze, a ne samo u kodu
+  \item napisati model u SQLAlchemyju i razlikovati ga od sheme API-ja
+  \item promijeniti shemu migracijom i objasniti doseg naredbe \texttt{downgrade}
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Domena primjera}
+Sustav prijava klubova na powerlifting natjecanje. Danas su potrebna samo dva pojma:
+
+\begin{itemize}
+  \item \textbf{Klub} ima naziv i grad.
+  \item \textbf{Korisnik} je račun za prijavu u sustav i nosi ulogu. Uloga je \texttt{admin} ili \texttt{club}. Račun s ulogom \texttt{admin} je organizator natjecanja i ne pripada nijednom klubu; račun s ulogom \texttt{club} pripada točno jednom klubu, a svaki klub ima jedan takav račun.
+\end{itemize}
+
+\vspace{0.4em}
+Natjecatelji, natjecanja i prijave dolaze poslije. Prvo se postavlja temelj na kojem počivaju prijava u sustav i pravo pristupa.
+\end{frame}
+
+% ============================================================
+\sekcija{Baze podataka}{Pohrana izvan aplikacije, vrste baza, struktura relacijske baze, povezivanje zapisa i ključevi.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pohrana izvan aplikacije}
+Ruta iz prethodnog predavanja vraćala je popis zapisan u kodu:
+
+\begin{lstlisting}[language=python]
+@router.get("/competitions")
+def list_competitions():
+    return [{"id": 7, "naziv": "Zimski kup"}]
+\end{lstlisting}
+
+\vspace{0.4em}
+Ovakvo zapisivanje koristi samo memoriju procesa pa:
+
+\begin{itemize}
+  \item novi zapis traži izmjenu koda i ponovno pokretanje
+  \item ponovno pokretanje uklanja sve što je nastalo u radu
+  \item dva istodobno pokrenuta primjerka aplikacije imaju različit sadržaj
+\end{itemize}
+
+\vspace{0.3em}
+Podatci zato stoje u zasebnom sustavu, koji ih pohranjuje na disk i poslužuje svim primjercima aplikacije. Takav se sustav naziva sustav za upravljanje bazom podataka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Relacijske i nerelacijske baze}
+Sustavi za upravljanje bazama dijele se prema tome kako organiziraju zapise.
+
+\vspace{0.7em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Vrsta} & \textbf{Organizacija zapisa} & \textbf{Primjer sustava} \\
+  \midrule
+  relacijska         & tablice sa zadanom shemom  & PostgreSQL \\
+  dokumentna         & dokumenti bez zadane sheme & MongoDB \\
+  ključ i vrijednost & vrijednost po ključu       & Redis \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+U ovom kolegiju koristi se relacijska baza jer domena ima nepromjenjiv oblik zapisa, veze među njima i pravila koja se moraju provoditi nad svakim upisom. Dokumentne baze bolje podnose zapise različita oblika, a pravila o vezama ostavljaju aplikaciji.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Struktura relacijske baze}
+Relacijska baza podatke drži u tablicama. Preslikavanje pojmova domene je izravno:
+
+\vspace{0.7em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Pojam domene} & \textbf{U bazi} \\
+  \midrule
+  vrsta zapisa      & tablica \texttt{clubs} \\
+  jedan zapis       & redak \\
+  svojstvo zapisa   & stupac \texttt{city} \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Tablica se izvodi iz pojma koji u domeni postoji i traje, a ne iz obrasca na zaslonu. Obrazac se mijenja češće nego što se mijenja to da klub ima naziv i grad.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Povezivanje zapisa}
+Korisnik pripada klubu. Tu vezu treba zapisati tako da je baza može provjeriti.
+
+\vspace{0.5em}
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  tbl/.style={draw=ink, thick, rounded corners, fill=white, inner sep=2.5mm, text=textclr},
+  lbl/.style={font=\scriptsize, text=mutedclr}
+]
+  \node[tbl] (clubs) {%
+    \begin{tabular}{@{}ll@{}}
+      \multicolumn{2}{@{}l@{}}{\textbf{clubs}} \\[2pt]
+      \texttt{id} & \texttt{name} \\
+      \midrule
+      \texttt{1} & Behemot \\
+      \texttt{2} & Sokol \\
+    \end{tabular}};
+
+  \node[tbl, right=22mm of clubs] (users) {%
+    \begin{tabular}{@{}lll@{}}
+      \multicolumn{3}{@{}l@{}}{\textbf{users}} \\[2pt]
+      \texttt{id} & \texttt{email} & \texttt{club\_id} \\
+      \midrule
+      \texttt{7} & ana@\dots  & \texttt{1} \\
+      \texttt{8} & ivan@\dots & \texttt{1} \\
+    \end{tabular}};
+
+  \draw[-{Latex}, ink2, thick] (users.west) -- node[lbl, above] {pokazuje na} (clubs.east);
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+Stupac \texttt{club\_id} sadrži vrijednost stupca \texttt{id} iz tablice \texttt{clubs} i naziva se strani ključ. Baza odbija upis retka čiji \texttt{club\_id} ne postoji, kao i brisanje kluba na koji se neki redak poziva.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Primarni ključ}
+Da bi jedan redak mogao pokazivati na drugi, redak treba oznaku koja ga jednoznačno određuje. Ta se oznaka naziva primarni ključ.
+
+\vspace{0.4em}
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  tbl/.style={draw=ink, thick, rounded corners, fill=white, inner sep=2.5mm, text=textclr},
+  lbl/.style={font=\scriptsize, text=ink, align=center}
+]
+  \node[tbl] (clubs) {%
+    \begin{tabular}{@{}ll@{}}
+      \multicolumn{2}{@{}l@{}}{\textbf{clubs}} \\[2pt]
+      \texttt{id} & \texttt{name} \\
+      \midrule
+      \texttt{1} & Behemot \\
+      \texttt{2} & Sokol \\
+    \end{tabular}};
+
+  \node[tbl, right=24mm of clubs] (users) {%
+    \begin{tabular}{@{}lll@{}}
+      \multicolumn{3}{@{}l@{}}{\textbf{users}} \\[2pt]
+      \texttt{id} & \texttt{email} & \texttt{club\_id} \\
+      \midrule
+      \texttt{7} & ana@\dots  & \texttt{1} \\
+      \texttt{8} & ivan@\dots & \texttt{1} \\
+    \end{tabular}};
+
+  \draw[-{Latex}, ink2, thick] (users.west) -- (clubs.east);
+
+  \node[lbl, below=2mm of clubs] {primarni ključ \\ \texttt{clubs.id}};
+  \node[lbl, below=2mm of users] {strani ključ \\ \texttt{users.club\_id}};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.2em}
+Veza je time opisana dvama ključevima: primarnim u tablici na koju se pokazuje i stranim u tablici koja pokazuje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Izbor primarnog ključa}
+Za primarni ključ postoje dva izbora:
+
+\begin{itemize}
+  \item \textbf{podatak iz domene}, primjerice adresa e-pošte korisnika
+  \item \textbf{vrijednost bez značenja}, stupac \texttt{id} koji baza sama dodjeljuje
+\end{itemize}
+
+\vspace{0.5em}
+Podatak iz domene podložan je promjeni. Promijeni li korisnik adresu e-pošte, a na njegov se redak poziva pet drugih tablica, sve te vrijednosti treba promijeniti u istoj transakciji; propust ostavlja zapise koji pokazuju na redak kojega nema.
+
+\vspace{0.4em}
+Vrijednost bez značenja nema razloga za promjenu, pa taj slučaj ne nastaje. Jedinstvenost podatka iz domene i dalje se čuva, ali ograničenjem \texttt{UNIQUE}, a ne time što je taj podatak ključ.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Operacije nad bazom}
+Naredbe koje baza prima dijele se u tri skupine prema tome na što se odnose:
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Skupina} & \textbf{Naredbe} & \textbf{Predmet} \\
+  \midrule
+  definicija sheme     & \texttt{CREATE}, \texttt{ALTER}, \texttt{DROP}   & oblik tablica \\
+  rad s podatcima      & \texttt{SELECT}, \texttt{INSERT},                & sadržaj tablica \\
+                       & \texttt{UPDATE}, \texttt{DELETE}                 & \\
+  upravljanje transakcijom & \texttt{BEGIN}, \texttt{COMMIT}, \texttt{ROLLBACK} & početak i kraj niza izmjena \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.5em}
+Aplikacija u radu koristi drugu i treću skupinu. Prva se izvodi pri postavljanju baze i pri svakoj kasnijoj promjeni oblika podataka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vrijeme kao podatak}
+Rokovi, trenutci prijave i vremena izmjene zapisuju se kao datum i vrijeme. Njih možemo zapisati kao:
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Tip stupca} & \textbf{Što je zapisano} & \textbf{Primjer vrijednosti} \\
+  \midrule
+  \texttt{timestamp}   & datum i vrijeme, bez zone & \texttt{2027-02-14 23:59:00} \\
+  \texttt{timestamptz} & trenutak na vremenskoj osi & \texttt{2027-02-14 23:59:00+01} \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+\texttt{timestamp} ne određuje trenutak jednoznačno. Ponoć u Zadru i ponoć u Londonu zapisuju se jednako, a razlikuju se za sat. \texttt{timestamptz} nosi odmak od koordiniranoga svjetskog vremena (UTC), pa je trenutak jednoznačan bez obzira na to tko zapis čita i gdje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Tko provodi pravilo o zoni}
+PostgreSQL vrijednost u stupcu \texttt{timestamptz} pohranjuje kao trenutak u UTC-u, bez zone. Pri čitanju je prikazuje u zoni koju sesija traži postavkom \texttt{TimeZone}; nije li postavljena, vrijedi zadana zona poslužitelja. Pretvorba u lokalno vrijeme time je posao prikaza, a ne pohrane.
+
+\vspace{0.5em}
+Pritom je potrebno biti oprezan: \textbf{baza ne odbija vrijednost bez oznake zone}. Tumači je u istoj toj zoni i upis prolazi. Zahtjev da vrijednost nosi oznaku zone provodi se u aplikaciji, shemom na ulazu, jednako kao i svako drugo pravilo o obliku podataka.
+\end{frame}
+
+% ============================================================
+\sekcija{Ograničenja i transakcije}{Uvjeti nad podatcima, istodobni zahtjevi, atomarnost, indeksi.}
+
+% ------------------------------------------------------------
+\begin{frame}{Ograničenja}
+Ograničenje je uvjet zapisan u shemi tablice. Sustav ga provjerava pri svakom upisu i svakoj izmjeni.
+
+\vspace{0.7em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Ograničenje} & \textbf{Uvjet} & \textbf{Primjer} \\
+  \midrule
+  \texttt{NOT NULL}    & vrijednost postoji              & naziv kluba \\
+  \texttt{UNIQUE}      & nema dvaju jednakih             & adresa e-pošte \\
+  \texttt{FOREIGN KEY} & vrijednost postoji u drugoj tablici & \texttt{club\_id} \\
+  \texttt{CHECK}       & vrijednost zadovoljava izraz    & masa veća od nule \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Uvjet se provjerava neovisno o izvoru izmjene: pri upisu iz aplikacije, pri ručnom upisu iz konzole i pri uvozu iz datoteke.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Istodobni zahtjevi i jedinstvenost}
+Uobičajen redoslijed u kodu je: provjeri postoji li već korisnik s tom adresom, pa upiši ako ne postoji. Dva istodobna zahtjeva tada mogu proći oba:
+
+\vspace{0.5em}
+{\small
+\setlength{\tabcolsep}{7pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lL{4.7cm}L{4.7cm}@{}}
+  \toprule
+  \textbf{Trenutak} & \textbf{Zahtjev A} & \textbf{Zahtjev B} \\
+  \midrule
+  1 & provjera: adresa je slobodna & \\
+  2 &                              & provjera: adresa je slobodna \\
+  3 & upis prolazi                 & \\
+  4 &                              & upis prolazi \\
+  \bottomrule
+\end{tabular}
+}
+
+\vspace{0.5em}
+Nastaju dva retka s istom adresom, a prijava u sustav više nije jednoznačna. Nijedan zahtjev nije pogrešno napisan: razmak između provjere i upisa dovoljan je da se stanje promijeni.
+
+\vspace{0.3em}
+Uz ograničenje \texttt{UNIQUE} četvrti upis ne prolazi, a aplikacija tu pogrešku pretvara u odgovor \texttt{409}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Nepotpun niz izmjena}
+Početno punjenje baze upisuje tri retka: klub, račun organizatora i račun toga kluba.
+
+\vspace{0.5em}
+Ne prođe li treći upis, a prva dva su već potvrđena, u bazi ostaju klub i račun organizatora, bez računa kluba. To stanje nije predvidio ni kod koji upisuje ni kod koji čita: postoji klub kojim se nitko ne može služiti, a ponovno pokretanje punjenja zatječe polovicu posla obavljenom.
+
+\vspace{0.5em}
+Isto vrijedi za svaku operaciju koja mijenja više redaka. Prijava natjecatelja upisuje prijavu i umanjuje broj slobodnih mjesta; prođe li samo prvo, broj mjesta više ne odgovara broju prijava.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Transakcija}
+Transakcija je niz operacija koje sustav izvodi kao jednu: ili sve budu potvrđene, ili nijedna ne ostavi traga. To se svojstvo naziva \textbf{atomarnost}.
+
+\begin{itemize}
+  \item Niz počinje naredbom \texttt{BEGIN}, a završava potvrdom (\texttt{COMMIT}) ili poništavanjem (\texttt{ROLLBACK}).
+  \item Do potvrde promjene su vidljive samo unutar te transakcije.
+  \item Pri pogrešci sustav vraća stanje na ono prije naredbe \texttt{BEGIN}, bez obzira na to koliko je upisa dotad prošlo.
+\end{itemize}
+
+\vspace{0.5em}
+Time nepotpun niz izmjena s prethodnog slajda ne može nastati: ili su sva tri retka u bazi, ili nijedan.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Indeks}
+Bez indeksa sustav pri pretrazi po stupcu čita svaki redak tablice i uspoređuje vrijednost. Indeks je zasebna struktura koja traženi redak pronalazi bez tog čitanja.
+
+\vspace{0.6em}
+\begin{center}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  redak/.style={draw=lineclr, fill=white, minimum width=16mm, minimum height=4.4mm, inner sep=0pt},
+  pogodak/.style={draw=ink, thick, fill=tint, minimum width=16mm, minimum height=4.4mm, inner sep=0pt},
+  nas/.style={font=\small, text=textclr}
+]
+  \node[nas] at (0,1.0) {bez indeksa};
+  \foreach \i in {1,...,5} {
+    \node[redak] (a\i) at (0, 0.5-0.55*\i) {};
+    \draw[-{Latex}, ink2] (-1.7, 0.5-0.55*\i) -- (a\i.west);
+  }
+  \node[pogodak] at (0, 0.5-0.55*3) {};
+
+  \node[nas] at (5.2,1.0) {s indeksom};
+  \foreach \i in {1,...,5} { \node[redak] (b\i) at (5.2, 0.5-0.55*\i) {}; }
+  \node[pogodak] (cilj) at (5.2, 0.5-0.55*3) {};
+  \node[draw=ink, thick, rounded corners, fill=white, text=textclr] (idx) at (3.1, 0.5-0.55*3) {indeks};
+  \draw[-{Latex}, ink2, thick] (idx.east) -- (cilj.west);
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+Primarni ključ i ograničenje \texttt{UNIQUE} indeks stvaraju sami, jer bez njega provjera jedinstvenosti ne bi bila izvediva u razumnom vremenu.
+\end{frame}
+% ============================================================
+\sekcija{Objektno-relacijsko preslikavanje}{Uloga ORM-a, modeli, odnos modela i sheme, veza s bazom i sesija.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Uloga ORM-a}
+Baza prima SQL. Aplikacija radi s objektima. ORM (engl. \emph{object-relational mapping}) preslikava jedno u drugo: klasu u tablicu, primjerak klase u redak, svojstvo u stupac.
+
+\begin{lstlisting}[language=sql]
+SELECT id, name, city FROM clubs WHERE city = 'Zadar';
+\end{lstlisting}
+
+\begin{lstlisting}[language=python]
+result = await session.execute(
+    select(Club).where(Club.city == "Zadar")
+)
+clubs = result.scalars().all()
+\end{lstlisting}
+
+\vspace{0.3em}
+Drugi zapis proizvodi prvi. ORM ne uklanja potrebu za poznavanjem SQL-a: kad je upit spor ili vraća neočekivan rezultat, odgovor se traži u SQL-u koji je nastao.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Model: \codefile{Club}}
+\begin{lstlisting}[language=python]
+# app/models/club.py
+
+class Club(Base):
+    __tablename__ = "clubs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+
+    users: Mapped[list[User]] = relationship(back_populates="club")
+\end{lstlisting}
+
+\vspace{0.3em}
+Prva tri retka opisuju stupce i ograničenja koja ulaze u shemu tablice. Posljednji redak ne stvara stupac \texttt{users}: on ORM-u govori da su korisnici toga kluba oni retci tablice \texttt{users} kojima \texttt{club\_id} odgovara ovom \texttt{id}. Zahvaljujući tomu se umjesto pisanja upita čita \texttt{club.users}, a upit sastavlja ORM.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Model: \codefile{User}}
+\begin{lstlisting}[language=python]
+# app/models/user.py
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    club_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("clubs.id"), nullable=True
+    )
+    club: Mapped[Optional[Club]] = relationship(back_populates="users")
+\end{lstlisting}
+
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Model i shema}
+Dva su opisa istog pojma, s različitim zadaćama:
+
+\begin{itemize}
+  \item \textbf{model} u \codefile{models}: kako zapis izgleda u bazi
+  \item \textbf{shema} u \codefile{schemas}: kako zapis putuje kroz API
+\end{itemize}
+
+\vspace{0.5em}
+Razdvojeni su jer se ne poklapaju:
+
+\begin{itemize}
+  \item \texttt{password\_hash} postoji u bazi, a ne izlazi ni u jednom odgovoru
+  \item pri stvaranju korisnika lozinka ulazi, pri čitanju ne izlazi, pa ulazna i izlazna shema nisu iste
+  \item \texttt{id} dodjeljuje baza, pa ga klijent ne šalje, ali ga dobiva natrag
+\end{itemize}
+
+\vspace{0.4em}
+Da su model i shema jedno te isto, dodavanje stupca za internu uporabu, primjerice broja neuspjelih prijava, istoga bi trena promijenilo sadržaj svakog odgovora prema klijentu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Skup dopuštenih vrijednosti}
+Stupac \texttt{role} u modelu je niz znakova, a u domeni ima samo dvije dopuštene vrijednosti, \texttt{admin} i \texttt{club}. Sama shema tablice pritom ne odbija upis vrijednosti \texttt{admn}.
+
+\vspace{0.5em}
+Posljedica nije poruka o pogrešci nego tiha promjena ponašanja. Provjera koja traži ulogu \texttt{admin} za takav redak ne prolazi, a ne prolazi ni ona koja traži \texttt{club}. Korisnik postoji, prijava u sustav uspijeva, a nijedna mu ruta nije dostupna; uzrok se ne vidi ni u jednoj poruci.
+
+\vspace{0.5em}
+Skup se može ograničiti na tri mjesta, a izbor mjesta određuje i tko je obuhvaćen i koliko stoji promjena popisa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prvo mjesto: tip stupca u bazi}
+\begin{lstlisting}[language=python]
+# app/models/user.py
+role: Mapped[str] = mapped_column(
+    Enum("admin", "club", name="user_role"), nullable=False
+)
+\end{lstlisting}
+
+\vspace{0.4em}
+\textbf{Gdje:} u shemi tablice, opisano u sloju \codefile{models} i uneseno migracijom.
+
+\vspace{0.2em}
+\textbf{Kada se provjerava:} pri svakom upisu i izmjeni, u sustavu za upravljanje bazom.
+
+\vspace{0.4em}
+Vrijednost izvan popisa odbija se bez obzira na to odakle dolazi. Dodavanje treće uloge traži novu migraciju, jer se mijenja tip u shemi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Drugo mjesto: uvjet nad tablicom}
+\begin{lstlisting}[language=python]
+# app/models/user.py
+__table_args__ = (
+    CheckConstraint("role IN ('admin', 'club')", name="ck_user_role"),
+)
+\end{lstlisting}
+
+\vspace{0.4em}
+\textbf{Gdje:} također u shemi tablice, kao ograničenje \texttt{CHECK}.
+
+\vspace{0.2em}
+\textbf{Kada se provjerava:} pri svakom upisu i izmjeni, jednako kao tip stupca.
+
+\vspace{0.4em}
+Razlika prema prvom mjestu je u obliku, ne u dosegu: \texttt{CHECK} prima proizvoljan izraz, pa istim sredstvom pokriva i uvjete koje popis vrijednosti ne može izraziti. I ovdje promjena popisa traži migraciju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Treće mjesto: shema na ulazu u aplikaciju}
+\begin{lstlisting}[language=python]
+class UserCreate(BaseModel):
+    role: Literal["admin", "club"]
+\end{lstlisting}
+
+\vspace{0.4em}
+\textbf{Gdje:} u sloju \codefile{schemas}, izvan baze.
+
+\vspace{0.2em}
+\textbf{Kada se provjerava:} pri razlaganju tijela zahtjeva, prije nego što funkcija rute počne raditi.
+
+\vspace{0.4em}
+Odgovor imenuje polje koje nije prošlo, a promjena popisa ne traži migraciju. Zauzvrat, upis koji ne dolazi kroz aplikaciju, primjerice iz konzole baze, ovim uvjetom nije obuhvaćen.
+
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Veza s bazom i sesija}
+\begin{lstlisting}[language=python]
+# app/core/database.py
+engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession)
+
+# app/core/deps.py
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{engine} drži skup otvorenih veza prema bazi. \texttt{session} je jedna cjelina rada: prati promijenjene objekte i na kraju ih zajedno potvrđuje ili poništava.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Doseg sesije}
+Sesija nije samo veza prema bazi. Ona prikuplja promijenjene objekte i unutar nje teče jedna transakcija, pa je smije koristiti samo jedan zahtjev.
+
+\begin{itemize}
+  \item Dva zahtjeva nad istom sesijom dijele i transakciju: potvrda jednoga potvrđuje i nedovršene promjene drugoga.
+  \item Poništavanje zbog pogreške u jednom zahtjevu poništilo bi i rad drugoga.
+\end{itemize}
+
+\vspace{0.5em}
+Zato sesiju otvara ovisnost pri ulasku u rutu i zatvara je pri izlasku.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Čekanje na bazu}
+Upit prema bazi traje, a proces za to vrijeme nema što raditi. Dva su načina da se to čekanje podnese:
+
+\begin{itemize}
+  \item \textbf{sinkrono}: dretva koja je poslala upit čeka odgovor i u tom razdoblju ne poslužuje druge zahtjeve; istodobnost se postiže većim brojem dretvi ili procesa
+  \item \textbf{asinkrono}: dretva za vrijeme čekanja preuzima drugi zahtjev i vraća se kad odgovor stigne
+\end{itemize}
+
+\vspace{0.5em}
+Pristup mora biti dosljedan kroz cijeli sloj pristupa bazi: asinkroni kod traži upravljački program koji podržava takav rad. Adresa za spajanje ga i imenuje, pa \texttt{postgresql+asyncpg://} označava asinkroni, a \texttt{postgresql://} obični.
+
+\vspace{0.3em}
+U ovom se projektu radi asinkrono, pa su i funkcije koje dodiruju bazu označene s \texttt{async}, a njihovi pozivi s \texttt{await}.
+\end{frame}
+
+% ============================================================
+\sekcija{Migracije i početni podatci}{Razilaženje modela i baze, sadržaj migracije, naredbe, granice automatskog stvaranja, punjenje baze.}
+
+% ------------------------------------------------------------
+\begin{frame}{Razilaženje modela i baze}
+Dodavanje stupca u model mijenja Python kod. Tablica u bazi ostaje kakva je bila, pa prvi upit koji taj stupac spominje ne prolazi.
+
+\vspace{0.5em}
+Brisanje i ponovno stvaranje tablica rješava to samo dok je baza prazna. Čim u njoj postoje podatci, potreban je zapis koji staru shemu prevodi u novu bez gubitka sadržaja.
+
+\vspace{0.5em}
+Migracija je takav zapis: datoteka u repozitoriju koja opisuje jednu promjenu sheme. To osigurava da:
+
+\begin{itemize}
+  \item svaki član tima izvodi iste promjene istim redoslijedom
+  \item produkcijska baza prolazi kroz iste korake kao razvojna
+  \item promjena sheme ostaje vidljiva u povijesti, uz kod koji ju je tražio
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Sadržaj migracije}
+\begin{lstlisting}[language=python]
+# alembic/versions/001_init_clubs_and_users.py
+revision = "001"
+down_revision = None
+def upgrade() -> None:
+    op.create_table(
+        "clubs",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("name", sa.String(length=120), nullable=False),
+        sa.Column("city", sa.String(length=80), nullable=False),
+        sa.UniqueConstraint("name"),
+    )
+def downgrade() -> None:
+    op.drop_table("clubs")
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{revision} imenuje ovu promjenu, \texttt{down\_revision} onu prije nje; iz toga slijedi redoslijed. Baza pamti do koje je migracije došla, pa svaka prolazi točno jednom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Naredbe}
+\begin{lstlisting}[language=bash]
+# create a migration from the difference between models and database
+alembic revision --autogenerate -m "init clubs and users"
+
+# apply everything not yet applied
+alembic upgrade head
+
+# undo the last migration
+alembic downgrade -1
+
+# which migration is the database on
+alembic current
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{upgrade head} primjenjuje sve migracije kroz koje baza još nije prošla, redoslijedom koji slijedi iz njihovih oznaka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Granice automatskog stvaranja}
+\texttt{autogenerate} uspoređuje modele s trenutnim stanjem baze i zapisuje razliku. Za neke promjene ta usporedba nije dostatna:
+
+\begin{itemize}
+  \item Promjena naziva stupca vidi se kao nestanak jednog i pojava drugog, pa nastaju brisanje i stvaranje.
+  \item Promjena tipa stupca traži i pravilo po kojem se postojeće vrijednosti pretvaraju, a ono iz usporedbe ne slijedi.
+  \item Novi stupac s oznakom \texttt{NOT NULL} nad tablicom koja već ima retke ne može se dodati bez zadane vrijednosti, jer bi postojeći retci ostali bez vrijednosti. Nad praznom tablicom isti upis prolazi.
+\end{itemize}
+
+\vspace{0.5em}
+Prva dva slučaja ne javljaju pogrešku. Migracija se izvede do kraja i \texttt{upgrade} prođe uredno; nedostaju samo podatci.
+
+\vspace{0.3em}
+Doseg naredbe \texttt{downgrade} pritom je ograničen: brisanje stupca ne može se poništiti jer podatci koje je sadržavao više ne postoje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Čitanje migracije prije pokretanja}
+Nakon preimenovanja stupca \texttt{email} u \texttt{username}, \texttt{autogenerate} zapisuje ovo:
+
+\begin{lstlisting}[language=python]
+def upgrade() -> None:
+    op.drop_column("users", "email")
+    op.add_column("users", sa.Column("username", sa.String(255)))
+\end{lstlisting}
+
+\vspace{0.3em}
+Znak za uzbunu je par \texttt{drop\_column} i \texttt{add\_column} nad istom tablicom u istoj migraciji: to je preimenovanje koje je izgubilo sadržaj. Ispravak je jedan redak:
+
+\begin{lstlisting}[language=python]
+def upgrade() -> None:
+    op.alter_column("users", "email", new_column_name="username")
+\end{lstlisting}
+
+\vspace{0.3em}
+Zato se svaka nastala migracija pročita prije pokretanja. U datoteci je ispravak trenutačan; nakon naredbe \texttt{upgrade} nad produkcijskom bazom sadržaja stupca više nema.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dodavanje indeksa}
+Indeks se traži uz stupac u modelu, a u shemu ulazi migracijom:
+
+\begin{lstlisting}[language=python]
+# in the model
+club_id: Mapped[int] = mapped_column(ForeignKey("clubs.id"), index=True)
+
+# in the migration
+op.create_index("ix_users_club_id", "users", ["club_id"])
+\end{lstlisting}
+
+\vspace{0.4em}
+Indeks ubrzava pretragu, spajanje tablica i sortiranje po tom stupcu. Zauzima prostor i usporava upis, jer se pri svakoj izmjeni i sam mijenja.
+
+\vspace{0.3em}
+\begin{konvencija}
+Indeks se dodaje na stupce po kojima se često filtrira, tipično na strane ključeve. Indeksiranje svakog stupca unaprijed plaća se pri svakom upisu, a rijetko donosi korist.
+\end{konvencija}
+\end{frame}
+
+
+% ------------------------------------------------------------
+\begin{frame}{Početni podatci}
+Za isprobavanje aplikacije potrebni su organizator, klub i račun toga kluba. Migracija ih ne stvara jer ona samo mijenja oblik tablica, a ne sadržaj.
+
+\vspace{0.5em}
+Ti se zapisi mogu upisati i ručno, ali tada svaki član tima ima svoje: druge nazive, druge lozinke i druge oznake, pa ono što radi kod jednoga ne radi kod drugoga. Uz to nestaju pri svakom brisanju baze, a baza se briše često, pri isprobavanju migracija i pri prelasku na drugu granu.
+
+\vspace{0.5em}
+Zato upis ide naredbom koja se smije pokrenuti bilo koliko puta i svaki put dati isto stanje. Taj se postupak naziva punjenje početnim podatcima (engl. \emph{seeding}).
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ponovljivo punjenje}
+\begin{lstlisting}[language=python]
+# app/seed.py
+result = await session.execute(
+    select(Club).where(Club.name == DEMO_CLUB_NAME)
+)
+club = result.scalar_one_or_none()
+if club is None:
+    club = Club(name=DEMO_CLUB_NAME, city=DEMO_CLUB_CITY)
+    session.add(club)
+    await session.flush()
+\end{lstlisting}
+
+\vspace{0.2em}
+Provjera prije upisa čini postupak ponovljivim: drugo pokretanje ne stvara drugi klub i ne pada na ograničenju \texttt{UNIQUE}. \texttt{flush} šalje upis bazi prije potvrde transakcije, da klub dobije \texttt{id} koji korisniku treba kao strani ključ.
+
+\vspace{0.3em}
+Punjenje se pokreće naredbom \texttt{python -m app.seed}, i to nakon \texttt{alembic upgrade head}, jer upisuje retke u tablice koje migracija tek stvara.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Sažetak}
+\begin{itemize}
+  \item Relacijska baza odabrana je jer domena ima nepromjenjiv oblik zapisa, veze među njima i pravila koja se provode nad svakim upisom.
+  \item Tablica se izvodi iz pojma koji u domeni traje. Redak se određuje vrijednošću bez značenja, jer se podatci iz domene mijenjaju, a veze se opisuju parom primarnog i stranog ključa.
+  \item Ograničenje u shemi vrijedi za svaki upis. Provjera u kodu ne obuhvaća dva istodobna zahtjeva, jer se stanje može promijeniti između provjere i upisa.
+  \item ORM preslikava klasu u tablicu i sastavlja SQL, ali ga ne skriva. Model baze i shema API-ja ostaju razdvojeni.
+  \item Migracija je zapis jedne promjene sheme u repozitoriju. Čita se prije pokretanja, jer \texttt{downgrade} ne vraća obrisane podatke.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što slijedi}
+\begin{itemize}
+  \item \textbf{22.10.2026.} Predavanje 3, autentikacija: pohrana lozinke, prijava, token i njegova provjera pri svakom zahtjevu.
+  \item \textbf{29.10.2026.} Predavanje 4, autorizacija: uloge i vlasništvo nad zapisom.
+  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
+\end{itemize}
+
+\vspace{0.5em}
+Do sljedećega predavanja: pokrenuti bazu, primijeniti migracije naredbom \texttt{alembic upgrade head} i potvrditi da u tablicama postoje organizator i demo klub.
+\end{frame}
+
+\end{document}

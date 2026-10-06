@@ -1,0 +1,743 @@
+% !TeX program = lualatex
+% !TeX root = predavanje03.tex
+\input{../common/preamble.tex}
+
+\title[Predavanje 3: Autentikacija]{Programiranje za web \\ Predavanje 3: Autentikacija i sigurnost}
+\date{22.10.2026.}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Identitet u protokolu bez pamćenja
+  \item Lozinke: zašto se ne pohranjuju i kako se provjeravaju
+  \item Implementacija tokena: sadržaj, potpis, vijek, dvije vrste
+  \item Prijava i provjera pri svakom zahtjevu
+  \item Što token ne rješava
+\end{enumerate}
+
+\vspace{0.6em}
+Na kraju predavanja korisnik se može prijaviti, dobiti token i njime doći do zaštićene rute.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+
+\begin{itemize}
+  \item razgraničiti autentikaciju od autorizacije
+  \item objasniti čemu služi salt i zašto se za lozinke bira spor algoritam
+  \item opisati sadržaj tokena i reći što potpis jamči, a što ne
+  \item obrazložiti postojanje dviju vrsta tokena i razliku u njihovu vijeku
+  \item provesti provjeru identiteta pri svakom zahtjevu i imenovati što ona ne pokriva
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Domena primjera}
+Sustav prijava klubova na powerlifting natjecanje. Iz prethodnog predavanja u bazi postoje tablice \texttt{clubs} i \texttt{users}, a početnim punjenjem u njima su organizator, jedan klub i račun toga kluba.
+
+\vspace{0.4em}
+Korisnik ima adresu e-pošte za prijavu, hash lozinke, ulogu i, ako pripada klubu, strani ključ prema njemu. Danas se ti zapisi prvi put upotrebljavaju.
+\end{frame}
+
+% ============================================================
+\sekcija{Identitet u protokolu bez pamćenja}{Zašto zahtjev ne zna tko ga šalje, zaštita prijenosa, autentikacija i autorizacija, sjednica i token.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{HTTP ne pamti pošiljatelja}
+Svaki HTTP zahtjev dolazi sam za sebe. Poslužitelj iz njega vidi metodu, putanju, zaglavlja i tijelo, i ništa više:
+
+\begin{lstlisting}
+GET /clubs/12/lifters HTTP/1.1
+Host: api.primjer.hr
+\end{lstlisting}
+
+\vspace{0.4em}
+U tom zapisu nema ničega što bi kazalo tko ga šalje. Prethodni zahtjev istog korisnika nije ostavio trag, a veza kojom je stigao ne nosi identitet.
+
+\vspace{0.4em}
+Iz toga slijedi da identitet mora putovati \textbf{u samom zahtjevu}, i to u svakom zahtjevu posebno.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{HTTP i HTTPS}
+Zahtjev i odgovor putuju kao običan tekst. Svatko tko je na putu, od vlasnika pristupne točke do davatelja pristupa, čita ih u cijelosti i može ih izmijeniti.
+
+\vspace{0.5em}
+HTTPS je isti HTTP unutar šifriranog sloja TLS. Taj sloj daje troje:
+
+\begin{itemize}
+  \item sadržaj zahtjeva i odgovora nije čitljiv onima na putu
+  \item izmjena u prijenosu se otkriva
+  \item certifikat potvrđuje da je poslužitelj doista tražena domena
+\end{itemize}
+
+\vspace{0.5em}
+Za sve što slijedi to je preduvjet, a ne dodatak: bez njega lozinka pri prijavi i vjerodajnica u svakom sljedećem zahtjevu putuju čitljive. Norma koja opisuje prilaganje tokena zahtjevu (RFC 6750) zato izrijekom traži TLS.
+
+\vspace{0.3em}
+Iznimka je razvoj na vlastitom računalu: preglednici \texttt{localhost} smatraju sigurnim izvorom, pa ondje običan HTTP ne predstavlja rizik.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Autentikacija i autorizacija}
+Prije nego zahtjev bude obrađen, odgovaraju se dva pitanja. Prvo se tiče pošiljatelja, drugo onoga što traži:
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Pojam} & \textbf{Pitanje} & \textbf{Ishod ako ne prođe} \\
+  \midrule
+  autentikacija & tko šalje zahtjev   & \texttt{401 Unauthorized} \\
+  autorizacija  & smije li to učiniti & \texttt{403 Forbidden} \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Redoslijed je nužan: dok se ne zna tko je pošiljatelj, nema se o čijim pravima odlučivati. Ovo predavanje obrađuje samo prvo pitanje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kako se korisnik autenticira}
+Prijava se dogodi jednom: korisnik pošalje nešto što samo on zna, a poslužitelj to provjeri. Slanje lozinke uz svaki sljedeći zahtjev nije rješenje, jer bi tražilo da je klijent trajno čuva i izlaže je u svakom zahtjevu.
+
+\vspace{0.5em}
+Poslužitelj zato pri prijavi izdaje nešto drugo, što klijent prilaže svakom sljedećem zahtjevu. Dva su ustaljena oblika toga:
+
+\begin{itemize}
+  \item \textbf{sjednica} (engl. \emph{session}): nasumična oznaka koja sama ne znači ništa, a poslužitelj uz nju pamti tko je prijavljen
+  \item \textbf{token}: potpisan zapis koji sam sadrži tko je korisnik, pa poslužitelj ne pamti ništa
+\end{itemize}
+
+\vspace{0.4em}
+Razlika je u tome tko čuva podatke o prijavi, a iz nje slijedi sve ostalo.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Sjednica}
+\begin{center}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  akt/.style={draw=ink, thick, rounded corners, fill=tint, minimum height=6mm,
+              minimum width=20mm, text=textclr, font=\small},
+  lbl/.style={font=\scriptsize, text=mutedclr}
+]
+  \node[akt] (k) at (0,0)   {Klijent};
+  \node[akt] (p) at (4.6,0) {Poslužitelj};
+  \node[akt] (s) at (9.2,0) {Pohrana};
+  \draw[lineclr] (0,-0.35) -- (0,-3.3);
+  \draw[lineclr] (4.6,-0.35) -- (4.6,-3.3);
+  \draw[lineclr] (9.2,-0.35) -- (9.2,-3.3);
+  \draw[-{Latex}, ink2, thick] (0,-0.9)   -- node[lbl,above]{prijava}          (4.6,-0.9);
+  \draw[-{Latex}, ink2, thick] (4.6,-1.5) -- node[lbl,above]{zapis o prijavi}  (9.2,-1.5);
+  \draw[-{Latex}, ink2, thick] (4.6,-2.1) -- node[lbl,above]{oznaka}           (0,-2.1);
+  \draw[-{Latex}, ink2, thick] (0,-2.7)   -- node[lbl,above]{zahtjev + oznaka} (4.6,-2.7);
+  \draw[-{Latex}, ink2, thick] (4.6,-3.2) -- node[lbl,above]{pretraga}         (9.2,-3.2);
+\end{tikzpicture}
+\end{center}
+
+\begin{lstlisting}
+Cookie: session=8f3c1a9e4b7d
+\end{lstlisting}
+
+\vspace{0.2em}
+Oznaka je samo ključ prema onome što poslužitelj pamti. Brisanjem zapisa prijava prestaje odmah.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Token}
+\begin{center}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  akt/.style={draw=ink, thick, rounded corners, fill=tint, minimum height=6mm,
+              minimum width=20mm, text=textclr, font=\small},
+  lbl/.style={font=\scriptsize, text=mutedclr},
+  nap/.style={font=\scriptsize, text=ink, align=left}
+]
+  \node[akt] (k) at (0,0)   {Klijent};
+  \node[akt] (p) at (4.6,0) {Poslužitelj};
+  \draw[lineclr] (0,-0.35) -- (0,-3.0);
+  \draw[lineclr] (4.6,-0.35) -- (4.6,-3.0);
+  \draw[-{Latex}, ink2, thick] (0,-0.9)   -- node[lbl,above]{prijava}         (4.6,-0.9);
+  \draw[-{Latex}, ink2, thick] (4.6,-1.7) -- node[lbl,above]{potpisan token}  (0,-1.7);
+  \draw[-{Latex}, ink2, thick] (0,-2.5)   -- node[lbl,above]{zahtjev + token} (4.6,-2.5);
+  \node[nap, right=3mm of p, anchor=west] at (5.4,-1.7) {token se potpisuje \\ tajnim ključem};
+  \node[nap, anchor=west] at (5.4,-2.5) {provjerava se potpis, \\ bez pohrane i pretrage};
+\end{tikzpicture}
+\end{center}
+
+\begin{lstlisting}
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+\end{lstlisting}
+
+\vspace{0.2em}
+Odgovara li potpis, sadržaju se vjeruje jer ga nitko bez ključa nije mogao sastaviti ni izmijeniti. Poslužitelj pritom ne zna koji su tokeni u optjecaju, pa ih ne može poništiti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Usporedba}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{7pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}L{3.2cm}L{4.0cm}L{4.0cm}@{}}
+  \toprule
+   & \textbf{Sjednica} & \textbf{Token} \\
+  \midrule
+  što zahtjev nosi           & nasumičnu oznaku          & potpisan zapis o korisniku \\
+  gdje su podatci            & na poslužitelju           & u samom zapisu \\
+  provjera zahtjeva          & pretraga po oznaci        & provjera potpisa \\
+  prekid pristupa            & brisanjem zapisa          & nije izravno moguć \\
+  više primjeraka aplikacije & traži zajedničku pohranu  & ne traži ništa zajedničko \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.12em}
+Izbor se svodi na to što je skuplje: zajednička pohrana koju svaki primjerak aplikacije mora doseći, ili to što se korisniku pristup ne može oduzeti prije nego mu token istekne.
+
+\vspace{0.12em}
+U ovom se projektu koristi token.
+\end{frame}
+
+% ============================================================
+\sekcija{Lozinke}{Zašto se ne pohranjuju, hash i salt, izbor sporog algoritma, provjera pri prijavi.}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto lozinka ne smije biti zapisana}
+Baza se može naći u tuđim rukama: krivo postavljenim pravom pristupa, ukradenom sigurnosnom kopijom, propustom u kodu.
+
+\vspace{0.5em}
+Zapiše li se lozinka onakva kakva jest, napadač s kopijom baze ima svaki račun u sustavu. Šteta se time ne zaustavlja: dio korisnika istu lozinku koristi i drugdje, pa iz jedne baze slijede tuđi računi u sustavima koji s ovim nemaju veze.
+
+\vspace{0.5em}
+Zahtjev je zato stroži od „nitko ne smije doći do baze": iz sadržaja baze ne smije se moći doći do lozinke, čak ni kad je sadržaj poznat.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Hash i salt}
+Hash je jednosmjerna funkcija: iz lozinke daje niz stalne duljine, a iz tog niza lozinka se ne može izračunati. Pri prijavi se ne uspoređuju lozinke nego hashevi.
+
+\vspace{0.5em}
+Sam hash nije dovoljan. Ista lozinka uvijek daje isti niz, iz čega slijedi dvoje:
+
+\begin{itemize}
+  \item unaprijed izračunata tablica parova lozinka i hash rješava cijelu bazu odjednom
+  \item jednaki hashevi u tablici gotovo sigurno odaju korisnike s istom lozinkom
+\end{itemize}
+
+\vspace{0.5em}
+Zato se uz svaku lozinku stvara \textbf{salt}: nasumičan niz koji ulazi u izračun. Ista lozinka dvaju korisnika daje različit hash, unaprijed izračunate tablice postaju bezvrijedne, a salt se pohranjuje uz hash jer nije tajna.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto spor algoritam}
+Hash funkcije poput SHA-256 rade brzo, jer im je to svrha. Za lozinke je to nedostatak: napadač s kopijom baze pogađa lozinke koliko brzo ih može hashirati.
+
+\vspace{0.5em}
+Algoritmi za lozinke zato imaju zadanu cijenu izračuna. Kod bcrypta je to \textbf{faktor rada}: svako povećanje za jedan udvostručuje posao.
+
+\begin{itemize}
+  \item provjera pri prijavi traje desetak ili stotinjak milisekunda, što korisnik ne primijeti
+  \item napad koji bi trajao sate produljuje se na godine
+\end{itemize}
+
+\vspace{0.5em}
+Vrijednost se bira tako da provjera ostane podnošljiva na poslužitelju; ono što je danas primjereno za nekoliko godina više nije, pa je ta vrijednost predmet povremene revizije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Provjera lozinke u kodu}
+\begin{lstlisting}[language=python]
+# app/core/security.py
+import bcrypt
+
+def hash_password(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{gensalt} stvara novi salt pri svakom pozivu i upisuje ga u sam niz, zajedno s oznakom algoritma i faktorom rada. Zasebni stupac za salt zato nije potreban.
+
+\vspace{0.3em}
+\texttt{checkpw} iz zapisa iščita salt i faktor rada, ponovi izračun i usporedi rezultat. Usporedba traje jednako dugo bez obzira na to koliko se znakova podudara, pa iz njezina trajanja ništa ne slijedi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ograničenje duljine kod bcrypta}
+Bcrypt u izračun uzima najviše \textbf{72 bajta} lozinke. Sve preko toga ne ulazi u hash.
+
+\vspace{0.5em}
+Posljedica je tiha: dvije različite duge lozinke koje se podudaraju u prvih 72 bajta daju isti hash, pa obje prolaze provjeru. Pogreška se ne javlja ni pri postavljanju lozinke ni pri prijavi.
+
+\vspace{0.5em}
+Zato se duljina lozinke ograničava u shemi na ulazu, ili se prije hashiranja primijeni sažimanje u niz stalne duljine. Algoritmi novijeg naraštaja to ograničenje nemaju.
+\end{frame}
+
+% ============================================================
+\sekcija{Implementacija tokena}{Sadržaj i potpis, podatci u tokenu, izdavanje, vijek tokena i dvije vrste.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Sadržaj tokena}
+JSON Web Token (JWT, RFC 7519) je niz od triju dijelova:
+
+\begin{lstlisting}
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9         <- zaglavlje
+.eyJzdWIiOiI3Iiwicm9sZSI6ImNsdWIiLCJleHAiOjE3OTI0ODMxNDB9   <- sadrzaj
+.4pcPyMD09olPSyXnrXCjTwXyr4BsezdI1AVTmud2fU4 <- potpis
+\end{lstlisting}
+
+\vspace{0.3em}
+Prva dva dijela su JSON zapisan u obliku \texttt{base64url}. Dekodirani glase:
+
+\begin{lstlisting}[language=json]
+{ "alg": "HS256", "typ": "JWT" }                   // zaglavlje
+{ "sub": "7", "role": "club", "exp": 1792483140 }  // sadrzaj
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{base64url} nije šifriranje nego zapis binarnog sadržaja slovima i znamenkama: za dekodiranje ne treba ključ. To ne znači da je do tokena lako doći, jer ga na putu štiti TLS, a na klijentu mjesto na kojem je pohranjen. Znači da ga \textbf{onaj tko ga drži čita u cijelosti}.
+\vspace{0.2em}
+Iz toga slijedi pravilo: u token ne ulazi ništa što korisnik ne smije vidjeti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Potpis}
+Treći dio tokena poslužitelj računa iz prvih dvaju, pomoću tajnog ključa. Pri svakom zahtjevu isti izračun ponavlja nad primljenim zaglavljem i sadržajem, pa dobiveni niz uspoređuje s trećim dijelom koji je stigao uz njih.
+
+\vspace{0.5em}
+\begin{itemize}
+  \item \textbf{Jamči}: sadržaj nije mijenjan nakon izdavanja i izdao ga je onaj tko poznaje ključ.
+  \item \textbf{Ne jamči}: tajnost sadržaja ni to da token drži onaj kome je izdan.
+\end{itemize}
+
+\vspace{0.5em}
+Promijeni li napadač \texttt{role} u \texttt{admin}, izračun nad izmijenjenim sadržajem daje drukčiji niz od priloženoga i token pada na provjeri. Odgovarajući potpis ne može izračunati jer nema ključ.
+
+\vspace{0.4em}
+Tko dođe do cijelog tokena, njime se služi kao da je vlasnik. Token je time izjednačen s lozinkom u pogledu čuvanja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Podatci u tokenu}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Oznaka} & \textbf{Značenje} & \textbf{Podrijetlo} \\
+  \midrule
+  \texttt{sub}      & na koga se token odnosi & standard \\
+  \texttt{exp}      & trenutak isteka         & standard \\
+  \texttt{iss}      & tko je token izdao      & standard \\
+  \texttt{type}     & vrsta tokena            & aplikacija \\
+  \texttt{role}     & uloga korisnika         & aplikacija \\
+  \texttt{club\_id} & klub korisnika          & aplikacija \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.12em}
+Uloga i klub u tokenu štede upit nad bazom pri svakoj provjeri prava. Cijena je zastarjelost: promijeni li organizator ulogu računu, token izdan prije toga i dalje nosi staru vrijednost do isteka.
+
+\vspace{0.12em}
+Sadržaj se zato drži što manjim: ono što je potrebno za odluku, i ništa što se često mijenja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Izdavanje tokena}
+Nakon uspješne prijave poslužitelj sastavi sadržaj, doda trenutak isteka i potpiše cjelinu:
+
+\begin{lstlisting}[language=python]
+# app/core/jwt.py
+def create_access_token(user_id: int, role: str, club_id: int | None) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id), "role": role, "club_id": club_id,
+        "type": "access", "iss": settings.JWT_ISSUER,
+        "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=ALGORITHM)
+\end{lstlisting}
+
+\vspace{0.3em}
+Time je token izdan i poslužitelj o njemu više ništa ne pamti. Jedino što ograničava njegovu uporabu jest vrijednost upisana u \texttt{exp}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Koliko token smije trajati}
+Budući da se izdani token ne može poništiti, jedina je zaštita njegov vijek. Taj izbor povlači dvije suprotne posljedice:
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Vijek} & \textbf{Ako token iscuri} & \textbf{Za korisnika} \\
+  \midrule
+  kratak & pristup prestaje brzo        & česta ponovna prijava \\
+  dug    & pristup traje do isteka      & prijava jednom \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Jednim tokenom bira se jedno ili drugo. Rješenje je izdati dva, s različitim vijekom i različitim putem: kratkotrajni koji putuje uz svaki zahtjev, i dugotrajni koji se šalje rijetko i služi samo za dobivanje novoga kratkotrajnog.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Access token}
+Putuje uz svaki zahtjev i nosi sve što je potrebno za odluku o pravima:
+
+\begin{lstlisting}[language=json]
+{ "sub": "7", "role": "club", "club_id": 12,
+  "type": "access", "iss": "sit-unizd", "exp": 1792483140 }
+\end{lstlisting}
+
+\vspace{0.4em}
+Vrijedi kratko, u ovom projektu petnaest minuta. Kratak vijek je posljedica izloženosti: token koji se šalje stotinama puta na dan ima i najviše prilika da negdje ostane zabilježen, u zapisniku posrednika ili u povijesti preglednika.
+
+\vspace{0.3em}
+Istekne li, poslužitelj ga odbija s \texttt{401} i klijent zna da mu treba novi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Refresh token}
+Šalje se samo na rutu za obnovu i nosi najmanje što je potrebno:
+
+\begin{lstlisting}[language=json]
+{ "sub": "7", "type": "refresh",
+  "iss": "sit-unizd", "exp": 1793000000 }
+\end{lstlisting}
+
+\vspace{0.4em}
+Vrijedi dugo, u ovom projektu sedam dana. Dug vijek je podnošljiv jer token rijetko putuje, pa je i prilika da iscuri mnogo manja.
+
+\vspace{0.3em}
+Oba tokena potpisana su istim ključem, pa bi bez oznake \texttt{type} refresh token prolazio i kao access token, i to sedam dana. Zato se vrsta provjerava na oba mjesta: ruta koja traži prijavljenog korisnika prihvaća samo \texttt{access}, a obnova samo \texttt{refresh}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Usporedba dvaju tokena}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+   & \textbf{Access token} & \textbf{Refresh token} \\
+  \midrule
+  vijek        & 15 minuta            & 7 dana \\
+  šalje se     & uz svaki zahtjev     & samo pri obnovi \\
+  sadržaj      & uloga i klub         & samo oznaka korisnika \\
+  ako iscuri   & kratak prozor        & pristup do isteka \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Time se dvije suprotne potrebe razdvajaju: ono što je često izloženo kratko traje, a ono što dugo traje rijetko se šalje.
+
+\vspace{0.4em}
+Korisnik od toga ne vidi ništa. Kad access token istekne, klijent refresh tokenom sam dobavi novi par i ponovi zahtjev.
+\end{frame}
+
+
+% ============================================================
+\sekcija{Prijava i provjera zahtjeva}{Tijek prijave, ruta za prijavu, poruke o pogrešci, provjera pri svakom zahtjevu, obnova tokena.}
+
+% ------------------------------------------------------------
+\begin{frame}{Tijek prijave}
+\begin{enumerate}
+  \item Klijent šalje adresu e-pošte i lozinku na rutu za prijavu.
+  \item Poslužitelj dohvaća korisnika i uspoređuje hash lozinke.
+  \item Ako se podudara, izdaje access i refresh token i vraća ih u odgovoru.
+  \item Klijent uz svaki sljedeći zahtjev šalje access token u zaglavlju \texttt{Authorization}.
+  \item Poslužitelj pri svakom zahtjevu provjerava token i iz njega dobiva korisnika.
+  \item Kad access token istekne, klijent refresh tokenom traži novi par.
+\end{enumerate}
+
+\vspace{0.5em}
+Koraci od četvrtoga nadalje ponavljaju se u svakom zahtjevu. Prijava se pritom dogodila jednom, a njezin je jedini trag token koji klijent nosi sa sobom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ruta za prijavu}
+\begin{lstlisting}[language=python]
+# app/routers/auth.py
+@router.post("/login", response_model=TokenResponse)
+async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    user = await auth_service.authenticate_user(db, body.username, body.password)
+    access, refresh = auth_service.create_tokens(user)
+    return TokenResponse(access_token=access, refresh_token=refresh)
+# app/services/auth_service.py
+async def authenticate_user(db, username: str, password: str) -> User:
+    user = await user_repo.get_by_username(db, username)
+    if not user or not verify_password(password, user.password_hash):
+        raise AppError("invalid_credentials", "...", 401)
+    if not user.is_active:
+        raise AppError("invalid_credentials", "...", 401)
+    return user
+\end{lstlisting}
+\vspace{-0.4em}
+
+Ruta prima i vraća, a odluka o tome je li prijava valjana pripada sloju \codefile{services}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Jedna poruka za tri slučaja}
+Nepostojeći korisnik, kriva lozinka i deaktiviran račun završavaju istim odgovorom i istom porukom.
+
+\vspace{0.5em}
+Razlikovanje bi napadaču dalo podatak koji sam po sebi vrijedi: uz popis adresa e-pošte i rutu koja odaje postoji li račun, dobiva se popis korisnika sustava bez ijedne pogođene lozinke. Nad tim se popisom onda pogađa ciljano.
+
+\vspace{0.5em}
+Isti razlog vrijedi i za rutu koja šalje poruku za promjenu lozinke: odgovor je jednak bez obzira na to postoji li adresa.
+
+\vspace{0.4em}
+Iznimka su odgovori namijenjeni prijavljenom korisniku nad vlastitim podatcima, gdje se ne odaje ništa što on već ne zna.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Provjera tokena pri svakom zahtjevu}
+\begin{lstlisting}[language=python]
+# app/core/deps.py
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if credentials is None:
+        raise AppError("invalid_credentials", "...", 401)
+    try:
+        payload = decode_token(credentials.credentials)
+    except JWTError:
+        raise AppError("token_expired", "...", 401)
+    if payload.get("type") != "access":
+        raise AppError("invalid_credentials", "...", 401)
+\end{lstlisting}
+
+\vspace{0.3em}
+Nad tokenom radimo tri provjere: je li uopće poslan, može li se dekodirati i je li riječ o pristupnom tokenu. Nijedna ne dira bazu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Od tokena do korisnika}
+\begin{lstlisting}[language=python]
+# app/core/deps.py, nastavak
+    user = await user_repo.get_by_id(db, int(payload["sub"]))
+    if not user or not user.is_active:
+        raise AppError("invalid_credentials", "...", 401)
+    return user
+\end{lstlisting}
+
+\vspace{0.4em}
+Oznaka iz polja \texttt{sub} služi za dohvat zapisa, a zatim se provjerava je li račun aktivan.
+
+\vspace{0.4em}
+Ruta koja traži prijavljenog korisnika navodi ovu ovisnost i dobiva zapis iz baze, a ne sadržaj tokena.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Kako ruta dolazi do korisnika}
+Funkcija \texttt{get\_current\_user} stoji u \codefile{core}, a ruta je u \codefile{routers} ne poziva. Umjesto toga navodi je u svom potpisu:
+
+\begin{lstlisting}[language=python]
+# app/routers/auth.py
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
+\end{lstlisting}
+
+\vspace{-0.3em}
+\texttt{Depends} znači: prije poziva \texttt{get\_me} pozovi \texttt{get\_current\_user} i ono što vrati predaj kao argument \texttt{current\_user}. Takva se najava naziva \textbf{ovisnost} (engl. \emph{dependency}), a poziva je framework.
+
+\vspace{-0.3em}
+Iz toga slijedi:
+
+\begin{itemize}
+  \item Provjera se izvodi samo u rutama koje je navedu. Ruta za prijavu i provjera dostupnosti je ne navode, pa im token ni ne treba.
+  \item Iz potpisa funkcije vidi se traži li ruta prijavljenog korisnika.
+  \item Korisnik u funkciju ulazi kao običan argument, pa ga test može zadati izravno, bez izdavanja tokena.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zašto se korisnik dohvaća iz baze}
+Token već nosi oznaku korisnika, ulogu i klub, pa se upit nad bazom čini suvišnim. Nije, jer token opisuje stanje u trenutku izdavanja.
+
+\vspace{0.5em}
+U petnaest minuta koliko traje, korisnik može biti deaktiviran ili mu se može promijeniti uloga. Bez upita bi deaktiviran račun radio do isteka tokena, a to je upravo slučaj u kojem pristup treba prestati odmah.
+
+\vspace{0.5em}
+Cijena je jedan upit po zahtjevu, po primarnom ključu. Aplikacije kojima je i to previše dio provjera prenose u token i prihvaćaju da promjene kasne; to je izbor, a ne propust.
+\end{frame}
+
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Obnova tokena}
+\begin{lstlisting}[language=python]
+# app/services/auth_service.py
+async def refresh_tokens(db, refresh_token: str) -> tuple[str, str]:
+    try:
+        payload = decode_token(refresh_token)
+    except JWTError:
+        raise AppError("invalid_credentials", "...", 401)
+    if payload.get("type") != "refresh":
+        raise AppError("invalid_credentials", "...", 401)
+    user = await user_repo.get_by_id(db, int(payload["sub"]))
+    if not user or not user.is_active:
+        raise AppError("invalid_credentials", "...", 401)
+    return create_tokens(user)
+\end{lstlisting}
+
+\vspace{0.2em}
+Obnova ponavlja iste provjere kao i svaki drugi zahtjev, uz jednu razliku u vrsti tokena. Vraća se novi par, pa i refresh token dobiva novi vijek.
+\end{frame}
+
+% ============================================================
+\sekcija{Što token ne rješava}{Odjava i oduzimanje pristupa, pohrana tokena na klijentu, tajni ključ, pogađanje lozinki.}
+
+% ------------------------------------------------------------
+\begin{frame}{Odjava i oduzimanje pristupa}
+Poslužitelj ne vodi popis izdanih tokena, pa ih ne može ni poništiti. Odjava na klijentu briše token iz pohrane, ali onaj tko je njegovu kopiju već preuzeo i dalje ga može upotrijebiti do isteka.
+
+\vspace{0.5em}
+Isto vrijedi za promjenu lozinke i za deaktivaciju računa: bez dodatnog koraka stari token radi dalje.
+
+\vspace{0.6em}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \textbf{Mjera} & \textbf{Kako djeluje} & \textbf{Cijena} \\
+  \midrule
+  kratak vijek tokena & skraćuje prozor        & češća obnova \\
+  provjera u bazi     & prekida pristup odmah  & upit po zahtjevu \\
+  popis opozvanih     & prekida pristup odmah  & zajednička pohrana \\
+  \bottomrule
+\end{tabular}
+}
+
+\vspace{0.5em}
+U ovom projektu djeluju prve dvije: vijek od petnaest minuta i provjera polja \texttt{is\_active} pri svakom zahtjevu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Pohrana tokena u pregledniku}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+   & \textbf{\texttt{localStorage}} & \textbf{Kolačić \texttt{HttpOnly}} \\
+  \midrule
+  čita ga JavaScript       & da  & ne \\
+  šalje se sam uz zahtjev  & ne  & da \\
+  izložen napadu XSS       & da  & ne \\
+  izložen napadu CSRF      & ne  & da \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.4em}
+Obje su pohrane izložene, ali različitim napadima. Njih imenuje posljednja dva retka tablice.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{XSS i CSRF}
+\textbf{XSS} je izvođenje tuđeg JavaScripta u stranici: takav kod čita sve što i vlastiti, pa i \texttt{localStorage}.
+
+\vspace{0.6em}
+\textbf{CSRF} je zahtjev koji tuđa stranica šalje u ime prijavljenog korisnika; preglednik kolačić prilaže sam, pa zahtjev prolazi kao vjerodostojan.
+
+\vspace{0.8em}
+\begin{konvencija}[Izbor, ne pravilo]
+Nijedna pohrana nije sigurna po sebi; bira se koji je napad vjerojatniji i čime se dopunjuje. U ovom projektu tokeni stoje u \texttt{localStorage}, uz kratak vijek pristupnog tokena.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Tajni ključ}
+Cijela provjera počiva na jednoj vrijednosti. Tko je ima, izdaje tokene koje poslužitelj prihvaća, s bilo kojom ulogom.
+
+\begin{itemize}
+  \item Ključ je nasumičan i dovoljno dug; \texttt{openssl rand -hex 32} daje primjerenu vrijednost.
+  \item Ne stoji u kodu ni u repozitoriju nego u varijabli okoline, kao i ostala konfiguracija.
+  \item Zadana vrijednost iz \codefile{.env.example} služi samo za razvoj i u produkciji se mijenja.
+\end{itemize}
+
+\vspace{0.5em}
+Promjena ključa poništava sve izdane tokene odjednom, jer nijedan potpis više ne odgovara. To je gruba mjera, ali jedina koja djeluje trenutačno bez dodatne pohrane.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Pogađanje lozinki}
+Spor algoritam otežava pogađanje nad ukradenom bazom, ali ne sprječava pogađanje kroz samu rutu za prijavu. Napadač ondje ne treba hash: šalje pokušaje i čeka odgovor.
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Mjera} & \textbf{Sprječava} \\
+  \midrule
+  spor algoritam         & pogađanje nad ukradenom bazom \\
+  ograničenje broja pokušaja & pogađanje kroz rutu za prijavu \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.5em}
+Ograničenje se postavlja po adresi pošiljatelja ili po korisničkom računu, primjerice nekoliko pokušaja u minuti, nakon čega odgovor postaje \texttt{429}. Mjera pritom ima i naličje: ograničenje po računu omogućuje da se tuđi račun namjerno zaključa nizom krivih pokušaja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Sažetak}
+\begin{itemize}
+  \item HTTP ne pamti pošiljatelja, pa identitet putuje u svakom zahtjevu posebno. Autentikacija odgovara tko šalje zahtjev, autorizacija smije li to učiniti.
+  \item Lozinka se ne pohranjuje. Pohranjuje se hash sa saltom, dobiven algoritmom koji je namjerno spor.
+  \item Token je potpisan, ali nije skriven: potpis jamči da sadržaj nije mijenjan i tko ga je izdao, a ne tajnost ni to da ga drži vlasnik.
+  \item Kratak access token i dugotrajan refresh token razdvajaju izloženost od trajanja; oznaka vrste sprječava da drugi posluži umjesto prvoga.
+  \item Poslužitelj ne vodi popis tokena, pa se pristup oduzima kratkim vijekom i provjerom stanja korisnika u bazi.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što slijedi}
+\begin{itemize}
+  \item \textbf{29.10.2026.} Predavanje 4, autorizacija: uloge, vlasništvo nad zapisom i razlika između odgovora \texttt{401} i \texttt{403}.
+  \item \textbf{05.11.2026.} Predavanje 5, oblikovanje API-ja i CRUD domene.
+  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
+\end{itemize}
+
+\vspace{0.5em}
+Do sljedećega predavanja: prijaviti se s korisnikom iz početnih podataka, dohvatiti podatke o sebi priloženim tokenom i provjeriti što se dogodi kad se pošalje izmijenjen token.
+\end{frame}
+
+\end{document}

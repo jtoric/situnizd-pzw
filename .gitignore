@@ -1,0 +1,18 @@
+# LaTeX: generirane datoteke (PDF-ovi predavanja se namjerno commitaju)
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.vrb
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Arhive (paketi za studente se pakiraju po potrebi, ne commitaju se)
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
