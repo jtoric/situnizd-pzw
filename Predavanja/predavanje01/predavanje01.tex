@@ -372,12 +372,12 @@ Ista putanja s različitim metodama vodi na različite funkcije. To je svojstvo 
 
 % ------------------------------------------------------------
 \begin{frame}{Oblikovanje putanja}
-HTTP ne propisuje kako putanja treba izgledati. Poslužitelj smije poslušati i \texttt{/getLifters} i \texttt{/l?id=31}. Ustaljeni oblik postoji zato što ga čitatelj prepoznaje bez dokumentacije.
+HTTP ne propisuje kako putanja treba izgledati. Aplikacija smije rute nazvati i \texttt{/getLifters} i \texttt{/l?id=31}. Ustaljenog se oblika držimo zato što se iz njega vidi što ruta radi i bez dokumentacije.
 
 \vspace{0.5em}
 \begin{konvencija}
 \begin{itemize}
-  \item Putanja sadrži imenice u množini (\texttt{/lifters}), a ne glagole (\texttt{/getLifters}). Radnju već nosi metoda.
+  \item Putanja sadrži imenice u množini (\texttt{/lifters}), a ne glagole (\texttt{/getLifters}). Glagol pripada metodi (\texttt{GET}, \texttt{POST}), a ne putanji.
   \item Pojedinačni zapis dobiva se dodavanjem oznake (\texttt{/lifters/31}).
   \item Pripadnost se izražava ugnježđivanjem (\texttt{/clubs/12/lifters}).
 \end{itemize}

@@ -107,6 +107,25 @@ Nijedan okvir ne propisuje gdje poslovna pravila stoje. Odluka da ih nosi sloj i
 \end{konvencija}
 \end{frame}
 
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Primjer: kategorija i spol}
+Težinske kategorije IPF-a razlikuju se po spolu. Shema zna popis svih kategorija, pa nepostojeću odbija sama. Ne zna, međutim, kojem natjecatelju prijava pripada:
+
+\begin{lstlisting}[language=python]
+# app/services/registration_service.py
+def _check_category(lifter, category):
+    if category not in CATEGORIES_BY_GENDER[lifter.gender]:
+        raise AppError(
+            "invalid_category",
+            f"Kategorija {category} ne odgovara spolu natjecatelja",
+            400,
+        )
+\end{lstlisting}
+
+\vspace{0.3em}
+Spol stoji u zapisu natjecatelja, a zahtjev nosi samo njegovu oznaku. Vrijednost se zato može prosuditi tek nakon dohvata iz baze, dakle ondje gdje baza postoji.
+\end{frame}
+
 % ============================================================
 \sekcija{Faze natjecanja}{Stanje izvedeno iz vremena, pomoćna funkcija, matrica dopuštenih radnji.}
 
@@ -196,6 +215,28 @@ Usporedba se izvodi u zoni UTC. Rok bez zone uspoređivao bi se s vremenom druge
 \end{tabular}
 }
 \end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Faza u odgovoru}
+Matrica vrijedi na poslužitelju, ali i sučelje treba znati koje radnje ponuditi. Zato odgovor o natjecanju nosi i izračunatu fazu:
+
+\begin{lstlisting}[language=python]
+# app/schemas/competition.py
+class CompetitionResponse(BaseModel):
+    prelim_deadline: datetime
+    final_deadline: datetime
+    @computed_field
+    @property
+    def phase(self) -> Phase:
+        return get_competition_phase(self)
+\end{lstlisting}
+
+\vspace{0.15em}
+Polje nije stupac u bazi nego vrijednost izvedena pri sastavljanju odgovora, pa ne može zaostati za vremenom.
+
+\vspace{0.15em}
+Na zaštitu preko sučelja pritom se ne smijemo osloniti: zahtjev koji ipak stigne izvan faze odbija sloj \codefile{services}, bez obzira na to što je sučelje prikazalo.
 \end{frame}
 
 % ------------------------------------------------------------

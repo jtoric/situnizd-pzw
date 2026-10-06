@@ -208,14 +208,14 @@ Obriše li se natjecatelj, prijave koje na njega pokazuju ostaju bez zapisa na k
 \begin{center}
 {\small
 \setlength{\tabcolsep}{0pt}
-\renewcommand{\arraystretch}{1.18}
-\begin{tabular}{@{}L{4.4cm}L{6.6cm}@{}}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}L{4.2cm}L{5.1cm}L{1.7cm}@{}}
   \toprule
-  \textbf{Izlaz} & \textbf{Posljedica} \\
+  \textbf{Izlaz} & \textbf{Posljedica} & \textbf{U projektu} \\
   \midrule
-  zabraniti dok veze postoje  & zahtjev se odbija, zapis ostaje \\
-  obrisati i povezane zapise  & nestaje i prijava i povijest o njoj \\
-  označiti stanje umjesto brisanja & zapis ostaje, oznaka kaže da ne vrijedi \\
+  zabraniti dok veze postoje  & zahtjev se odbija, zapis ostaje & natjecatelj \\
+  obrisati i povezane zapise  & nestaje i prijava i povijest o njoj & --- \\
+  označiti stanje umjesto brisanja & zapis ostaje, oznaka kaže da ne vrijedi & prijava \\
   \bottomrule
 \end{tabular}
 }
@@ -223,6 +223,9 @@ Obriše li se natjecatelj, prijave koje na njega pokazuju ostaju bez zapisa na k
 
 \vspace{0.25em}
 Izbor ovisi o tome treba li povijest zapisa ostati dostupna. Ono što se ne smije dogoditi jest da izbora nema: ruta koja briše bez ijednog od tih pravila završava neuhvaćenom pogreškom baze umjesto odgovorom koji klijent razumije.
+
+\vspace{0.25em}
+Brisanje natjecatelja koji ima prijave vraća \texttt{409} i kod \texttt{has\_registrations}.
 \end{frame}
 
 % ============================================================
@@ -303,7 +306,7 @@ Izlazna shema nije samo opis. Odgovor prolazi kroz nju, pa polje koje u njoj ne 
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=16]{Izmjena i neposlana polja}
+\begin{frame}[fragile]{Izmjena i neposlana polja (I)}
 \begin{lstlisting}[language=python]
 # app/schemas/lifter.py
 class LifterUpdate(BaseModel):
@@ -311,17 +314,42 @@ class LifterUpdate(BaseModel):
     last_name: str | None = Field(default=None, min_length=1, max_length=80)
     birth_date: date | None = None
     gender: str | None = Field(default=None, pattern=r"^[MF]$")
+\end{lstlisting}
 
+\vspace{0.4em}
+Sva su polja neobavezna, pa klijent šalje ona koja mijenja. Time nastaje dvoznačnost: izostalo polje i polje poslano kao \texttt{null} u shemi izgledaju jednako, a znače različito. Posljedica je da bi izmjena jednoga polja obrisala sva ostala.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Izmjena i neposlana polja (II)}
+\begin{lstlisting}[language=python]
 # app/services/lifter_service.py
 for field, value in body.model_dump(exclude_unset=True).items():
     setattr(lifter, field, value)
 \end{lstlisting}
 
-\vspace{0.3em}
-Sva su polja neobavezna, pa klijent šalje ona koja mijenja. Time nastaje dvoznačnost: izostalo polje i polje poslano kao \texttt{null} u shemi izgledaju jednako, a znače različito. Posljedica je da bi izmjena jednoga polja obrisala sva ostala.
+\vspace{0.4em}
+\texttt{exclude\_unset} razdvaja ta dva slučaja: u rječnik ulaze samo polja koja su doista poslana. Prazno tijelo shema propušta, pa zapis ostaje nepromijenjen, a odgovor je i dalje \texttt{200}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Izmjena i neposlana polja (III)}
+\texttt{exclude\_unset} razlikuje poslano od neposlanoga, ali ne i poslano kao \texttt{null}. Takvo je polje poslano, pa ulazi u rječnik i pokušava upisati \texttt{null} u stupac koji ga ne dopušta. Odgovor tada dolazi iz baze, a ne iz sheme:
+
+\begin{lstlisting}[language=python]
+# app/schemas/common.py
+def reject_null(value):
+    if value is None:
+        raise ValueError("Polje ne smije biti null; izostavite ga")
+    return value
+# app/schemas/lifter.py
+_not_null = field_validator(
+    "first_name", "last_name", "birth_date", "gender", mode="before"
+)(reject_null)
+\end{lstlisting}
 
 \vspace{0.3em}
-\texttt{exclude\_unset} razdvaja ta dva slučaja: u rječnik ulaze samo polja koja su doista poslana. Prazno tijelo shema propušta, pa zapis ostaje nepromijenjen, a odgovor je i dalje \texttt{200}.
+Validator se poziva samo za poslana polja, pa izostalo polje i dalje prolazi. Zahtjev s \texttt{null} dobiva \texttt{422} i ime polja, kao i svaka druga pogreška u obliku podataka.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -402,6 +430,9 @@ def final_after_prelim(cls, v, info):
 \end{lstlisting}
 
 \vspace{0.3em}
+Rokovi su u shemi tipa \texttt{AwareDatetime}, pa zahtjev bez oznake zone ne prolazi.
+
+\vspace{0.2em}
 Ono što ne može jest pogledati u bazu. Validator je obična funkcija bez sesije, a u asinkronom radu unutar nje nema ni čekanja odgovora baze.
 
 \vspace{0.2em}
