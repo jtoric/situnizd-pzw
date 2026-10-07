@@ -51,7 +51,7 @@ Nakon ovog predavanja student može:
 \end{frame}
 
 % ============================================================
-\sekcija{Od zahtjeva do odgovora}{Troslojna arhitektura i podjela odgovornosti, protokol HTTP i što putuje mrežom, jednostavan backend, koraci obrade zahtjeva.}
+\sekcija{Od zahtjeva do odgovora}{Troslojna arhitektura i podjela odgovornosti, HTTP i što putuje mrežom, jednostavan backend, koraci obrade zahtjeva.}
 
 % ------------------------------------------------------------
 \begin{frame}{Troslojna arhitektura}
@@ -80,18 +80,16 @@ Preglednik ne pristupa bazi izravno. Svaki podatak koji korisnik vidi prošao je
 % ------------------------------------------------------------
 \begin{frame}{Podjela odgovornosti}
 \begin{itemize}
-  \item Baza je izvor istine o podatcima; ograničenja zapisana u shemi provode se neovisno o tome koji ih kod pokušava prekršiti.
-  \item Backend je mjesto na kojem se pravilo provodi: prije svake izmjene provjeravaju se identitet, uloga, vlasništvo nad zapisom i faza natjecanja.
+  \item Baza trajno čuva podatke, neovisno o tome radi li aplikacija u tom trenutku. Ona je jedino mjesto na kojem podatci doista postoje.
+  \item Backend je mjesto na kojem se pravilo provodi: prije svake izmjene provjerava se tko šalje zahtjev, smije li to i dopušta li trenutno stanje podataka.
   \item \emph{Frontend} pravila prikazuje, ali ih ne provodi. Onemogućen gumb korisniku štedi uzaludan pokušaj, ali ne sprječava zahtjev poslan mimo sučelja.
 \end{itemize}
 
-\vspace{0.4em}
-Provjera ispravnosti te podjele: zahtjev poslan izravno na API, mimo korisničkog sučelja, mora dobiti isti odgovor kao zahtjev poslan iz preglednika. Ako ga ne dobije, pravilo je zapisano na krivome mjestu.
 \end{frame}
 
 % ------------------------------------------------------------
 
-\begin{frame}{Protokol HTTP}
+\begin{frame}{HTTP}
 HTTP (engl. \emph{HyperText Transfer Protocol}) je dogovor o tome kakve poruke dva programa izmjenjuju preko mreže i kojim redom. Nije ni jezik ni \emph{library}, nego pravila kojih se oba sugovornika drže, pa se sporazumijevaju bez obzira na to u čemu su napisani.
 
 \vspace{0.5em}
