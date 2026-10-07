@@ -229,9 +229,51 @@ Brisanje natjecatelja koji ima prijave vraća \texttt{409} i kod \texttt{has\_re
 \end{frame}
 
 % ============================================================
-\sekcija{Sheme}{Zašto jedna shema nije dovoljna, unos i odgovor, izmjena i neposlana polja, provjere koje nadilaze tip, dokle shema seže.}
+\sekcija{Sheme}{Što shema provjerava, zašto jedna nije dovoljna, unos i odgovor, izmjena i neposlana polja, idempotentnost, provjere koje nadilaze tip.}
 
 % ------------------------------------------------------------
+\begin{frame}{Shema kao opis ulaza i izlaza}
+Shema je zapis o tome kakve podatke ruta prima i kakve vraća. Framework je provjerava prije nego zahtjev dođe do poslovnih pravila, pa neispravan sadržaj do njih ne stiže.
+
+\vspace{0.4em}
+Shema provjerava:
+
+\begin{itemize}
+  \item jesu li obavezna polja prisutna
+  \item je li svako polje očekivanog tipa
+  \item zadovoljava li vrijednost ograničenje zapisano uz polje, primjerice popis dopuštenih vrijednosti ili raspon
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Shema: primjer}
+\begin{lstlisting}[language=python]
+# app/schemas/lifter.py
+class LifterCreate(BaseModel):
+    first_name: str = Field(min_length=1, max_length=80)
+    birth_date: date
+    gender: Literal["M", "F"]
+\end{lstlisting}
+
+\vspace{0.5em}
+{\small
+\begin{tabular}{@{}lL{6.4cm}@{}}
+  \toprule
+  \textbf{Poslani spol} & \textbf{Ishod} \\
+  \midrule
+  \enquote{M}, vrijednost s popisa & prolazi dalje \\
+  \enquote{X}, nije na popisu      & odbijeno, odgovor imenuje polje \texttt{gender} \\
+  \texttt{3}                       & odbijeno, vrijednost nije niz znakova \\
+  \bottomrule
+\end{tabular}
+}
+
+\vspace{0.4em}
+\texttt{Literal} nabraja dopuštene vrijednosti, pa provjera stoji u samoj deklaraciji polja.
+\end{frame}
+
+% ------------------------------------------------------------
+
 \begin{frame}{Isti zapis, različit skup polja}
 Natjecatelj je u bazi jedan zapis, ali za svaku vrstu zahtjeva putuje drukčiji skup polja. Polje koje se već nalazi u adresi rute u tijelu se ne ponavlja:
 
@@ -353,6 +395,21 @@ Validator se poziva samo za poslana polja, pa izostalo polje i dalje prolazi. Za
 \end{frame}
 
 % ------------------------------------------------------------
+\begin{frame}{Idempotentnost}
+Metoda je idempotentna ako niz od više jednakih zahtjeva ostavlja poslužitelj u istom stanju kao i jedan takav zahtjev. Standard to svojstvo pridružuje samim metodama:
+
+\begin{itemize}
+  \item \texttt{GET}, \texttt{HEAD}, \texttt{OPTIONS} i \texttt{TRACE} ne mijenjaju stanje, pa su idempotentni.
+  \item \texttt{PUT} i \texttt{DELETE} mijenjaju stanje, ali su idempotentni: zapis se postavlja na zadanu vrijednost, odnosno briše.
+  \item \texttt{POST} i \texttt{PATCH} nisu idempotentni.
+\end{itemize}
+
+\vspace{0.4em}
+Posljedica je praktična: klijent smije ponoviti neuspjeli \texttt{GET} ili \texttt{DELETE} bez razmišljanja. Ponovljeni \texttt{POST} može stvoriti drugi zapis, pa zaštita od toga mora doći iz aplikacije, najčešće ograničenjem jedinstvenosti u bazi.
+\end{frame}
+
+% ------------------------------------------------------------
+
 \begin{frame}{\texttt{PUT} i \texttt{PATCH}}
 Obje metode mijenjaju postojeći zapis. Razlikuju se po tome što klijent šalje i što se događa s onim što nije poslao:
 
