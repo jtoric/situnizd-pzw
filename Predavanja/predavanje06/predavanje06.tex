@@ -107,6 +107,25 @@ Nijedan okvir ne propisuje gdje poslovna pravila stoje. Odluka da ih nosi sloj i
 \end{konvencija}
 \end{frame}
 
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Primjer: kategorija i spol}
+Težinske kategorije IPF-a razlikuju se po spolu. Shema zna popis svih kategorija, pa nepostojeću odbija sama. Ne zna, međutim, kojem natjecatelju prijava pripada:
+
+\begin{lstlisting}[language=python]
+# app/services/registration_service.py
+def _check_category(lifter, category):
+    if category not in CATEGORIES_BY_GENDER[lifter.gender]:
+        raise AppError(
+            "invalid_category",
+            f"Kategorija {category} ne odgovara spolu natjecatelja",
+            400,
+        )
+\end{lstlisting}
+
+\vspace{0.3em}
+Spol stoji u zapisu natjecatelja, a zahtjev nosi samo njegovu oznaku. Vrijednost se zato može prosuditi tek nakon dohvata iz baze, dakle ondje gdje baza postoji.
+\end{frame}
+
 % ============================================================
 \sekcija{Faze natjecanja}{Stanje izvedeno iz vremena, pomoćna funkcija, matrica dopuštenih radnji.}
 
@@ -196,6 +215,28 @@ Usporedba se izvodi u zoni UTC. Rok bez zone uspoređivao bi se s vremenom druge
 \end{tabular}
 }
 \end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Faza u odgovoru}
+Matrica vrijedi na poslužitelju, ali i sučelje treba znati koje radnje ponuditi. Zato odgovor o natjecanju nosi i izračunatu fazu:
+
+\begin{lstlisting}[language=python]
+# app/schemas/competition.py
+class CompetitionResponse(BaseModel):
+    prelim_deadline: datetime
+    final_deadline: datetime
+    @computed_field
+    @property
+    def phase(self) -> Phase:
+        return get_competition_phase(self)
+\end{lstlisting}
+
+\vspace{0.15em}
+Polje nije stupac u bazi nego vrijednost izvedena pri sastavljanju odgovora, pa ne može zaostati za vremenom.
+
+\vspace{0.15em}
+Na zaštitu preko sučelja pritom se ne smijemo osloniti: zahtjev koji ipak stigne izvan faze odbija sloj \codefile{services}, bez obzira na to što je sučelje prikazalo.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -305,7 +346,7 @@ U našem projektu drugi zahtjev se odbija, pa sučelje može reći korisniku da 
 \end{frame}
 
 % ============================================================
-\sekcija{Pogreška kao odgovor}{Domenska pogreška, jedno mjesto prevođenja, popis kodova.}
+\sekcija{Pogreška kao odgovor}{Domenska pogreška, jedno mjesto prevođenja, izbor koda, popis kodova.}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Domenska pogreška}
@@ -352,6 +393,26 @@ Iznimka koja nije \texttt{AppError} ovdje se ne hvata nego daje \texttt{500}. To
 \end{frame}
 
 % ------------------------------------------------------------
+\begin{frame}{Izbor koda u graničnim slučajevima}
+Kod \texttt{401} odnosi se na prijavu, a ne na prava: standard ga opisuje kao nedostatak valjanih podataka za prijavu, premda mu naziv glasi \texttt{Unauthorized}. Kod \texttt{403} znači da je pošiljatelj poznat, a zahtjev ipak odbijen.
+
+\vspace{0.5em}
+Ostatak izbora standard ne razrješava, jer njegovi opisi dopuštaju više od jednoga.
+
+\begin{konvencija}[Konvencija, razlikuje se od projekta do projekta]
+\begin{itemize}
+  \item Neispravni podatci u tijelu zahtjeva: FastAPI i Pydantic vraćaju \texttt{422}, ali je moguć i \texttt{400}.
+  \item Uspješno brisanje: \texttt{204} bez tijela ili \texttt{200} s podatcima obrisanog zapisa.
+  \item Zapis koji postoji, ali ga korisnik ne smije vidjeti: \texttt{403} ili \texttt{404}, ovisno o tome smije li se odati da zapis postoji.
+\end{itemize}
+\end{konvencija}
+
+\vspace{0.3em}
+Izbor se donosi jednom i dosljedno provodi kroz cijeli projekt.
+\end{frame}
+
+% ------------------------------------------------------------
+
 \begin{frame}{Kodovi pogrešaka u projektu}
 \begin{center}
 {\small
@@ -464,18 +525,6 @@ Odatle i broj testova za fazu: tri za novu prijavu, po jedan za svaku fazu, i dv
   \item Ograničenje provodi baza, a aplikacija njezinu iznimku prevodi u \texttt{409}.
   \item Pravilo koje ovisi o vremenu testira se zamrzavanjem vremena, uz tvrdnju o kodu pogreške, ne samo o statusu.
 \end{itemize}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Što slijedi}
-\begin{itemize}
-  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
-  \item \textbf{26.11.2026.} Predavanje 7, arhitektura jednostranične aplikacije.
-  \item \textbf{03.12.2026.} Predavanje 8, komunikacija sučelja s poslužiteljem.
-\end{itemize}
-
-\vspace{0.5em}
-Do obrane: prijaviti natjecatelja, odjaviti ga, pa isti zahtjev poslati još jednom i usporediti odgovore. Zatim postaviti nominacijski rok u prošlost i pokušati novu prijavu.
 \end{frame}
 
 \end{document}
