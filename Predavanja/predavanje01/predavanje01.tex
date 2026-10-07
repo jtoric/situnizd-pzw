@@ -24,6 +24,21 @@ Na kraju predavanja projekt je pokrenut: baza u kontejneru i backend koji odgova
 \end{frame}
 
 % ------------------------------------------------------------
+\begin{frame}{Predmet kolegija}
+Web aplikacija je program kojemu korisnik pristupa preglednikom, a čiji podatci ostaju pohranjeni i nakon što korisnik zatvori karticu. Za to su nam potrebni:
+
+\begin{itemize}
+  \item \textbf{frontend} (klijentski dio): prikaz podataka u pregledniku i unos korisnika
+  \item \textbf{backend} (poslužiteljski dio): provjera identiteta i prava, poslovna pravila, pristup podatcima
+  \item \textbf{baza podataka}: trajna pohrana i ograničenja nad podatcima
+\end{itemize}
+
+\vspace{0.4em}
+Kolegij obrađuje sva tri dijela i sučelje kojim međusobno komuniciraju.
+\end{frame}
+
+% ------------------------------------------------------------
+
 \begin{frame}{Ishodi učenja}
 Nakon ovog predavanja student može:
 
@@ -35,21 +50,60 @@ Nakon ovog predavanja student može:
 \end{itemize}
 \end{frame}
 
-% ------------------------------------------------------------
-\begin{frame}{Domena primjera}
-Sustav prijava klubova na powerlifting natjecanje.
+% ============================================================
+\sekcija{Od zahtjeva do odgovora}{Troslojna arhitektura i podjela odgovornosti, protokol HTTP i što putuje mrežom, jednostavan backend, koraci obrade zahtjeva.}
 
+% ------------------------------------------------------------
+\begin{frame}{Troslojna arhitektura}
+\begin{center}
+\begin{tikzpicture}[
+  node distance=6mm and 20mm,
+  box/.style={draw=ink, thick, rounded corners, fill=white, align=center,
+              minimum height=12mm, minimum width=24mm, font=\small, text=textclr},
+  lbl/.style={font=\scriptsize, align=center, text=mutedclr}
+]
+  \node[box] (fe) {Preglednik \\ (SPA)};
+  \node[box, right=of fe] (be) {Poslužitelj \\ (API)};
+  \node[box, right=of be] (db) {Baza \\ (PostgreSQL)};
+
+  \draw[-{Latex}, ink2, thick] ([yshift=3mm]fe.east) -- node[lbl, above] {HTTP zahtjev} ([yshift=3mm]be.west);
+  \draw[-{Latex}, ink2, thick] ([yshift=-3mm]be.west) -- node[lbl, below] {HTTP odgovor} ([yshift=-3mm]fe.east);
+  \draw[-{Latex}, ink2, thick] ([yshift=3mm]be.east) -- node[lbl, above] {SQL upit} ([yshift=3mm]db.west);
+  \draw[-{Latex}, ink2, thick] ([yshift=-3mm]db.west) -- node[lbl, below] {zapisi} ([yshift=-3mm]be.east);
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+Preglednik ne pristupa bazi izravno. Svaki podatak koji korisnik vidi prošao je kroz \emph{backend}, koji je pritom provjerio tko je korisnik i što smije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Podjela odgovornosti}
 \begin{itemize}
-  \item Klub prijavljuje svoje natjecatelje i vidi samo svoje prijave; organizator vidi prijave svih klubova.
-  \item Natjecanje ima dva roka nominacije. Do prvoga roka prijave se dodaju, mijenjaju i povlače. Između rokova mogu se još mijenjati i povlačiti, ali ne i dodavati. Nakon drugoga roka popis je zaključan.
+  \item Baza je izvor istine o podatcima; ograničenja zapisana u shemi provode se neovisno o tome koji ih kod pokušava prekršiti.
+  \item Backend je mjesto na kojem se pravilo provodi: prije svake izmjene provjeravaju se identitet, uloga, vlasništvo nad zapisom i faza natjecanja.
+  \item \emph{Frontend} pravila prikazuje, ali ih ne provodi. Onemogućen gumb korisniku štedi uzaludan pokušaj, ali ne sprječava zahtjev poslan mimo sučelja.
 \end{itemize}
 
 \vspace{0.4em}
-Ista se struktura pojavljuje u mnogim sustavima: korisnik vidi dio podataka, a operacije nad njima ovise o tome u kojem je stanju nadređeni zapis.
+Provjera ispravnosti te podjele: zahtjev poslan izravno na API, mimo korisničkog sučelja, mora dobiti isti odgovor kao zahtjev poslan iz preglednika. Ako ga ne dobije, pravilo je zapisano na krivome mjestu.
 \end{frame}
 
-% ============================================================
-\sekcija{Od zahtjeva do odgovora}{Što putuje mrežom, jednostavan backend, koraci obrade zahtjeva.}
+% ------------------------------------------------------------
+
+\begin{frame}{Protokol HTTP}
+HTTP (engl. \emph{HyperText Transfer Protocol}) je dogovor o tome kakve poruke dva programa izmjenjuju preko mreže i kojim redom. Nije ni jezik ni \emph{library}, nego pravila kojih se oba sugovornika drže, pa se sporazumijevaju bez obzira na to u čemu su napisani.
+
+\vspace{0.5em}
+Tri svojstva iz kojih slijedi sve ostalo:
+
+\begin{itemize}
+  \item \textbf{Razgovor uvijek počinje klijent.} Poslužitelj sam od sebe ne šalje ništa, nego čeka zahtjev i na njega odgovara.
+  \item \textbf{Jedan zahtjev, jedan odgovor.} Nema odgovora bez zahtjeva ni dvaju odgovora na isti zahtjev.
+  \item \textbf{Poslužitelj ne pamti prethodne zahtjeve.} Svaki stiže sam za sebe, pa sve što je za odluku potrebno mora biti u njemu.
+\end{itemize}
+
+\end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{HTTP zahtjev i odgovor}
@@ -71,7 +125,7 @@ Content-Type: application/json
 \end{lstlisting}
 
 \vspace{0.2em}
-Backend je program koji prima prvi tekst i sastavlja drugi.
+\emph{Frontend} šalje prvi tekst, \emph{backend} ga prima i sastavlja drugi.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -112,7 +166,7 @@ Svaki zahtjev koji mijenja podatke prolazi kroz ove korake.
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Ruta za provjeru stanja}
-Najjednostavnija ruta u projektu ne radi ništa osim što potvrđuje da aplikacija stoji:
+Najjednostavnija ruta u projektu ne radi ništa osim što potvrđuje da je aplikacija pokrenuta:
 
 \begin{lstlisting}[language=python]
 # app/routers/health.py
@@ -122,7 +176,13 @@ def health():
 \end{lstlisting}
 
 \vspace{0.4em}
-Odgovor na \texttt{GET /health} potvrđuje troje: proces radi, usmjeravanje zahtjeva radi i aplikacija se uspjela sastaviti.
+Odgovor na \texttt{GET /health} potvrđuje da:
+
+\begin{itemize}
+  \item proces radi
+  \item usmjeravanje zahtjeva radi
+  \item sastavljanje aplikacije nije prijavilo pogrešku
+\end{itemize}
 
 \vspace{0.3em}
 Tu rutu ne poziva korisnik nego nadzorni alat: Docker je zove pri provjeri stanja kontejnera, a platforme za postavljanje u produkciju u pravilnim razmacima, da utvrde je li aplikacija spremna primati promet.
@@ -198,13 +258,11 @@ Svaki odgovor počinje trozanamenkastim statusnim kodom. Standard HTTP-a (RFC 91
 Standard traži da klijent razumije razred svakoga koda, i onda kad sam kod ne poznaje. Kod iz razreda \texttt{4xx} koji klijent ne prepoznaje smije obraditi kao \texttt{400}.
 \end{frame}
 % ------------------------------------------------------------
-\begin{frame}{Kodovi koji se javljaju u ovakvoj aplikaciji}
-Od stotinjak kodova koje standard opisuje, ovakva aplikacija koristi ih desetak:
-
-\vspace{0.6em}
+\begin{frame}{Primjeri statusnih kodova}
+\vspace{0.8em}
 {\footnotesize
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lL{3.9cm}lL{3.9cm}@{}}
+\begin{tabular}{@{}lL{5.45cm}lL{5.45cm}@{}}
   \toprule
   \textbf{Kod} & \textbf{Značenje} & \textbf{Kod} & \textbf{Značenje} \\
   \midrule
@@ -236,8 +294,6 @@ Taj opis ne piše se ručno. FastAPI ga sastavlja iz tipova i deklaracija koje s
   \item \texttt{/redoc} je drugi prikazivač istog opisa
 \end{itemize}
 
-\vspace{0.4em}
-Korist od prvoga dana: API se isprobava bez pisanja ijednog klijenta, a kad u drugom dijelu kolegija dođe \emph{frontend}, ugovor između njega i backenda već je zapisan.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -255,12 +311,10 @@ app = FastAPI(
 Dokumentacija se u produkciji često gasi, da popis ruta i oblik tijela zahtjeva ne budu javno dostupni. Nije obavezno i mnogi projekti je ostavljaju otvorenom; opis tada služi i onima koji se na API spajaju izvana.
 \end{konvencija}
 
-\vspace{0.3em}
-Sam \texttt{/openapi.json} gasi se zasebno, postavkom \texttt{openapi\_url}.
 \end{frame}
 
 % ============================================================
-\sekcija{Kostur projekta}{Struktura repozitorija i backenda, sastavljanje aplikacije, konfiguracija, pokretanje.}
+\sekcija{Kostur projekta}{Struktura repozitorija i backenda, konfiguracija, sastavljanje aplikacije, baza u kontejneru, pokretanje.}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Struktura repozitorija}
@@ -298,8 +352,6 @@ api/
   requirements.txt
 \end{lstlisting}
 
-\vspace{0.3em}
-Svaka mapa drži jednu vrstu posla, pa se mjesto izmjene zna prije otvaranja ijedne datoteke. Četiri donje zasad su prazne i pune se redom kojim dolaze teme.
 \end{frame}
 
 
@@ -472,7 +524,7 @@ Oba se pokreću lokalno i pri svakoj promjeni u repozitoriju. Ono što alat mož
 \end{frame}
 
 % ============================================================
-\sekcija{Rad s verzijama koda}{Commit kao zapis jedne promjene, čitanje razlike, naredbe za pregled povijesti.}
+\sekcija{Rad s verzijama koda}{Commit kao zapis jedne promjene, oblik i opseg poruke, čitanje razlike, naredbe za pregled povijesti.}
 
 % ------------------------------------------------------------
 \begin{frame}{Commit kao zapis jedne promjene}
@@ -565,22 +617,11 @@ Zadnja naredba pokazuje što je promijenjeno, a još nije zabilježeno. Pregled 
 \begin{itemize}
   \item Backend prima HTTP zahtjev i sastavlja odgovor. U najmanjem obliku to je funkcija pridružena putanji.
   \item Čim podatci nisu javni i čim se mijenjaju, uz to dolaze utvrđivanje pošiljatelja, provjera prava, provjera oblika poslanih podataka, poslovna pravila i transakcija.
-
-  \item Statusni kod nosi značenje: \texttt{401} je neutvrđen identitet, \texttt{403} nedostatak ovlasti, \texttt{409} sukob sa stanjem resursa. Za neispravne podatke projekt bira između \texttt{400} i \texttt{422} i toga se drži.
+  \item Statusni kod nosi značenje: \texttt{401} je neutvrđen identitet, \texttt{403} nedostatak ovlasti, \texttt{409} sukob sa stanjem resursa.
   \item Konfiguracija dolazi iz varijabli okoline, pa prijelaz u produkciju ne mijenja kod; \codefile{.env} ostaje izvan repozitorija.
+  \item Aplikacija zapisuje što je radila, a pogreška prema klijentu ima uvijek isti oblik. Ono što alat provjeri bez pokretanja koda ne provjerava čovjek.
+  \item Commit je zapis jedne promjene: poruka kaže zašto, a razlika pokazuje što.
 \end{itemize}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Što slijedi}
-\begin{itemize}
-  \item \textbf{15.10.2026.} Predavanje 2, modeliranje podataka: entiteti Klub i Korisnik, veza s bazom preko ORM-a, migracije alatom Alembic i početno punjenje baze.
-  \item \textbf{22.10.2026.} Predavanje 3, autentikacija i sigurnost.
-  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
-\end{itemize}
-
-\vspace{0.5em}
-Do sljedećega predavanja: pokrenuti bazu i backend na vlastitom računalu te potvrditi odgovor na ruti \texttt{/health}.
 \end{frame}
 
 \end{document}
