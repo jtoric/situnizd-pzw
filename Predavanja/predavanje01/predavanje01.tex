@@ -164,7 +164,10 @@ Svaki zahtjev koji mijenja podatke prolazi kroz ove korake.
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Ruta za provjeru stanja}
-Najjednostavnija ruta u projektu ne radi ništa osim što potvrđuje da je aplikacija pokrenuta:
+\begin{lstlisting}[language=python]
+# app/main.py
+app.include_router(health_router, prefix="/health", tags=["health"])
+\end{lstlisting}
 
 \begin{lstlisting}[language=python]
 # app/routers/health.py
@@ -181,9 +184,6 @@ Odgovor na \texttt{GET /health} potvrđuje da:
   \item usmjeravanje zahtjeva radi
   \item sastavljanje aplikacije nije prijavilo pogrešku
 \end{itemize}
-
-\vspace{0.3em}
-Tu rutu ne poziva korisnik nego nadzorni alat: Docker je zove pri provjeri stanja kontejnera, a platforme za postavljanje u produkciju u pravilnim razmacima, da utvrde je li aplikacija spremna primati promet.
 \end{frame}
 % ------------------------------------------------------------
 
