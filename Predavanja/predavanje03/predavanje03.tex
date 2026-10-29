@@ -12,9 +12,9 @@
 % ------------------------------------------------------------
 \begin{frame}{Plan predavanja}
 \begin{enumerate}
-  \item Identitet u protokolu bez pamćenja
   \item Lozinke: zašto se ne pohranjuju i kako se provjeravaju
-  \item Implementacija autentikacije tokenom: sadržaj, potpis, vijek i vrste
+  \item Identitet u protokolu bez pamćenja
+  \item Implementacija autentikacije tokenom: sadržaj, čitljivost, potpis, vijek i vrste
   \item Prijava i provjera pri svakom zahtjevu
   \item Što token ne rješava
 \end{enumerate}
@@ -45,126 +45,7 @@ Korisnik ima korisničko ime za prijavu, hash lozinke, ulogu i, ako pripada klub
 \end{frame}
 
 % ============================================================
-\sekcija{Identitet u protokolu bez pamćenja}{Zašto zahtjev ne zna tko ga šalje, prijava i ono što se uz nju izdaje, sjednica i token.}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{HTTP ne pamti pošiljatelja}
-Svaki je zahtjev samostalan. Poslužitelj iz njega čita metodu, putanju, zaglavlja i tijelo:
-
-\begin{lstlisting}
-GET /clubs/12/lifters HTTP/1.1
-Host: api.primjer.hr
-\end{lstlisting}
-
-\vspace{0.4em}
-U tom zapisu nema ničega što bi otkrilo tko ga šalje. Prethodni zahtjev istog korisnika nije ostavio trag.
-
-\vspace{1.1em}
-Iz toga slijedi da identitet mora putovati \textbf{u samom zahtjevu}, i to u svakom zahtjevu posebno.
-\end{frame}
-
-
-% ------------------------------------------------------------
-\begin{frame}{Kako se korisnik autenticira}
-Prijava se dogodi jednom: korisnik pošalje lozinku, poslužitelj je provjeri.
-
-\vspace{1.1em}
-Svaki sljedeći zahtjev opet dolazi bez identiteta. Slati lozinku uz svaki od njih nije rješenje, jer bi je klijent morao trajno čuvati i izlagati u svakom zahtjevu.
-
-\vspace{1.1em}
-Poslužitelj zato pri prijavi izdaje nešto drugo, što klijent prilaže svakom sljedećem zahtjevu. Ustaljena su dva takva rješenja: sjednica i token.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Sjednica}
-\begin{center}
-\begin{tikzpicture}[
-  font=\scriptsize,
-  akt/.style={draw=ink, thick, rounded corners, fill=tint, minimum height=6mm,
-              minimum width=20mm, text=textclr, font=\small},
-  lbl/.style={font=\scriptsize, text=mutedclr}
-]
-  \node[akt] (k) at (0,0)   {Klijent};
-  \node[akt] (p) at (4.6,0) {Poslužitelj};
-  \node[akt] (s) at (9.2,0) {Pohrana};
-  \draw[lineclr] (0,-0.35) -- (0,-3.3);
-  \draw[lineclr] (4.6,-0.35) -- (4.6,-3.3);
-  \draw[lineclr] (9.2,-0.35) -- (9.2,-3.3);
-  \draw[-{Latex}, ink2, thick] (0,-0.9)   -- node[lbl,above]{prijava}          (4.6,-0.9);
-  \draw[-{Latex}, ink2, thick] (4.6,-1.5) -- node[lbl,above]{zapis o prijavi}  (9.2,-1.5);
-  \draw[-{Latex}, ink2, thick] (4.6,-2.1) -- node[lbl,above]{oznaka}           (0,-2.1);
-  \draw[-{Latex}, ink2, thick] (0,-2.7)   -- node[lbl,above]{zahtjev + oznaka} (4.6,-2.7);
-  \draw[-{Latex}, ink2, thick] (4.6,-3.2) -- node[lbl,above]{pretraga}         (9.2,-3.2);
-\end{tikzpicture}
-\end{center}
-
-\begin{lstlisting}
-Cookie: session=8f3c1a9e4b7d
-\end{lstlisting}
-
-\vspace{0.2em}
-Sama oznaka ne znači ništa; poslužitelj po njoj pronalazi zapis o prijavi. Obriše li taj zapis, prijava prestaje odmah.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Token}
-\begin{center}
-\begin{tikzpicture}[
-  font=\scriptsize,
-  akt/.style={draw=ink, thick, rounded corners, fill=tint, minimum height=6mm,
-              minimum width=20mm, text=textclr, font=\small},
-  lbl/.style={font=\scriptsize, text=mutedclr},
-  nap/.style={font=\scriptsize, text=ink, align=left}
-]
-  \node[akt] (k) at (0,0)   {Klijent};
-  \node[akt] (p) at (4.6,0) {Poslužitelj};
-  \draw[lineclr] (0,-0.35) -- (0,-3.0);
-  \draw[lineclr] (4.6,-0.35) -- (4.6,-3.0);
-  \draw[-{Latex}, ink2, thick] (0,-0.9)   -- node[lbl,above]{prijava}         (4.6,-0.9);
-  \draw[-{Latex}, ink2, thick] (4.6,-1.7) -- node[lbl,above]{potpisan token}  (0,-1.7);
-  \draw[-{Latex}, ink2, thick] (0,-2.5)   -- node[lbl,above]{zahtjev + token} (4.6,-2.5);
-  \node[nap, right=3mm of p, anchor=west] at (5.4,-1.7) {token se potpisuje \\ tajnim ključem};
-  \node[nap, anchor=west] at (5.4,-2.5) {provjerava se potpis, \\ bez pohrane i pretrage};
-\end{tikzpicture}
-\end{center}
-
-\begin{lstlisting}
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
-\end{lstlisting}
-
-\vspace{0.2em}
-Ako se potpis podudara, poslužitelj vjeruje sadržaju: bez tajnog ključa nitko ga nije mogao sastaviti ni izmijeniti.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Usporedba}
-\begin{center}
-{\small
-\setlength{\tabcolsep}{7pt}
-\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{@{}L{3.2cm}L{4.0cm}L{4.0cm}@{}}
-  \toprule
-   & \textbf{Sjednica} & \textbf{Token} \\
-  \midrule
-  što zahtjev nosi           & nasumičnu oznaku          & potpisan zapis o korisniku \\
-  gdje su podatci            & na poslužitelju           & u samom zapisu \\
-  provjera zahtjeva          & pretraga po oznaci        & provjera potpisa \\
-  prekid pristupa            & brisanjem zapisa          & nije izravno moguć \\
-  više primjeraka aplikacije & traži zajedničku pohranu  & ne traži ništa zajedničko \\
-  \bottomrule
-\end{tabular}
-}
-\end{center}
-
-\vspace{0.12em}
-Izbor se svodi na to što je skuplje: zajednička pohrana koju svaki primjerak aplikacije mora doseći, ili to što se korisniku pristup ne može oduzeti prije nego mu token istekne.
-
-\vspace{0.3em}
-U ovom se projektu koristi token.
-\end{frame}
-
-% ============================================================
-\sekcija{Lozinke}{Zašto se ne pohranjuju, hash i salt, izbor sporog algoritma, provjera pri prijavi.}
+\sekcija{Lozinke}{Zašto se ne pohranjuju, hash i njegova ranjivost, faktor rada i salt, provjera pri prijavi i što odgovor smije odati.}
 
 % ------------------------------------------------------------
 \begin{frame}{Zašto lozinka ne smije biti zapisana}
@@ -268,18 +149,157 @@ def verify_password(plain: str, hashed: str) -> bool:
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Ograničenje duljine kod bcrypta}
-Bcrypt u izračun uzima najviše \textbf{72 bajta} lozinke. Sve preko toga ne ulazi u hash.
+\begin{frame}[fragile]{Provjera lozinke pri prijavi}
+\begin{lstlisting}[language=python]
+# app/services/auth_service.py
+async def authenticate_user(db, username: str, password: str) -> User:
+    user = await user_repo.get_by_username(db, username)
+    if not user or not verify_password(password, user.password_hash):
+        raise AppError("invalid_credentials", "...", 401)
+    if not user.is_active:
+        raise AppError("invalid_credentials", "...", 401)
+    return user
+\end{lstlisting}
+
+\vspace{0.6em}
+Tri su načina da prijava propadne: nepoznato korisničko ime, lozinka koja se ne podudara i deaktiviran račun.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Jedna poruka za tri slučaja}
+Nepostojeći korisnik, kriva lozinka i deaktiviran račun završavaju istim odgovorom i istom porukom.
 
 \vspace{1.1em}
-Posljedica je tiha: dvije različite duge lozinke koje se podudaraju u prvih 72 bajta daju isti hash, pa obje prolaze provjeru. Pogreška se ne javlja ni pri postavljanju lozinke ni pri prijavi.
+Razlikovanje bi napadaču dalo podatak koji sam po sebi vrijedi: uz popis korisničkih imena i rutu koja odaje postoji li račun, dobiva se popis korisnika sustava bez ijedne pogođene lozinke. Nad tim se popisom onda pogađa ciljano.
 
 \vspace{1.1em}
-Zato se duljina lozinke ograničava u shemi na ulazu, ili se prije hashiranja primijeni sažimanje u niz stalne duljine. Algoritmi novijeg naraštaja to ograničenje nemaju.
+Isti razlog vrijedi i za rutu koja šalje poruku za promjenu lozinke: odgovor je jednak bez obzira na to postoji li adresa.
+
+\vspace{1.1em}
+Iznimka su odgovori namijenjeni prijavljenom korisniku nad vlastitim podatcima, gdje se ne odaje ništa što on već ne zna.
 \end{frame}
 
 % ============================================================
-\sekcija{Implementacija autentikacije tokenom}{Sadržaj i potpis, podatci u tokenu, izdavanje, vijek tokena i njegove vrste.}
+\sekcija{Identitet u protokolu bez pamćenja}{Zašto zahtjev ne zna tko ga šalje, prijava i ono što se uz nju izdaje, sjednica i token.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{HTTP ne pamti pošiljatelja}
+Svaki je zahtjev samostalan. Poslužitelj iz njega čita metodu, putanju, zaglavlja i tijelo:
+
+\begin{lstlisting}
+POST /clubs/12/lifters HTTP/1.1
+Host: api.primjer.hr
+Content-Type: application/json
+
+{"club": "PLK Behemot", "first_name": "Ana", "last_name": "Horvat"}
+\end{lstlisting}
+
+\vspace{1.1em}
+Prethodni zahtjev istog korisnika nije ostavio trag.
+
+\vspace{1.1em}
+Iz toga slijedi da identitet mora putovati \textbf{u samom zahtjevu}, i to tako da ga pošiljatelj ne može izmisliti.
+\end{frame}
+
+
+% ------------------------------------------------------------
+\begin{frame}{Kako se korisnik autenticira}
+Prijava se dogodila jednom. Svaki sljedeći zahtjev opet dolazi bez identiteta, a slati lozinku uz svaki od njih nije rješenje: klijent bi je morao trajno čuvati i izlagati u svakom zahtjevu.
+
+\vspace{1.1em}
+Poslužitelj zato pri prijavi izdaje nešto drugo, što klijent prilaže svakom sljedećem zahtjevu. Ustaljena su dva takva rješenja: sjednica i token.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Sjednica (\textit{session})}
+\begin{center}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  akt/.style={draw=ink, thick, rounded corners, fill=tint, minimum height=6mm,
+              minimum width=20mm, text=textclr, font=\small},
+  lbl/.style={font=\scriptsize, text=mutedclr}
+]
+  \node[akt] (k) at (0,0)   {Klijent};
+  \node[akt] (p) at (4.6,0) {Poslužitelj};
+  \node[akt] (s) at (9.2,0) {Pohrana};
+  \draw[lineclr] (0,-0.35) -- (0,-3.3);
+  \draw[lineclr] (4.6,-0.35) -- (4.6,-3.3);
+  \draw[lineclr] (9.2,-0.35) -- (9.2,-3.3);
+  \draw[-{Latex}, ink2, thick] (0,-0.9)   -- node[lbl,above]{prijava}          (4.6,-0.9);
+  \draw[-{Latex}, ink2, thick] (4.6,-1.5) -- node[lbl,above]{zapis o prijavi}  (9.2,-1.5);
+  \draw[-{Latex}, ink2, thick] (4.6,-2.1) -- node[lbl,above]{oznaka}           (0,-2.1);
+  \draw[-{Latex}, ink2, thick] (0,-2.7)   -- node[lbl,above]{zahtjev + oznaka} (4.6,-2.7);
+  \draw[-{Latex}, ink2, thick] (4.6,-3.2) -- node[lbl,above]{pretraga}         (9.2,-3.2);
+\end{tikzpicture}
+\end{center}
+
+\begin{lstlisting}
+Cookie: session=8f3c1a9e4b7d
+\end{lstlisting}
+
+\vspace{0.2em}
+Sama oznaka ne znači ništa; poslužitelj po njoj pronalazi zapis o prijavi. Obriše li taj zapis, prijava prestaje odmah.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Token}
+\begin{center}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  akt/.style={draw=ink, thick, rounded corners, fill=tint, minimum height=6mm,
+              minimum width=20mm, text=textclr, font=\small},
+  lbl/.style={font=\scriptsize, text=mutedclr},
+  nap/.style={font=\scriptsize, text=ink, align=left}
+]
+  \node[akt] (k) at (0,0)   {Klijent};
+  \node[akt] (p) at (4.6,0) {Poslužitelj};
+  \draw[lineclr] (0,-0.35) -- (0,-3.0);
+  \draw[lineclr] (4.6,-0.35) -- (4.6,-3.0);
+  \draw[-{Latex}, ink2, thick] (0,-0.9)   -- node[lbl,above]{prijava}         (4.6,-0.9);
+  \draw[-{Latex}, ink2, thick] (4.6,-1.7) -- node[lbl,above]{potpisan token}  (0,-1.7);
+  \draw[-{Latex}, ink2, thick] (0,-2.5)   -- node[lbl,above]{zahtjev + token} (4.6,-2.5);
+  \node[nap, right=3mm of p, anchor=west] at (5.4,-1.7) {token se potpisuje \\ tajnim ključem};
+  \node[nap, anchor=west] at (5.4,-2.5) {provjerava se potpis, \\ bez pohrane i pretrage};
+\end{tikzpicture}
+\end{center}
+
+\begin{lstlisting}
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+\end{lstlisting}
+
+\vspace{0.2em}
+Ako se potpis podudara, poslužitelj vjeruje sadržaju: bez tajnog ključa nitko ga nije mogao sastaviti ni izmijeniti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Usporedba}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{7pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}L{3.2cm}L{4.0cm}L{4.0cm}@{}}
+  \toprule
+   & \textbf{Sjednica} & \textbf{Token} \\
+  \midrule
+  što zahtjev nosi           & nasumičnu oznaku          & potpisan zapis o korisniku \\
+  gdje su podatci            & na poslužitelju           & u samom zapisu \\
+  provjera zahtjeva          & pretraga po oznaci        & provjera potpisa \\
+  prekid pristupa            & brisanjem zapisa          & nije izravno moguć \\
+  više primjeraka aplikacije & traži zajedničku pohranu  & ne traži ništa zajedničko \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.12em}
+Izbor se svodi na to što je skuplje: zajednička pohrana koju svaki primjerak aplikacije mora doseći, ili to što se korisniku pristup ne može oduzeti prije nego mu token istekne.
+
+\vspace{0.3em}
+U ovom se projektu koristi token.
+\end{frame}
+
+% ============================================================
+\sekcija{Implementacija autentikacije tokenom}{Oblik zapisa i njegova čitljivost, potpis, izdavanje, vijek i vrste tokena.}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Sadržaj tokena}
@@ -309,15 +329,19 @@ Prva su dva dijela JSON zapisan u obliku \texttt{base64url}. Dekodirani glase:
 \begin{center}
 {\small
 \setlength{\tabcolsep}{8pt}
-\renewcommand{\arraystretch}{1.4}
+\renewcommand{\arraystretch}{1.25}
 \begin{tabular}{@{}lll@{}}
   \toprule
   \textbf{Oznaka} & \textbf{Značenje} & \textbf{Propisuje} \\
   \midrule
+  \multicolumn{3}{@{}l@{}}{\textit{zaglavlje}} \\
+  \texttt{alg}      & algoritam potpisa       & standard JWT \\
+  \texttt{typ}      & vrsta zapisa            & standard JWT \\
+  \midrule
+  \multicolumn{3}{@{}l@{}}{\textit{sadržaj}} \\
   \texttt{sub}      & na koga se token odnosi & standard JWT \\
   \texttt{exp}      & trenutak isteka         & standard JWT \\
   \texttt{iss}      & tko je token izdao      & standard JWT \\
-  \midrule
   \texttt{type}     & vrsta tokena            & naša aplikacija \\
   \texttt{role}     & uloga korisnika         & naša aplikacija \\
   \texttt{club\_id} & klub korisnika          & naša aplikacija \\
@@ -461,7 +485,7 @@ Korisnik od toga ne vidi ništa. Kad access token istekne, klijent refresh token
 
 
 % ============================================================
-\sekcija{Prijava i provjera zahtjeva}{Tijek prijave, ruta za prijavu, poruke o pogrešci, provjera pri svakom zahtjevu, obnova tokena.}
+\sekcija{Prijava i provjera zahtjeva}{Tijek prijave, odgovor na prijavu, provjera pri svakom zahtjevu, put od tokena do korisnika, obnova tokena.}
 
 % ------------------------------------------------------------
 \begin{frame}{Tijek prijave}
@@ -479,7 +503,7 @@ Koraci od četvrtoga nadalje ponavljaju se u svakom zahtjevu. Prijava se pritom 
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Ruta za prijavu}
+\begin{frame}[fragile]{Odgovor na prijavu}
 \begin{lstlisting}[language=python]
 # app/routers/auth.py
 @router.post("/login", response_model=TokenResponse)
@@ -489,32 +513,10 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     return TokenResponse(access_token=access, refresh_token=refresh)
 \end{lstlisting}
 
-\begin{lstlisting}[language=python]
-# app/services/auth_service.py
-async def authenticate_user(db, username: str, password: str) -> User:
-    user = await user_repo.get_by_username(db, username)
-    if not user or not verify_password(password, user.password_hash):
-        raise AppError("invalid_credentials", "...", 401)
-    if not user.is_active:
-        raise AppError("invalid_credentials", "...", 401)
-    return user
-\end{lstlisting}
+\vspace{0.6em}
+Prvi red tijela rute je provjera lozinke s početka predavanja. Drugi je izdavanje para tokena, treći njihov povratak klijentu.
 \end{frame}
 
-
-% ------------------------------------------------------------
-\begin{frame}{Jedna poruka za tri slučaja}
-Nepostojeći korisnik, kriva lozinka i deaktiviran račun završavaju istim odgovorom i istom porukom.
-
-\vspace{1.1em}
-Razlikovanje bi napadaču dalo podatak koji sam po sebi vrijedi: uz popis korisničkih imena i rutu koja odaje postoji li račun, dobiva se popis korisnika sustava bez ijedne pogođene lozinke. Nad tim se popisom onda pogađa ciljano.
-
-\vspace{1.1em}
-Isti razlog vrijedi i za rutu koja šalje poruku za promjenu lozinke: odgovor je jednak bez obzira na to postoji li adresa.
-
-\vspace{1.1em}
-Iznimka su odgovori namijenjeni prijavljenom korisniku nad vlastitim podatcima, gdje se ne odaje ništa što on već ne zna.
-\end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Provjera tokena pri svakom zahtjevu}
