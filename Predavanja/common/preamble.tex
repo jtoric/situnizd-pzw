@@ -182,11 +182,22 @@
   tabsize=2,
   showstringspaces=false,
   upquote=true,
-  columns=fullflexible
+  columns=fullflexible,
+  escapeinside={<@}{@>}
 }
-% NAPOMENA: listings premeće hrvatske dijakritike u ispisu koda
-% ("početni" se prelomi u "čpoetni"), i literate to ne popravlja unutar
-% komentara. Zato su komentari u isječcima koda na engleskom.
+% ---------- Dijakritici u isječcima koda ----------
+% listings čita bajt po bajt, pa višebajtni znak premjesti: "početni" ispadne
+% "čpoetni". literate to ne popravlja. Rješenje je izlaz u LaTeX: sve između
+% <@ i @> ne prolazi kroz listings, nego se slaže kao običan tekst, a unutar
+% okvira je font ionako ttfamily, pa se ništa ne razlikuje.
+%
+%   async def get(...):
+%       club = await repo.get_by_id(db, club_id)   <@\kom{dohvat kluba}@>
+%       raise AppError("not_found", <@"Klub nije pronađen"@>, 404)
+%
+% Graničnici <@ i @> odabrani su jer se ne pojavljuju ni u jednom jeziku
+% koji se na predavanjima citira; (* bi se sudaralo s def f(*args).
+\newcommand{\kom}[1]{{\color{mutedclr}\# #1}}
 
 % ---------- Činjenica naspram konvencije ----------
 % Sve što nije propisano standardom ili jezikom, nego je dogovor struke,

@@ -13,14 +13,14 @@
 \begin{frame}{Plan predavanja}
 \begin{enumerate}
   \item Pravila koja shema ne može provjeriti
-  \item Faze natjecanja: stanje izvedeno iz vremena
-  \item Odjava i ponovna prijava
+  \item Stanje izvedeno iz vremena
+  \item Prijelaz stanja umjesto brisanja
   \item Pogreška kao odgovor
   \item Testiranje pravila koja ovise o vremenu
 \end{enumerate}
 
 \vspace{0.6em}
-Dosad su rute znale tko šalje zahtjev i smije li dirati taj zapis. Sada dolazi treće pitanje: smije li se radnja izvesti u ovom trenutku.
+Dosad smo pitali tko šalje zahtjev i smije li dirati taj zapis. Ovo predavanje dodaje treće pitanje: smije li se radnja izvesti u ovom trenutku.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -29,7 +29,8 @@ Nakon ovog predavanja student može:
 
 \begin{itemize}
   \item razlikovati provjeru ulaznih podataka od poslovnog pravila i reći gdje koja stoji
-  \item izvesti stanje zapisa iz vremena umjesto da ga pohranjuje
+  \item izvesti stanje zapisa iz vremena umjesto da ga pohrani
+  \item zapisati rok tako da njegovo značenje ne ovisi o poslužitelju koji ga čita
   \item napisati pravilo koje dopušta ili odbija radnju ovisno o fazi
   \item obrazložiti izbor između brisanja zapisa i promjene oznake stanja
   \item prevesti domensku pogrešku u odgovor s dosljednim kodom i porukom
@@ -39,7 +40,7 @@ Nakon ovog predavanja student može:
 
 % ------------------------------------------------------------
 \begin{frame}{Domena primjera}
-Natjecanje ima dva roka: nominacijski i konačni. Oko njih se mijenja što klub smije:
+Natjecanje ima dva roka, preliminarni i konačni. Oni dijele vrijeme na tri razdoblja, a u svakom klub smije nešto drugo:
 
 \vspace{0.5em}
 \begin{center}
@@ -50,9 +51,9 @@ Natjecanje ima dva roka: nominacijski i konačni. Oko njih se mijenja što klub 
   \toprule
   \textbf{Razdoblje} & \textbf{Što klub smije} \\
   \midrule
-  prije prvog roka   & prijaviti natjecatelja, mijenjati i odjaviti \\
+  prije preliminarnog roka & prijaviti natjecatelja, mijenjati i odjaviti prijavu \\
   između dvaju rokova & mijenjati i odjaviti postojeću prijavu, ali ne prijaviti novoga \\
-  nakon drugog roka  & ništa od navedenoga \\
+  nakon konačnog roka & ništa od navedenoga \\
   \bottomrule
 \end{tabular}
 }
@@ -62,19 +63,56 @@ Natjecanje ima dva roka: nominacijski i konačni. Oko njih se mijenja što klub 
 Popis natjecatelja koji organizator šalje sucima nastaje nakon konačnog roka. Sve što se tada promijeni, promijenilo bi i taj popis, pa izmjene prestaju.
 \end{frame}
 
-% ============================================================
-\sekcija{Pravila koja shema ne može provjeriti}{Razlika prema provjeri ulaznih podataka, mjesto pravila, odgovor koji ono vraća.}
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zahtjev koji prolazi svaku dosadašnju provjeru (I)}
+Natjecanje 7 održano je prošle subote. Klub 12 za njega sada šalje prijavu:
+
+\begin{lstlisting}
+POST /competitions/7/registrations
+Authorization: Bearer <token kluba 12>
+
+{"lifter_id": 31, "category": "83", "total": 500}
+\end{lstlisting}
+
+\vspace{0.5em}
+Koji od mehanizama koje smo dosad obradili sprječava da ovaj zahtjev prođe?
+
+\pause
+\vspace{0.5em}
+Svaki mehanizam koji smo dosad napisali propušta ovaj zahtjev:
+
+\begin{itemize}
+  \itemsep0.4em
+  \item \codefile{routers}: \emph{token} je valjan i nije istekao, a uloga \texttt{club} smije stvarati prijave
+  \item \codefile{schemas}: tijelo ima sva obvezna polja, a kategorija je na popisu
+  \item \codefile{services}: natjecatelj 31 pripada klubu 12, pa provjera vlasništva prolazi
+\end{itemize}
+\end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Dvije vrste provjere}
-Zahtjev za prijavom može biti odbijen iz dva različita razloga, a razlika nije u strogosti nego u tome što je trebalo pogledati:
+\begin{frame}{Zahtjev koji prolazi svaku dosadašnju provjeru (II)}
+Konačni rok istekao je tri tjedna prije natjecanja, a popis koji je organizator poslao sucima nastao je iz prijava zatečenih u tom trenutku. Rezultati su odavno upisani.
+
+\vspace{0.9em}
+Prijava bi se svejedno upisala. Uloga opisuje pošiljatelja, vlasništvo opisuje odnos pošiljatelja i zapisa, a shema opisuje oblik tijela. Nijedno se od toga ne mijenja protekom vremena, pa nijedna od triju provjera ovaj zahtjev ne vidi kao problem.
+
+\vspace{0.9em}
+Provjeru koja ga odbija zovemo \textbf{poslovnim pravilom}. Ona gleda stanje aplikacije u trenutku zahtjeva, a ne sam zahtjev.
+\end{frame}
+
+% ============================================================
+\sekcija{Pravila koja shema ne može provjeriti}{Razlika prema provjeri ulaznih podataka, mjesto pravila, primjer koji traži zapis iz baze, granica između sheme i pravila.}
+
+% ------------------------------------------------------------
+\begin{frame}{Provjera ulaza i poslovno pravilo}
+Zahtjev za prijavom može biti odbijen iz dvaju različitih razloga. Razlikuju se po tome što je trebalo pogledati da bi se odbio:
 
 \vspace{0.5em}
 \begin{center}
 {\small
-\setlength{\tabcolsep}{0pt}
+\setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.4}
-\begin{tabular}{@{}L{3.3cm}L{3.9cm}L{3.9cm}@{}}
+\begin{tabular}{@{}L{3.1cm}L{3.8cm}L{3.8cm}@{}}
   \toprule
   & \textbf{Provjera ulaza} & \textbf{Poslovno pravilo} \\
   \midrule
@@ -88,32 +126,55 @@ Zahtjev za prijavom može biti odbijen iz dva različita razloga, a razlika nije
 \end{center}
 
 \vspace{0.6em}
-Zadnji redak je i najkorisniji znak raspoznavanja. Neispravna kategorija neispravna je uvijek. Prijava nakon roka uredna je po obliku, a odbija se zbog trenutka u kojem je stigla.
+Najlakše ih razdvaja zadnji redak. Neispravna kategorija neispravna je i sutra i za godinu dana. Prijava nakon roka uredna je po obliku, a odbijena je zbog trenutka u kojem je stigla.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Gdje pravilo stoji}
+\begin{frame}{Mjesto poslovnog pravila}
 Pravilo o roku ne može stajati u shemi, jer shema nema pristup bazi i ne zna koje je natjecanje u pitanju.
 
 \vspace{0.5em}
-Ne može stajati ni u ruti. Rok vrijedi za prijavu, za izmjenu i za odjavu, dakle za tri rute, pa bi se ista provjera pisala tri puta i tri bi se puta mogla zaboraviti.
+Ne može stajati ni u ruti. Isti rok odlučuje o prijavi, o izmjeni i o odjavi, a to su tri rute, pa bi se ista provjera pisala tri puta i tri bi se puta mogla zaboraviti.
 
 \vspace{0.5em}
-Ostaje sloj \codefile{services}: on ima sesiju baze, vidi cijelo stanje i nalazi se ispred svakog upisa. Zato sve tri rute pozivaju funkciju koja pravilo provodi na jednom mjestu.
+Ostaje sloj \codefile{services}: on vidi i pošiljatelja i zapis dohvaćen iz baze i stoji ispred svakog upisa. Zato sve tri rute pozivaju funkciju koja pravilo provodi na jednom mjestu.
 
 \vspace{0.6em}
 \begin{konvencija}
-Nijedan okvir ne propisuje gdje poslovna pravila stoje. Odluka da ih nosi sloj između rute i baze proizlazi iz podjele odgovornosti koju smo postavili na početku kolegija, a ne iz zahtjeva alata.
+Nijedan standard ni \emph{framework} ne propisuje gdje poslovna pravila stoje. Odluka da ih nosi sloj između rute i baze proizlazi iz podjele odgovornosti koju smo postavili na početku kolegija, a ne iz zahtjeva alata.
 \end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Primjer: kategorija i spol}
-Težinske kategorije IPF-a razlikuju se po spolu. Shema zna popis svih kategorija, pa nepostojeću odbija sama. Ne zna, međutim, kojem natjecatelju prijava pripada:
+\begin{frame}[fragile]{Primjer: kategorija i spol (I)}
+Težinske kategorije IPF-a razlikuju se po spolu, a shema zna oba popisa:
+
+\begin{lstlisting}[language=python]
+# app/schemas/registration.py
+MALE_CATEGORIES = ["59", "66", "74", "83", "93", "105", "120", "120+"]
+FEMALE_CATEGORIES = ["47", "52", "57", "63", "69", "76", "84", "84+"]
+CATEGORIES_BY_GENDER = {"M": MALE_CATEGORIES, "F": FEMALE_CATEGORIES}
+class RegistrationCreate(BaseModel):
+    lifter_id: int
+    category: str
+
+    @field_validator("category")
+    @classmethod
+    def valid_category(cls, v: str) -> str:
+        return _known_category(v)
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{\_known\_category} odbija sve što nije ni na jednom od dvaju popisa, pa kategorija \texttt{"999"} ne prolazi dalje od sheme. Odgovor je \texttt{422}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Primjer: kategorija i spol (II)}
+Shema ne zna kojem natjecatelju prijava pripada. Zahtjev nosi samo njegovu oznaku \texttt{lifter\_id}, a spol stoji u zapisu u bazi:
 
 \begin{lstlisting}[language=python]
 # app/services/registration_service.py
-def _check_category(lifter, category):
+def _check_category(lifter: Lifter, category: str) -> None:
     if category not in CATEGORIES_BY_GENDER[lifter.gender]:
         raise AppError(
             "invalid_category",
@@ -123,28 +184,127 @@ def _check_category(lifter, category):
 \end{lstlisting}
 
 \vspace{0.3em}
-Spol stoji u zapisu natjecatelja, a zahtjev nosi samo njegovu oznaku. Vrijednost se zato može prosuditi tek nakon dohvata iz baze, dakle ondje gdje baza postoji.
+Kategorija \texttt{"47"} za muškog natjecatelja prolazi shemu i pada tek na pravilu, nakon dohvata zapisa: \texttt{invalid\_category}, \texttt{400}.
+
+\vspace{0.1em}
+\texttt{422} znači da poslani sadržaj nije u redu, a \texttt{400} da je sadržaj u redu, ali radnja u ovom stanju nije moguća.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Cjelovito i djelomično tijelo (I)}
+Granicu najjasnije pokazuje pravilo o poretku dvaju rokova. Tijelo kojim se zapis stvara nosi oba, pa ih shema uspoređuje sama:
+
+\begin{lstlisting}[language=python]
+# app/schemas/competition.py
+class CompetitionCreate(BaseModel):
+    prelim_deadline: AwareDatetime
+    final_deadline: AwareDatetime
+    @field_validator("final_deadline")
+    @classmethod
+    def final_after_prelim(cls, v, info):
+        prelim = info.data.get("prelim_deadline")
+        if prelim and v <= prelim:
+            raise ValueError(
+                "final_deadline mora biti nakon prelim_deadline"
+            )
+        return v
+\end{lstlisting}
+
+\vspace{0.3em}
+Oba su roka u istom tijelu, pa shema obrnuti poredak sama odbija, s \texttt{422}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Cjelovito i djelomično tijelo (II)}
+Izmjena smije poslati samo \texttt{prelim\_deadline}. Usporedba tada treba \texttt{final\_deadline} iz zapisa, pa \texttt{CompetitionUpdate} taj validator nema. Pravilo se seli u sloj koji vidi i poslana polja i zatečeni zapis:
+
+\begin{lstlisting}[language=python]
+# app/services/competition_service.py
+for field, value in body.model_dump(exclude_unset=True).items():
+    setattr(competition, field, value)
+if competition.prelim_deadline >= competition.final_deadline:
+    raise AppError("invalid_deadlines",
+                   "final_deadline mora biti nakon prelim_deadline", 400)
+\end{lstlisting}
+
+\vspace{0.3em}
+Isto pravilo, dva mjesta i dva koda: \texttt{422} pri stvaranju, \texttt{400} pri izmjeni. Razlika nije u pravilu, nego u tome nosi li zahtjev cijeli zapis ili samo promjenu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: dva odbijanja iste kategorije}
+Kao klub \texttt{behemot@plreg.hr}, uz \emph{Zimski kup} u fazi \texttt{OPEN}, šaljete prijavu Ivana Perića i mijenjate samo kategoriju. Njegov \texttt{club\_id} vraća \texttt{GET /auth/me}, a oznaku natjecatelja \texttt{GET /clubs/\{club\_id\}/lifters}:
+
+\begin{lstlisting}
+POST /competitions/{comp_id}/registrations
+{"lifter_id": <oznaka natjecatelja>, "category": "...", "total": 500}
+\end{lstlisting}
+
+\vspace{0.25em}
+\begin{enumerate}
+  \itemsep0.15em
+  \item Pošaljite kategoriju \texttt{"999"} i zabilježite status i \texttt{code}.
+  \item Pošaljite kategoriju \texttt{"47"}, koja postoji, ali je ženska.
+  \item U \codefile{app/schemas/registration.py} nađite redak koji je odbio prvi zahtjev.
+  \item U \codefile{app/services/registration\_service.py} nađite redak koji je odbio drugi.
+  \item Pošaljite kategoriju \texttt{"83"} i provjerite da prijava prolazi.
+\end{enumerate}
+
+\vspace{0.3em}
+Zašto prva provjera ne treba bazu, a druga treba?
 \end{frame}
 
 % ============================================================
-\sekcija{Faze natjecanja}{Stanje izvedeno iz vremena, pomoćna funkcija, matrica dopuštenih radnji.}
+\sekcija{Stanje izvedeno iz vremena}{Pohranjeno ili izračunato razdoblje, rok kao trenutak na vremenskoj osi, matrica dopuštenih radnji i njezin prijepis u kod.}
 
 % ------------------------------------------------------------
-\begin{frame}{Stanje koje se ne pohranjuje}
-Natjecanje bi moglo imati stupac \texttt{phase} koji netko postavlja kad rok prođe. Taj bi stupac tražilo da ga netko mijenja: zadatak koji se pokreće u zadano vrijeme, ili ručni zahvat.
+\begin{frame}{Stupac ili izračun}
+Rokovi mijenjaju koje su radnje dopuštene, pa aplikacija pri svakom zahtjevu treba odgovor na jedno pitanje: u kojem je razdoblju zapis u ovom trenutku.
 
-\vspace{0.5em}
-Dok se to ne dogodi, stupac laže. Rok je prošao u ponoć, a zapis još tvrdi da je natjecanje otvoreno, pa aplikacija prima prijave koje ne bi smjela.
+\vspace{0.7em}
+Taj se podatak može dobiti na dva načina:
 
-\vspace{0.5em}
-Faza se zato ne pohranjuje nego \textbf{računa pri svakom zahtjevu}, usporedbom trenutnog vremena s dvama rokovima. Rokovi su podatak, faza je zaključak iz njih.
+\vspace{0.3em}
+\begin{itemize}
+  \itemsep0.5em
+  \item \textbf{Pohraniti.} Natjecanje dobiva još jedan stupac, a vrijednost mu mijenja program koji se pokreće po rasporedu, mimo obrade zahtjeva.
+  \item \textbf{Izračunati.} Stupca nema. Pri svakom se zahtjevu trenutno vrijeme usporedi s dvama rokovima i iz toga slijedi razdoblje.
+\end{itemize}
 
-\vspace{0.4em}
-Cijena je jedna usporedba po zahtjevu, ali time osiguravamo da stanje nikada ne zaostane za vremenom.
+\vspace{0.7em}
+Prvi način čita jedno polje, drugi izvodi dvije usporedbe. Razlikuju se po tome može li podatak biti zastario.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Tri faze}
+\begin{frame}[fragile]{Razdoblje kao pohranjeni podatak}
+Stupac bi stajao uz ostala polja natjecanja:
+
+\begin{lstlisting}[language=python]
+# app/models/competition.py, kad bi se faza pohranjivala
+phase: Mapped[str] = mapped_column(String(20), default="open")
+\end{lstlisting}
+
+\vspace{0.25em}
+Vrijednost ne mijenja nijedan zahtjev, nego program pokrenut po rasporedu:
+
+\begin{lstlisting}[language=python]
+<@\kom{zadatak koji se pokreće svakih pet minuta}@>
+async def refresh_phases(db):
+    now = datetime.now(timezone.utc)
+    for comp in await competition_repo.get_all(db, 1000, 0):
+        if now >= comp.final_deadline:
+            comp.phase = "closed"
+        elif now >= comp.prelim_deadline:
+            comp.phase = "prelim_passed"
+    await db.commit()
+\end{lstlisting}
+
+\vspace{0.25em}
+Do sljedećeg pokretanja stupac laže, pa prijave prolaze i nakon roka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Imenovana razdoblja}
 \begin{lstlisting}[language=python]
 # app/core/phases.py
 class Phase(str, Enum):
@@ -153,17 +313,17 @@ class Phase(str, Enum):
     CLOSED = "closed"
 \end{lstlisting}
 
-\vspace{0.5em}
+\vspace{0.35em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{0pt}
-\renewcommand{\arraystretch}{1.4}
+\renewcommand{\arraystretch}{1.2}
 \begin{tabular}{@{}L{3.6cm}L{7.4cm}@{}}
   \toprule
   \textbf{Faza} & \textbf{Vrijedi} \\
   \midrule
-  \texttt{OPEN}          & prije nominacijskog roka \\
-  \texttt{PRELIM\_PASSED} & između nominacijskog i konačnog roka \\
+  \texttt{OPEN}          & prije preliminarnog roka \\
+  \texttt{PRELIM\_PASSED} & između preliminarnog i konačnog roka \\
   \texttt{CLOSED}        & nakon konačnog roka \\
   \bottomrule
 \end{tabular}
@@ -171,7 +331,7 @@ class Phase(str, Enum):
 \end{center}
 
 \vspace{0.5em}
-Faze su nabrojiv skup, pa ih \texttt{Enum} opisuje izravno. Usporedba tada glasi \texttt{phase == Phase.OPEN}, a ne usporedba dvaju datuma rasuta po kodu.
+Razdoblja su nabrojiv skup, pa usporedba glasi \texttt{phase == Phase.OPEN}, bez datuma razasutih po kodu.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -192,34 +352,192 @@ def get_competition_phase(competition: Competition) -> Phase:
 
 \vspace{0.3em}
 Funkcija prima natjecanje i vraća fazu. Ne dira bazu, ne podiže iznimke i ne odlučuje što je dopušteno.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Izvedena vrijednost}
+\textbf{Rokovi su podatak, a faza zaključak iz njih.} Zaključak se zato računa pri svakom zahtjevu, a u bazi ga nema.
+
+\vspace{0.9em}
+Isto vrijedi za svaku vrijednost koja slijedi iz drugih: dob iz datuma rođenja, ukupan iznos iz stavaka računa, preostalo mjesto iz kapaciteta i broja zauzetih.
+
+\vspace{0.9em}
+Pohranjena izvedena vrijednost mora se osvježiti pri svakoj promjeni podataka iz kojih se izvodi, pa se pohranjuje tek kad je izračun preskup da se ponavlja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Rok kao trenutak na vremenskoj osi}
+Zapis \enquote{14.02.2027. u 23:59} sam po sebi ne određuje trenutak. U Zadru je to jedan trenutak, u Londonu drugi, sat kasnije. Usporedba s takvim rokom dala bi različit ishod ovisno o tome gdje poslužitelj radi.
+
+\vspace{0.7em}
+Rok zato nosi oznaku vremenske zone, i to na trima mjestima:
+
+\begin{itemize}
+  \itemsep0.4em
+  \item shema traži tip \texttt{AwareDatetime}, pa zahtjev s vrijednošću bez oznake zone dobiva \texttt{422}
+  \item stupac je \texttt{DateTime(timezone=True)}, u PostgreSQL-u \texttt{timestamptz}
+  \item usporedba se izvodi u zoni UTC, s \texttt{datetime.now(timezone.utc)}
+\end{itemize}
+
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Oznaka zone u shemi}
+\begin{lstlisting}[language=python]
+# app/schemas/competition.py
+class CompetitionCreate(BaseModel):
+    prelim_deadline: AwareDatetime
+    final_deadline: AwareDatetime
+\end{lstlisting}
 
 \vspace{0.3em}
-Usporedba se izvodi u zoni UTC. Rok bez zone uspoređivao bi se s vremenom druge zone, pa bi ishod ovisio o tome gdje poslužitelj radi.
+\texttt{AwareDatetime} je \texttt{datetime} uz zahtjev da vrijednost nosi pomak od UTC-a. Vrijednost bez njega ne ulazi u aplikaciju:
+
+\begin{lstlisting}
+422  {"prelim_deadline": "2027-02-14T23:59:00"}
+201  {"prelim_deadline": "2027-02-14T23:59:00+01:00"}
+\end{lstlisting}
+
+\vspace{0.2em}
+Bez te provjere vrijednost bi stigla do baze, a baza je ne bi odbila, nego bi je protumačila u svojoj zoni. Pogreška bi se vidjela tek kao rok koji istječe u krivi sat.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Oznaka zone u stupcu}
+\begin{lstlisting}[language=python]
+# app/models/competition.py
+prelim_deadline: Mapped[dt.datetime] = mapped_column(
+    DateTime(timezone=True), nullable=False
+)
+\end{lstlisting}
+
+\vspace{0.25em}
+U PostgreSQL-u je to \texttt{timestamptz}, a bez argumenta goli \texttt{timestamp}:
+
+\vspace{0.25em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{4.0cm}L{3.9cm}L{2.6cm}@{}}
+  \toprule
+   & \texttt{timestamptz} & \texttt{timestamp} \\
+  \midrule
+  Upisano             & \texttt{23:59+01:00} & \texttt{23:59+01:00} \\
+  Pohranjeno          & \texttt{22:59} UTC   & \texttt{23:59} \\
+  Pročitano u Zadru   & \texttt{23:59+01:00} & \texttt{23:59} \\
+  Pročitano u Londonu & \texttt{22:59+00:00} & \texttt{23:59} \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.25em}
+Prvi pamti trenutak, drugi znamenke sata: pomak pri upisu tiho otpada.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Oznaka zone u usporedbi}
+\begin{lstlisting}[language=python]
+# app/core/phases.py
+now = datetime.now(timezone.utc)
+if now < prelim:
+    return Phase.OPEN
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{datetime.now()} bez argumenta vraća lokalno vrijeme poslužitelja, bez oznake zone. Takva se vrijednost s rokom iz baze ne može usporediti:
+
+\begin{lstlisting}[language=python]
+TypeError: can't compare offset-naive and offset-aware datetimes
+\end{lstlisting}
+
+\vspace{0.2em}
+Iznimku dobivamo samo kad je jedna strana s oznakom, a druga bez nje. Ako su obje bez oznake, usporedba prolazi i daje ishod po satu poslužitelja, pa se pogreška vidi tek kad se poslužitelj preseli u drugu zonu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Trenutak isteka roka}
+Uvjet je napisan kao \texttt{now < prelim}. U trenutku koji rok određuje taj uvjet više ne vrijedi, pa natjecanje tada već nije u fazi \texttt{OPEN}. Rok u 23:59 znači da zadnja prijava mora stići prije 23:59, a ne u 23:59.
+
+\vspace{0.9em}
+\begin{konvencija}[Izbor, ne pravilo]
+Granica bi se mogla napisati i kao \texttt{now <= prelim}, pa bi i trenutak roka još pripadao otvorenoj fazi. Nijedan standard o tome ne odlučuje. Važno je da odabrano značenje jednako glasi u propisu i u kodu.
+\end{konvencija}
+
+\vspace{0.9em}
+Granice su mjesta na kojima se najlakše pogriješi, pa svaka od njih ima svoj test.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Matrica dopuštenih radnji}
+Poslovna se pravila najkraće zapisuju tablicom stanja i radnji. Takva tablica ne postoji u kodu i ne da se iz njega izvesti: dolazi iz pravila domene, a napisana je prije koda, da se cjelina vidi na jednom mjestu.
+
+\vspace{0.5em}
 \begin{center}
 {\small
-\setlength{\tabcolsep}{0pt}
+\setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.4}
-\begin{tabular}{@{}L{3.8cm}L{2.3cm}L{2.8cm}L{2.1cm}@{}}
+\begin{tabular}{@{}L{4.1cm}L{2.0cm}L{2.7cm}L{2.0cm}@{}}
   \toprule
   \textbf{Radnja} & \texttt{OPEN} & \texttt{PRELIM\_PASSED} & \texttt{CLOSED} \\
   \midrule
   nova prijava          & da & ne & ne \\
-  promjena kategorije   & da & da & ne \\
-  odjava natjecatelja   & da & da & ne \\
+  promjena prijave      & da & da & ne \\
+  odjava i ponovna prijava & da & da & ne \\
   čitanje popisa        & da & da & da \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
+
+\vspace{0.6em}
+Svaka ćelija s \enquote{ne} postaje jedna usporedba u sloju \codefile{services}. Korist je u tome što se rupe vide: ćelija na koju nitko nije pomislio ovdje upada u oči, a novo stanje dodaje stupac u kojem se za svaku radnju mora odlučiti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pravilo pri novoj prijavi}
+\begin{lstlisting}[language=python]
+# app/services/registration_service.py
+async def create_registration(db, comp_id, body, user):
+    comp = await get_competition_or_404(db, comp_id)
+    if get_competition_phase(comp) != Phase.OPEN:
+        raise AppError("deadline_passed",
+                       "Rok za nove prijave je istekao", 400)
+    <@\kom{dohvat natjecatelja, vlasništvo, kategorija, upis}@>
+    ...
+\end{lstlisting}
+
+\vspace{0.4em}
+Provjera je prva naredba u funkciji, prije dohvata natjecatelja i prije provjere vlasništva. Zahtjev koji ne prolazi ne pokreće nijedan daljnji upit.
+
+\vspace{0.4em}
+Uvjet imenuje fazu u kojoj je radnja dopuštena, a ne faze u kojima se odbija. Ako se jednom doda četvrta faza, u njoj se radnja neće izvesti dok to netko izričito ne dopusti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Isto pravilo, drugi uvjet}
+Izmjena postojeće prijave dopuštena je i nakon preliminarnog roka, pa njezin uvjet imenuje jedino fazu u kojoj se radnja odbija:
+
+\begin{lstlisting}[language=python]
+# app/services/registration_service.py
+async def _get_registration_for_change(db, comp_id, reg_id, user):
+    comp = await get_competition_or_404(db, comp_id)
+    if get_competition_phase(comp) == Phase.CLOSED:
+        raise AppError("deadline_passed",
+                       <@"Izmjene nisu moguće nakon konačnog roka"@>, 400)
+    reg = await _get_registration_or_404(db, comp_id, reg_id)
+    _check_lifter_ownership(reg.lifter, user)
+    return reg
+\end{lstlisting}
+
+\vspace{0.3em}
+Oba pravila pozivaju istu funkciju za fazu i vraćaju isti kod pogreške, a razlikuju se u jednoj usporedbi. Matrica je time prepisana u kod, redak po redak.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Faza u odgovoru}
-Matrica vrijedi na poslužitelju, ali i sučelje treba znati koje radnje ponuditi. Zato odgovor o natjecanju nosi i izračunatu fazu:
+Pravila provodi poslužitelj, ali sučelje treba znati koje radnje uopće ponuditi. Zato odgovor o natjecanju nosi i izračunatu fazu:
 
 \begin{lstlisting}[language=python]
 # app/schemas/competition.py
@@ -233,56 +551,47 @@ class CompetitionResponse(BaseModel):
 \end{lstlisting}
 
 \vspace{0.15em}
-Polje nije stupac u bazi nego vrijednost izvedena pri sastavljanju odgovora, pa ne može zaostati za vremenom.
+\texttt{computed\_field} uvrštava u odgovor vrijednost koja nastaje dok se odgovor sastavlja. U bazi odgovarajućeg stupca nema, pa vrijednost ne može zaostati za vremenom.
 
 \vspace{0.15em}
-Na zaštitu preko sučelja pritom se ne smijemo osloniti: zahtjev koji ipak stigne izvan faze odbija sloj \codefile{services}, bez obzira na to što je sučelje prikazalo.
+Sučelje nije zaštita. Zahtjev koji stigne izvan faze odbija sloj \codefile{services}, bez obzira na to što je sučelje prikazalo.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Pravilo u servisu}
-\begin{lstlisting}[language=python]
-# app/services/registration_service.py
-comp = await _get_competition_or_404(db, comp_id)
-phase = get_competition_phase(comp)
-if phase != Phase.OPEN:
-    raise AppError("deadline_passed",
-                   "Rok za nove prijave je istekao", 400)
+\begin{frame}[fragile]{Vježba: faza koja se mijenja bez upisa}
+Natjecanje \emph{Zimski kup} ima preliminarni rok 14.02.2027. Prijava Ivana Perića glasi kao u prvoj vježbi:
+
+\begin{lstlisting}
+POST /competitions/{comp_id}/registrations
+{"lifter_id": <oznaka natjecatelja>, "category": "83", "total": 500}
 \end{lstlisting}
 
-\vspace{0.4em}
-Provjera stoji prije svega ostaloga u funkciji, prije dohvata natjecatelja i prije provjere vlasništva. Zahtjev koji ne prolazi ne pokreće nijedan daljnji upit.
+\vspace{0.3em}
+\begin{enumerate}
+  \itemsep0.35em
+  \item Kao \texttt{admin@plreg.hr} pošaljite \texttt{GET /competitions} i zabilježite \texttt{phase}.
+  \item \texttt{PATCH /competitions/\{id\}} s tijelom \texttt{\{"prelim\_deadline": "2026-11-01T23:59:00+01:00"\}}.
+  \item Ponovite \texttt{GET /competitions} i pogledajte \texttt{phase}.
+  \item Prijavite se kao \texttt{behemot@plreg.hr} i pošaljite prijavu iz okvira na početku vježbe.
+  \item Vratite \texttt{prelim\_deadline} na 14.02.2027.
+\end{enumerate}
 
 \vspace{0.4em}
-Uvjet je napisan kao \texttt{!= Phase.OPEN}, a ne kao nabrajanje faza u kojima se odbija. Doda li se jednom četvrta faza, ovo pravilo i dalje vrijedi bez izmjene.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Isto pravilo, drugi uvjet}
-Izmjena prijave dopuštena je i nakon nominacijskog roka, pa njezin uvjet imenuje samo fazu u kojoj se odbija:
-
-\begin{lstlisting}[language=python]
-# app/services/registration_service.py
-comp = await _get_competition_or_404(db, comp_id)
-phase = get_competition_phase(comp)
-if phase == Phase.CLOSED:
-    raise AppError("deadline_passed",
-                   "Izmjene nisu moguće nakon finalnog roka", 400)
-\end{lstlisting}
-
-\vspace{0.4em}
-Oba uvjeta koriste istu funkciju i isti kod pogreške, a razlikuju se u jednoj usporedbi. Time je matrica s prethodnog slajda doslovno prepisana u kod, redak po redak.
+Koji ste \texttt{code} dobili u četvrtom koraku i koji je upis promijenio fazu?
 \end{frame}
 
 % ============================================================
-\sekcija{Odjava i ponovna prijava}{Brisanje naspram promjene stanja, ponovljeni zahtjev, obrnuta radnja.}
+\sekcija{Prijelaz stanja umjesto brisanja}{Oznaka stanja u zapisu, prijelaz imenovan u adresi, ponovljeni zahtjev, ponovna prijava nakon odjave.}
 
 % ------------------------------------------------------------
-\begin{frame}{Odjava ne briše zapis}
-Klub koji odjavljuje natjecatelja mogao bi obrisati redak prijave. Nakon toga se više ne zna da je prijava postojala, ni kada je povučena.
+\begin{frame}{Cijena brisanja zapisa}
+Klub koji odjavljuje natjecatelja mogao bi obrisati redak prijave. To ima posljedice i izvan zahtjeva:
 
-\vspace{0.5em}
-To smeta na tri mjesta. Organizator ne može vidjeti povijest prijava. Klub koji se predomisli mora natjecatelja prijaviti iznova, a nova prijava nosi novo vrijeme upisa. Ograničenje jedinstvenosti više ne sprječava dvostruku prijavu, jer prvog retka nema.
+\begin{itemize}
+  \itemsep0.35em
+  \item organizator ne vidi koliko je prijava bilo i koliko ih je povučeno
+  \item klub koji se predomisli prijavljuje iznova, pa prijava nosi novo vrijeme upisa
+\end{itemize}
 
 \vspace{0.5em}
 Zato se zapis zadržava, a mijenja mu se oznaka stanja:
@@ -302,55 +611,216 @@ Zato se zapis zadržava, a mijenja mu se oznaka stanja:
 \end{tabular}
 }
 \end{center}
+
+\vspace{0.4em}
+Popis koji organizator šalje sucima nastaje filtriranjem po \texttt{status=active}, pa povučena prijava ostaje u bazi, a s popisa izlazi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Pohranjeno i izvedeno stanje}
+I natjecanje i prijava imaju stanje, ali ne na isti način:
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{0pt}
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{@{}L{3.2cm}L{4.0cm}L{4.0cm}@{}}
+  \toprule
+  & \textbf{\texttt{status} prijave} & \textbf{\texttt{phase} natjecanja} \\
+  \midrule
+  Gdje stoji        & stupac u tablici & izračun iz dvaju rokova \\
+  Mijenja ga        & zahtjev klijenta & protek vremena \\
+  Dopuštene vrijednosti čuva & ograničenje u bazi & nabrojiv tip \texttt{Phase} \\
+  U odgovoru je     & polje iz zapisa & \texttt{computed\_field} \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Pohranjeno stanje treba radnju koja ga mijenja. Izvedeno stanje takvu radnju ne treba, ali se ne može postaviti rukom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prijelaz stanja u adresi (I)}
+Odjava mijenja jedno polje zapisa, pa se nameće najkraći put: poslati novu vrijednost tog polja.
+
+\begin{lstlisting}
+PATCH /competitions/7/registrations/41
+{"status": "withdrawn"}
+\end{lstlisting}
+
+\vspace{0.4em}
+Takav zahtjev kaže kamo vrijednost ide, ali ne i odakle dolazi, pa nosi tri problema:
+
+\begin{itemize}
+  \itemsep0.3em
+  \item odjava i ponovna prijava postaju isti zahtjev, pa dijele jedno pravilo i jedan kod pogreške
+  \item \texttt{withdrawn} u \texttt{withdrawn} uredan je upis, pa poslužitelj ne razlikuje prvu odjavu od ponovljene
+  \item kategorija i stanje stižu u istom tijelu, pa jedan zahtjev obavlja dvije nepovezane promjene
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prijelaz stanja u adresi (II)}
+Stanje nije svojstvo koje klijent postavlja, nego posljedica radnje. Zato shema izmjene polja \texttt{status} nema:
+
+\begin{lstlisting}[language=python]
+# app/schemas/registration.py
+class RegistrationUpdate(BaseModel):
+    category: str | None = None
+    total: int | None = Field(default=None, ge=0)
+\end{lstlisting}
+
+\vspace{0.4em}
+Svaka radnja dobiva svoju adresu, a s njom i svoja pravila i svoj kod pogreške:
+
+\begin{lstlisting}
+POST /competitions/{comp_id}/registrations/{reg_id}/withdraw
+POST /competitions/{comp_id}/registrations/{reg_id}/reactivate
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Prijelaz stanja u adresi (III)}
+Zadnji dio adrese imenuje prijelaz. Zahtjev \texttt{POST .../withdraw} ne stvara novi zapis i ne vraća novu adresu: nad postojećim zapisom izvodi jedan imenovani prijelaz.
+
+\vspace{0.9em}
+\begin{konvencija}[Izbor, ne pravilo]
+Nijedan standard ovaj oblik ne propisuje, a u praksi se sreću oba: \texttt{PATCH} s poljem stanja, kakav smo odbacili, i posebna adresa s glagolom. Adrese inače gradimo od imena resursa, pa je glagol u adresi odstupanje koje treba opravdati.
+\end{konvencija}
+
+\vspace{0.9em}
+Adresa time imenuje što se događa, a ne koje se polje mijenja.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Odjava u kodu}
+Funkcija \texttt{\_get\_registration\_for\_change} daje prijavu nad kojom se smije raditi, pa odjavi ostaje jedino prijelaz stanja:
+
 \begin{lstlisting}[language=python]
 # app/services/registration_service.py
-reg = await registration_repo.get_by_id(db, reg_id)
-if not reg or reg.competition_id != comp_id:
-    raise AppError("not_found", "Prijava nije pronadena", 404)
-if reg.status == "withdrawn":
-    raise AppError("already_withdrawn", "Vec odjavljen", 400)
-
-_check_lifter_ownership(reg, current_user)
-...
-reg.status = "withdrawn"
-await db.flush()
+async def withdraw_registration(db, comp_id, reg_id, user):
+    reg = await _get_registration_for_change(
+        db, comp_id, reg_id, user
+    )
+    if reg.status == "withdrawn":
+        raise AppError("already_withdrawn",
+                       <@"Prijava je već povučena"@>, 400)
+    reg.status = "withdrawn"
+    await db.flush()
+    return reg
 \end{lstlisting}
 
 \vspace{0.3em}
-Odjava nije \texttt{DELETE} nego \texttt{POST} na \texttt{/registrations/\{id\}/withdraw}. Adresa imenuje radnju jer riječ je o prijelazu stanja, a ne o uklanjanju resursa.
-
-\vspace{0.3em}
-Isti postupak ima i obrnutu radnju: prijava se smije vratiti u \texttt{active} dok konačni rok nije prošao.
+Zapis ostaje na mjestu, a mijenja se jedan stupac. Upis ulazi u istu transakciju koju je otvorio zahtjev.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Dvostruki zahtjev}
-Korisnik koji ne vidi odgovor, jer je veza spora ili je stranica zapela, pritisnut će gumb još jednom. Drugi zahtjev stiže nad zapisom koji je već povučen.
+Korisnik koji ne vidi odgovor, jer je veza spora ili se stranica zaglavila, pritisnut će gumb još jednom. Drugi zahtjev stiže nad zapisom koji je već povučen.
 
 \vspace{0.6em}
 Dva su moguća odgovora, i oba se susreću u praksi:
 
 \begin{itemize}
-  \item \textbf{Tiho prihvatiti.} Stanje je već ono koje se tražilo, pa odgovor je \texttt{200} i ništa se ne mijenja. Radnja je time idempotentna.
+  \item \textbf{Tiho prihvatiti.} Stanje je već ono koje se tražilo, pa odgovor je \texttt{200} i ništa se ne mijenja. Radnja je time idempotentna: ponovljeni zahtjev ostavlja isto stanje.
   \item \textbf{Odbiti.} Drugi zahtjev dobiva \texttt{400} i kod \texttt{already\_withdrawn}, jer traži prijelaz koji iz trenutnog stanja nije moguć.
 \end{itemize}
 
-\vspace{0.6em}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Cijena obaju odgovora}
+Svaki se izbor u nekom slučaju pokaže kao loš:
+
+\vspace{0.4em}
+\begin{itemize}
+  \itemsep0.4em
+  \item \textbf{Tiho prihvaćanje.} Klub je odjavio prijavu, predomislio se i vratio je. Zahtjev iz zaglavljene kartice stigne poslije toga i odjavljuje je po drugi put. Pogreške nema, a natjecatelja s popisa nema.
+  \item \textbf{Odbijanje.} Odjava je prošla, ali se odgovor izgubio. Ponovljeni zahtjev vraća \texttt{400}, pa sučelje prikazuje pogrešku za radnju koja je uspjela.
+\end{itemize}
+
+\vspace{0.4em}
+Izbor ovisi o tome je li važno samo konačno stanje ili i trenutak u kojem je prijelaz izveden. U prvom je slučaju tiho prihvaćanje blaže, u drugom ponovljeni zahtjev treba odbiti.
+
+\vspace{0.4em}
 \begin{konvencija}[Izbor, ne pravilo]
-U našem projektu drugi zahtjev se odbija, pa sučelje može reći korisniku da je odjava već provedena. Sučelje koje odabere tiho prihvaćanje lakše podnosi ponovljene zahtjeve, ali gubi razliku između prve i druge odjave.
+U ovom projektu drugi zahtjev se odbija. Sučelje zato \texttt{already\_withdrawn} mora prikazati kao obavijest da je odjava već provedena, a ne kao pogrešku.
 \end{konvencija}
 \end{frame}
 
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ponovna prijava nakon odjave}
+Klub se predomislio i želi natjecatelja vratiti na popis. Ako pošalje istu prijavu kao prvi put, dobiva \texttt{409}:
+
+\begin{lstlisting}
+POST /competitions/7/registrations
+{"lifter_id": 31, "category": "83"}
+
+409 {"code": "duplicate", "message": "..."}
+\end{lstlisting}
+
+\vspace{0.25em}
+Redak prijave nije obrisan, pa ga ograničenje jedinstvenosti i dalje vidi. Ponovna prijava zato ima vlastitu radnju, \texttt{reactivate\_registration}:
+
+\begin{lstlisting}[language=python]
+# app/services/registration_service.py
+if reg.status == "active":
+    raise AppError("already_active", <@"Prijava je već aktivna"@>, 400)
+reg.status = "active"
+\end{lstlisting}
+
+\vspace{0.2em}
+Ponovna prijava prolazi kroz istu provjeru roka kao i odjava, pa nakon konačnog roka nije moguća.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zajednička pravila triju radnji}
+Izmjena, odjava i ponovna prijava sada su tri zasebne radnje, svaka sa svojom adresom. Sve tri traže ista tri pravila: rok, postojanje prijave i vlasništvo.
+
+\begin{lstlisting}[language=python]
+# app/services/registration_service.py
+async def update_registration(db, comp_id, reg_id, body, user):
+    reg = await _get_registration_for_change(...)   # pozivatelj 1
+async def withdraw_registration(db, comp_id, reg_id, user):
+    reg = await _get_registration_for_change(...)   # pozivatelj 2
+async def reactivate_registration(db, comp_id, reg_id, user):
+    reg = await _get_registration_for_change(...)   # pozivatelj 3
+\end{lstlisting}
+
+\vspace{0.3em}
+Pravila stoje na jednom mjestu, a svaka ih radnja dobiva pozivom iste funkcije; razlikuju se jedino u onome što slijedi nakon tog poziva. Napisana u svakoj funkciji posebno, u četvrtoj bi se mogla zaboraviti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: odjava i ponovna prijava}
+Prijavite se kao klub \texttt{behemot@plreg.hr}. Natjecanje \emph{Zimski kup} mora biti u fazi \texttt{OPEN}; ako nije, vratite mu rokove na 14.02.2027. i 07.03.2027.
+
+\vspace{0.8em}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Prijavite natjecatelja koji još nije prijavljen, u kategoriji koja odgovara njegovu spolu (za \texttt{M} npr. \texttt{"83"}, za \texttt{F} npr. \texttt{"63"}), i zabilježite oznaku prijave.
+  \item Pošaljite \texttt{POST .../withdraw} nad tom prijavom, pa isti zahtjev još jednom.
+  \item Dohvatite popis prijava, prvo bez parametara, pa s \texttt{?status=withdrawn}.
+  \item Pokušajte istog natjecatelja prijaviti iznova, tijelom iz prvog koraka.
+  \item Pošaljite \texttt{POST .../reactivate} i ponovite treći korak.
+\end{enumerate}
+
+\vspace{0.8em}
+Koji ste \texttt{code} dobili u drugom i u četvrtom koraku i koja ih provjera podiže?
+\end{frame}
+
 % ============================================================
-\sekcija{Pogreška kao odgovor}{Domenska pogreška, jedno mjesto prevođenja, izbor koda, popis kodova.}
+\sekcija{Pogreška kao odgovor}{Domenska iznimka, jedno mjesto prevođenja, izvori pogreške, izbor statusnog koda.}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Domenska pogreška}
-Pravilo koje ne prolazi mora prekinuti obradu i doći do klijenta kao odgovor. Taj odgovor ne sastavlja sloj \codefile{services}: kad bi gradio HTTP odgovore, ne bi se mogao pozvati iz testa. Umjesto toga podiže iznimku koja nosi sve potrebno:
+Iznimku \texttt{AppError} upotrebljavamo od prvog predavanja, a nismo je otvorili.
+
+\vspace{0.3em}
+Sam odgovor sloj \codefile{services} ne sastavlja: HTTP je posao sloja \codefile{routers}. Umjesto toga podiže iznimku koja nosi sve potrebno:
 
 \begin{lstlisting}[language=python]
 # app/core/errors.py
@@ -360,18 +830,18 @@ class AppError(Exception):
         self.code = code
         self.message = message
         self.status_code = status_code
+# app/services/registration_service.py
+raise AppError("deadline_passed",
+               "Rok za nove prijave je istekao", 400)
 \end{lstlisting}
 
-\vspace{0.3em}
-\texttt{code} je stalan i namijenjen kodu koji odlučuje što učiniti, a \texttt{message} čovjeku i smije se mijenjati bez posljedica.
-
-\vspace{0.3em}
-Iznimka nosi i statusni kod, pa svako pravilo samo određuje je li njegov neuspjeh \texttt{400}, \texttt{403}, \texttt{404} ili \texttt{409}.
+\vspace{0.2em}
+\texttt{code} je stalan i namijenjen programu koji odgovor obrađuje, \texttt{message} čovjeku i smije se mijenjati. Zadani \texttt{status\_code} je \texttt{400}.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Jedno mjesto prevođenja}
-Bez zajedničkog handlera svaka bi ruta morala hvatati iznimku i sama graditi odgovor. Umjesto toga, prijevod stoji na jednom mjestu:
+Bez zajedničkog rukovatelja (engl. \emph{handler}) svaka bi ruta morala hvatati iznimku i sama graditi odgovor. Prijevod zato stoji na jednom mjestu:
 
 \begin{lstlisting}[language=python]
 # app/core/errors.py
@@ -386,91 +856,197 @@ app.add_exception_handler(AppError, app_error_handler)
 \end{lstlisting}
 
 \vspace{0.3em}
-Iznimka podignuta bilo gdje u obradi izlazi kroz ovaj handler, kao tijelo istoga oblika. Ruta o tome ne zna ništa.
+Iznimka podignuta bilo gdje u obradi izlazi kroz ovaj rukovatelj, kao tijelo istoga oblika. Ruta o tome ne zna ništa.
 
 \vspace{0.3em}
-Iznimka koja nije \texttt{AppError} ovdje se ne hvata nego daje \texttt{500}. To je ispravno: nepredviđeno stanje ne smije izgledati kao uredno odbijen zahtjev.
+Iznimka koja nije \texttt{AppError} ovdje se ne hvata. Ako baza ne odgovori, \texttt{OperationalError} izlazi kao \texttt{500}: to nije odbijen zahtjev, nego kvar.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Izbor koda u graničnim slučajevima}
-Kod \texttt{401} odnosi se na prijavu, a ne na prava: standard ga opisuje kao nedostatak valjanih podataka za prijavu, premda mu naziv glasi \texttt{Unauthorized}. Kod \texttt{403} znači da je pošiljatelj poznat, a zahtjev ipak odbijen.
+\begin{frame}[fragile]{Tri izvora pogreške}
+Zahtjev može pasti i prije nego što dođe do pravila, pa aplikacija registrira tri rukovatelja:
 
 \vspace{0.5em}
-Ostatak izbora standard ne razrješava, jer njegovi opisi dopuštaju više od jednoga.
-
-\begin{konvencija}[Konvencija, razlikuje se od projekta do projekta]
-\begin{itemize}
-  \item Neispravni podatci u tijelu zahtjeva: FastAPI i Pydantic vraćaju \texttt{422}, ali je moguć i \texttt{400}.
-  \item Uspješno brisanje: \texttt{204} bez tijela ili \texttt{200} s podatcima obrisanog zapisa.
-  \item Zapis koji postoji, ali ga korisnik ne smije vidjeti: \texttt{403} ili \texttt{404}, ovisno o tome smije li se odati da zapis postoji.
-\end{itemize}
-\end{konvencija}
-
-\vspace{0.3em}
-Izbor se donosi jednom i dosljedno provodi kroz cijeli projekt.
-\end{frame}
-
-% ------------------------------------------------------------
-
-\begin{frame}{Kodovi pogrešaka u projektu}
 \begin{center}
 {\small
-\setlength{\tabcolsep}{0pt}
-\renewcommand{\arraystretch}{1.35}
-\begin{tabular}{@{}L{3.9cm}L{1.3cm}L{5.8cm}@{}}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.45}
+\begin{tabular}{@{}L{4.4cm}L{5.1cm}L{1.6cm}@{}}
   \toprule
-  \textbf{Kod} & \textbf{HTTP} & \textbf{Kada} \\
+  \textbf{Iznimka} & \textbf{Podiže ju} & \textbf{Kod} \\
   \midrule
-  \texttt{invalid\_credentials} & \texttt{401} & prijava ili token ne vrijede \\
-  \texttt{token\_expired}       & \texttt{401} & token je istekao \\
-  \texttt{forbidden}            & \texttt{403} & uloga ili vlasništvo ne dopuštaju radnju \\
-  \texttt{not\_found}           & \texttt{404} & zapis ne postoji ili nije vidljiv \\
-  \texttt{duplicate}            & \texttt{409} & zapis bi prekršio jedinstvenost \\
-  \texttt{deadline\_passed}     & \texttt{400} & radnja nije moguća u ovoj fazi \\
-  \texttt{already\_withdrawn}   & \texttt{400} & prijava je već povučena \\
-  \texttt{already\_active}      & \texttt{400} & prijava je već aktivna \\
+  \texttt{AppError} & pravilo u \codefile{services} & iz iznimke \\
+  \texttt{RequestValidationError} & shema u \codefile{schemas} & \texttt{422} \\
+  \texttt{StarletteHTTPException} & framework, za nepostojeću rutu & iz iznimke \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
-\vspace{0.4em}
-Popis je kratak namjerno: klijent na svaki kod reagira drukčije.
+\vspace{0.35em}
+Tijelo je u svim trima slučajevima istoga oblika, s poljima \texttt{code} i \texttt{message}. Odgovor na neispravno tijelo nosi i popis polja koja nisu prošla provjeru:
+
+\begin{lstlisting}[language=json]
+{"code": "validation_error",
+ "message": "Neispravni podatci u zahtjevu",
+ "errors": [{"field": "category", "message": "Nepoznata kategorija"}]}
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Statusni kod odbijenog pravila}
+\texttt{401} kaže da pošiljatelj nije prepoznat, a \texttt{403} da jest, ali na radnju nema pravo. Pravilo koje radnju odbija iako je s pošiljateljem sve u redu bira među ovima:
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{0pt}
+\renewcommand{\arraystretch}{1.45}
+\begin{tabular}{@{}L{1.1cm}L{5.2cm}L{4.9cm}@{}}
+  \toprule
+  \textbf{Kod} & \textbf{Značenje} & \textbf{Primjer} \\
+  \midrule
+  \texttt{400} & u ovom stanju nije moguća & rok je prošao \\
+  \texttt{409} & sukob s postojećim zapisom & natjecatelj je već prijavljen \\
+  \texttt{422} & sadržaj se ne može obraditi & kategorija nije na popisu \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Opisi tih kodova u standardu dopuštaju više od jednoga izbora, pa se za prekršeno poslovno pravilo u praksi sreću sva tri.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Izbor koda u projektu}
+Izbor se donosi jednom, za cijeli projekt:
+
+\vspace{0.9em}
+\begin{konvencija}
+U ovom projektu \texttt{409} nosi jedino sukob s postojećim zapisom, \texttt{422} jedino pogrešku u obliku podataka, a sve ostalo je \texttt{400}.
+\end{konvencija}
+
+\vspace{0.9em}
+Klijent po kodu grana obradu: na \texttt{422} označava polje u obrascu, na \texttt{400} prikazuje poruku i ostavlja obrazac kakav je, a na \texttt{409} osvježava prikaz, jer zapis već postoji.
+
+\vspace{1.1em}
+Projekt koji isto pravilo odbija jednom s \texttt{400}, a drugdje s \texttt{409}, tjera klijenta da oba koda obrađuje jednako, čime kod prestaje nositi informaciju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kodovi pogrešaka u projektu (I)}
+Zahtjev može biti odbijen i prije nego što dođe do pravila domene. Te su pogreške iste u svakoj aplikaciji:
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}L{3.8cm}L{2.3cm}L{4.9cm}@{}}
+  \toprule
+  \textbf{\texttt{code}} & \textbf{\texttt{status\_code}} & \textbf{Kada} \\
+  \midrule
+  \texttt{validation\_error}    & \texttt{422} & tijelo ne odgovara shemi \\
+  \texttt{invalid\_credentials} & \texttt{401} & prijava ili token ne vrijede \\
+  \texttt{token\_expired}       & \texttt{401} & pristupni token je istekao \\
+  \texttt{forbidden}            & \texttt{403} & uloga ili vlasništvo ne dopušta \\
+  \texttt{not\_found}           & \texttt{404} & zapis ne postoji ili nije vidljiv \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Prva tri koda uvedena su s prijavom, četvrti s pravima pristupa, a peti dolazi uz svaki dohvat zapisa po oznaci.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kodovi pogrešaka u projektu (II)}
+Ostali kodovi dolaze iz pravila ove domene:
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}L{3.8cm}L{2.3cm}L{4.9cm}@{}}
+  \toprule
+  \textbf{\texttt{code}} & \textbf{\texttt{status\_code}} & \textbf{Kada} \\
+  \midrule
+  \texttt{duplicate}            & \texttt{409} & zapis bi prekršio jedinstvenost \\
+  \texttt{has\_registrations}   & \texttt{409} & natjecatelj ima prijave \\
+  \texttt{deadline\_passed}     & \texttt{400} & radnja nije moguća u ovoj fazi \\
+  \texttt{already\_withdrawn}   & \texttt{400} & prijava je već povučena \\
+  \texttt{already\_active}      & \texttt{400} & prijava je već aktivna \\
+  \texttt{invalid\_category}    & \texttt{400} & kategorija ne odgovara spolu \\
+  \texttt{invalid\_deadlines}   & \texttt{400} & poredak rokova bio bi poremećen \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.5em}
+Novi kod uvodi se kad klijent na njega mora reagirati drukčije. Inače je dovoljno promijeniti \texttt{message}.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Pogreška koju vraća baza}
-Ograničenje jedinstvenosti postavljeno uz model prijave ne javlja se kao uredan odgovor nego kao iznimka upravljačkog programa baze, pri izvođenju upisa:
+Dvostruku prijavu odbija baza, ograničenjem jedinstvenosti nad oznakama natjecatelja i natjecanja. Svoju odluku javlja iznimkom, i to pri izvođenju upisa:
 
 \begin{lstlisting}[language=python]
 # app/services/registration_service.py
 try:
-    await registration_repo.create(db, reg)
+    return await registration_repo.create(db, reg)
 except IntegrityError:
     raise AppError("duplicate",
-                   "Natjecatelj je vec prijavljen na ovo natjecanje", 409)
+                   <@"Natjecatelj je već prijavljen"@>, 409)
 \end{lstlisting}
 
 \vspace{0.3em}
-Bez ovog prevođenja klijent dobiva \texttt{500}, jer je \texttt{IntegrityError} za aplikaciju nepredviđeno stanje. Taj je kod i netočan: zahtjev je u sukobu sa stanjem, a to je \texttt{409}.
+Bez ovog prevođenja klijent dobiva \texttt{500}, jer je \texttt{IntegrityError} za aplikaciju nepredviđeno stanje. Taj je kod uz to netočan: zahtjev je u sukobu sa stanjem, a to je \texttt{409}.
 
 \vspace{0.3em}
-Provjera prije upisa ne bi bila dovoljna, jer se stanje može promijeniti između provjere i upisa. Ovdje odbija baza, a aplikacija njezinu pogrešku prepoznaje.
+Provjera prije upisa ne bi bila dovoljna, jer se stanje može promijeniti između provjere i upisa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: isti oblik, tri rukovatelja}
+Kao klub \texttt{behemot@plreg.hr}, uz \emph{Zimski kup} u fazi \texttt{OPEN}, šaljete prijavu Ivana Perića, s oznakom natjecatelja iz prve vježbe.
+
+\begin{lstlisting}
+POST /competitions/{comp_id}/registrations
+{"lifter_id": <oznaka natjecatelja>, "category": "...", "total": 500}
+\end{lstlisting}
+
+\vspace{0.2em}
+Za svaki korak zabilježite statusni kod i polje \texttt{code}.
+
+\begin{enumerate}
+  \itemsep0.15em
+  \item \texttt{GET /competitions/99999}
+  \item \texttt{GET /competitionsss}, dakle ruta koje nema
+  \item Pošaljite prijavu s kategorijom \texttt{"999"} i pogledajte polje \texttt{errors}
+  \item Pošaljite prijavu s kategorijom \texttt{"83"} dvaput zaredom
+  \item U \codefile{app/main.py} zakomentirajte redak koji registrira \texttt{app\_error\_handler}, ponovite četvrti korak, pa vratite redak
+\end{enumerate}
+
+\vspace{0.2em}
+Koja su dva koraka dala isti \texttt{code} iz različitih rukovatelja, a što je klijent dobio u petom?
 \end{frame}
 
 % ============================================================
-\sekcija{Testiranje pravila koja ovise o vremenu}{Problem čekanja, zamrzavanje vremena, što se pokriva testom.}
+\sekcija{Testiranje pravila koja ovise o vremenu}{Pravilo koje se ne može dočekati, zamrznuto vrijeme, zadano vrijeme datoteke, test bez baze.}
 
 % ------------------------------------------------------------
 \begin{frame}{Pravilo koje se ne da isprobati}
-Pravilo o roku vrijedi samo u određenom razdoblju. Test koji ga želi provjeriti morao bi dočekati taj trenutak, a rokovi su udaljeni tjednima.
+Pravilo o roku vrijedi samo u određenom razdoblju. Test koji ga želi provjeriti morao bi dočekati taj trenutak, a do roka su tjedni.
 
 \vspace{0.6em}
-Dva su izlaza iz toga:
+Dva su načina da se čekanje izbjegne:
 
 \begin{itemize}
-  \item \textbf{Pomaknuti podatke.} Natjecanju se u testu postave rokovi tik uz sadašnji trenutak. Test prolazi, ali ovisi o tome koliko dugo traje, pa postaje nepouzdan.
+  \item \textbf{Pomaknuti podatke.} Natjecanju se u testu postave rokovi tik uz sadašnji trenutak. Test prolazi, ali ishod ovisi o tome koliko se dugo izvodi, pa povremeno pada bez stvarnog razloga.
   \item \textbf{Pomaknuti vrijeme.} Trenutno vrijeme se za potrebe testa zamrzne na zadanu vrijednost, a podatci ostaju kakvi jesu.
 \end{itemize}
 
@@ -481,14 +1057,14 @@ Drugi je put pouzdaniji, jer test ne ovisi ni o trajanju ni o danu kad se pokre�
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Zamrznuto vrijeme}
 \begin{lstlisting}[language=python]
-# api/tests/test_registrations.py
+# tests/test_registrations.py
 @freeze_time("2026-04-20 10:00:00")
 async def test_create_registration_prelim_passed(
-    client, club_and_user, lifter, competition,
+    client, lifter, competition
 ):
     headers = await auth_header(client, "testclub", "klub123")
     resp = await client.post(
-        f"/competitions/{competition.id}/registrations/",
+        url(competition),
         json={"lifter_id": lifter.id, "category": "83", "total": 500},
         headers=headers,
     )
@@ -497,33 +1073,97 @@ async def test_create_registration_prelim_passed(
 \end{lstlisting}
 
 \vspace{0.2em}
-Natjecanje u testovima ima nominacijski rok 15.04.2026. i konačni 01.05.2026. Zamrznuto vrijeme 20.04. pada između njih, pa je faza \texttt{PRELIM\_PASSED} i nova prijava mora biti odbijena.
+Natjecanje iz \emph{fixturea} ima preliminarni rok 15.04.2026. i konačni 01.05.2026. Zamrznuto vrijeme 20.04. pada između njih, pa je faza \texttt{PRELIM\_PASSED} i nova prijava mora biti odbijena.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Što test provjerava}
-Test ne gleda samo statusni kod nego i kod pogreške. Prva tvrdnja kaže da je zahtjev odbijen, druga da je odbijen iz očekivanog razloga.
+\begin{frame}[fragile]{Zadano vrijeme cijele datoteke}
+Većina testova nad prijavama ne provjerava rok, ali svaki od njih o roku ovisi: bez zamrznutog vremena ishod bi im se mijenjao s danom pokretanja. Datoteka zato ima zadano vrijeme:
+
+\begin{lstlisting}[language=python]
+# tests/test_registrations.py
+@pytest.fixture(autouse=True)
+def open_phase():
+    with freeze_time("2026-04-01 10:00:00"):
+        yield
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{autouse=True} primjenjuje \emph{fixture} na svaki test u datoteci, i kad ga test ne navede u svojem potpisu. Vrijeme 01.04. pada prije preliminarnog roka, pa su sve radnje dopuštene.
+
+\vspace{0.4em}
+Test koji provjerava samo pravilo roka postavlja vlastito vrijeme oznakom \texttt{@freeze\_time}, koja ima prednost pred zadanim.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Test funkcije bez baze}
+Funkcija koja fazu računa ne dira bazu, pa je njezin test ne treba. Natjecanje se stvara u memoriji, a funkcija se poziva izravno:
+
+\begin{lstlisting}[language=python]
+# tests/test_phases.py
+COMPETITION = Competition(
+    name="Test Kup", location="Zadar", date=date(2026, 5, 16),
+    prelim_deadline=datetime(2026, 4, 15, tzinfo=timezone.utc),
+    final_deadline=datetime(2026, 5, 1, tzinfo=timezone.utc),
+)
+
+@freeze_time("2026-04-15 00:00:00")
+def test_prelim_passed_exactly_at_prelim_deadline():
+    assert get_competition_phase(COMPETITION) == Phase.PRELIM_PASSED
+\end{lstlisting}
+
+\vspace{0.2em}
+Zapis modela stvoren u memoriji nije upisan u bazu, a funkciji to ni ne treba: ona čita dva polja. Test zato ne otvara transakciju i ne šalje zahtjev, nego poziva funkciju i gleda povratnu vrijednost.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Dvije tvrdnje u testu}
+Test tvrdi dvoje: da je zahtjev odbijen i da je odbijen iz očekivanog razloga. Prvu tvrdnju nosi statusni kod, drugu kod pogreške.
 
 \vspace{0.5em}
 Bez druge tvrdnje test bi prošao i da je zahtjev pao zbog neispravne kategorije ili nepostojećeg natjecatelja, dakle iz razloga koji s rokom nema veze.
 
 \vspace{0.6em}
-Za svako pravilo potrebna su najmanje dva testa: jedan u kojem radnja prolazi i jedan u kojem je odbijena. Prvi pokazuje da pravilo ne blokira ono što bi trebalo dopustiti.
+Za svako pravilo potrebna su najmanje dva testa: jedan u kojem radnja prolazi i jedan u kojem je odbijena. Prvi pokazuje da pravilo ne zaustavlja ono što bi trebalo dopustiti.
 
 \vspace{0.4em}
-Odatle i broj testova za fazu: tri za novu prijavu, po jedan za svaku fazu, i dva za izmjenu, jer se ona razlikuje samo u zadnjoj.
+Pravilo koje razlikuje tri faze traži tri takva testa, po jedan za svaku fazu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: pomaknuta granica}
+Testovi se pokreću iz mape \texttt{api/}, uz pokrenutu bazu:
+
+\begin{lstlisting}[language=bash]
+pytest tests/test_phases.py -v
+\end{lstlisting}
+
+\vspace{0.8em}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Pokrenite testove i pročitajte njihova imena: svako opisuje jednu granicu.
+  \item U \codefile{app/core/phases.py} zamijenite \texttt{now < prelim} s \texttt{now <= prelim} i pokrenite ih ponovno.
+  \item Pročitajte ispis testa koji je pao: koje je stanje očekivao, a koje dobio.
+  \item Vratite uvjet na staro i provjerite da svi testovi prolaze.
+\end{enumerate}
+
+\vspace{0.8em}
+Koji je test pao i koje značenje roka opisuje njegovo ime?
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Sažetak}
 \begin{itemize}
-  \item Provjera ulaza gleda poslani sadržaj, poslovno pravilo gleda stanje aplikacije; isti zahtjev sutra može proći.
-  \item Pravilo stoji u sloju \codefile{services}, jer ima pristup bazi i nalazi se ispred svakog upisa, a vrijedi za više ruta.
-  \item Faza se računa iz vremena pri svakom zahtjevu, pa ne može zaostati za stvarnim stanjem.
-  \item Odjava mijenja oznaku stanja umjesto da briše zapis, čime povijest i ograničenje jedinstvenosti ostaju na snazi.
-  \item Domenska pogreška nosi kod, poruku i statusni kod, a u odgovor je prevodi jedan handler.
-  \item Ograničenje provodi baza, a aplikacija njezinu iznimku prevodi u \texttt{409}.
-  \item Pravilo koje ovisi o vremenu testira se zamrzavanjem vremena, uz tvrdnju o kodu pogreške, ne samo o statusu.
+  \item Provjera ulaza gleda poslani sadržaj, poslovno pravilo stanje aplikacije.
+  \item Pravilo stoji u sloju \codefile{services}, ispred svakog upisa u bazu.
+  \item Shema pravilo provodi kad su svi podatci u tijelu zahtjeva; inače ga provodi sloj pravila.
+  \item Izmjena, odjava i ponovna prijava dijele ista tri pravila, u istoj funkciji.
+  \item Faza se računa iz dvaju rokova pri svakom zahtjevu, pa ne zaostaje za vremenom.
+  \item Rok nosi oznaku vremenske zone u shemi, u stupcu i u usporedbi.
+  \item Odjava mijenja oznaku stanja, a prijelaz stanja dobiva vlastitu adresu.
+  \item Domensku pogrešku s kodom i porukom u odgovor prevodi jedan rukovatelj.
+  \item Jedinstvenost provodi baza, a njezinu iznimku prevodimo u \texttt{409}.
+  \item Pravilo koje ovisi o vremenu testira se zamrzavanjem vremena.
 \end{itemize}
 \end{frame}
 

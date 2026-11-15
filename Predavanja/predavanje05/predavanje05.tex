@@ -13,13 +13,13 @@
 \begin{frame}{Plan predavanja}
 \begin{enumerate}
   \item Od zapisa do resursa: adrese, operacije i prava
+  \item Svojstva HTTP metoda: idempotentnost i izbor metode
   \item Sheme: što ulazi, što izlazi i što se provjerava
   \item Popisi: granica odgovora, straničenje i filtriranje
-  \item Od modela do tablice: migracija, upis i transakcija
 \end{enumerate}
 
 \vspace{0.3em}
-Dosad je aplikacija znala tko je korisnik i što smije. Sada dobiva zapise nad kojima radi i sučelje kojim ih netko drugi može stvarati, čitati, mijenjati i brisati.
+Dosad je aplikacija znala tko je korisnik i što smije. Sada dobiva zapise nad kojima radi i API kojim ih netko drugi može stvarati, čitati, mijenjati i brisati.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -33,7 +33,6 @@ Nakon ovog predavanja student može:
   \item dodati provjeru koja nadilazi tip polja i reći gdje je granica sheme
   \item ograničiti veličinu odgovora straničenjem i filtriranjem kroz parametre upita
   \item objasniti zašto se povezani zapisi moraju zatražiti unaprijed
-  \item razlikovati \texttt{flush} od \texttt{commit} i reći gdje transakcija počinje i završava
 \end{itemize}
 \end{frame}
 
@@ -59,10 +58,7 @@ Sustav prijava klubova na powerlifting natjecanje. Uz klub i račun dolaze tri n
 \end{tikzpicture}
 \end{center}
 
-\vspace{0.3em}
-Strelica pokazuje na nadređenu stranu: natjecatelj pripada klubu, prijava jednom natjecatelju i jednom natjecanju.
-
-\vspace{0.3em}
+\vspace{0.4em}
 Prijava nije samo spojnica dvaju zapisa. Nosi i vlastite podatke, težinsku kategoriju i najbolji zbroj (\texttt{total}), pa je i sama zapis o kojem se vodi računa.
 \end{frame}
 
@@ -71,16 +67,41 @@ Prijava nije samo spojnica dvaju zapisa. Nosi i vlastite podatke, težinsku kate
 
 % ------------------------------------------------------------
 \begin{frame}{Zapis i resurs}
-Zapis u bazi nema adresu. Postoji kao redak i do njega se dolazi upitom koji zna kako je tablica složena.
+Zapis u bazi nema adresu. Postoji kao redak, a do njega se dolazi upitom koji zna kako je tablica složena. Klijent tu bazu nema: raspolaže samo adresom i metodom.
 
-\vspace{0.2em}
-Klijent tu bazu nema. Raspolaže samo adresom i metodom, pa mu se zapis mora ponuditi u tom obliku. Zato se svaka vrsta zapisa objavljuje kao \textbf{resurs}: nešto što ima svoju adresu i skup radnji koje se nad njom izvode.
+\vspace{0.9em}
+\begin{center}
+\begin{tikzpicture}[
+  kut/.style={draw=ink, thick, rounded corners, fill=white, align=left,
+              text width=44mm, font=\footnotesize, text=textclr, inner sep=3mm},
+  vanj/.style={draw=lineclr, thick, dashed, rounded corners, fill=bgclr, align=left,
+              text width=44mm, font=\footnotesize, text=mutedclr, inner sep=3mm},
+  str/.style={-{Latex}, ink2, thick},
+  opis/.style={font=\scriptsize, text=mutedclr}
+]
+  \node[kut] (b) {\textbf{tablica \texttt{lifters}}\\[3pt]
+    \texttt{31\quad Ana\quad Horvat}\\
+    \texttt{32\quad Ivan\quad Perić}};
+  \node[vanj, right=22mm of b] (k) {\textbf{što vidi klijent}\\[3pt]
+    \texttt{GET /lifters}\\
+    \texttt{GET /lifters/31}};
+  \draw[str] (b) -- (k);
+  \node[opis, below=2mm of b] {redak, stupac, upit};
+  \node[opis, below=2mm of k] {adresa i metoda};
+\end{tikzpicture}
+\end{center}
 
-\vspace{0.25em}
+\vspace{0.9em}
+Zato se svaka vrsta zapisa objavljuje kao \textbf{resurs}: nešto što ima svoju adresu i skup radnji koje se nad njom izvode.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Odnos resursa i tablice}
+\vspace{0.4em}
 \begin{center}
 {\small
-\setlength{\tabcolsep}{8pt}
-\renewcommand{\arraystretch}{1.18}
+\setlength{\tabcolsep}{10pt}
+\renewcommand{\arraystretch}{1.3}
 \begin{tabular}{@{}ll@{}}
   \toprule
   \textbf{U bazi} & \textbf{Prema klijentu} \\
@@ -93,19 +114,48 @@ Klijent tu bazu nema. Raspolaže samo adresom i metodom, pa mu se zapis mora pon
 }
 \end{center}
 
-\vspace{0.25em}
+\vspace{1.1em}
 Preslikavanje ne mora biti jedan na jedan. Resurs smije spojiti podatke iz više tablica, izostaviti stupce koje nitko izvana ne treba, ili uopće ne odgovarati nijednoj tablici.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=12]{Četiri operacije nad zapisom}
-Nad svakim se resursom radi isto: stvara se, čita, mijenja i briše. Te četiri operacije nose naziv CRUD (engl. \emph{create, read, update, delete}) i preslikavaju se u metode i odgovore:
+\begin{frame}{Podsjetnik: statusni kodovi}
+Operacije se razlikuju i po kodu kojim završavaju, pa se isplati obnoviti ono iz prvoga predavanja. Prva znamenka nosi razred:
 
-\vspace{0.25em}
+\vspace{0.6em}
+\begin{center}
 {\small
-\setlength{\tabcolsep}{0pt}
-\renewcommand{\arraystretch}{1.18}
-\begin{tabular}{@{}L{2.9cm}L{2.6cm}L{1.8cm}L{3.7cm}@{}}
+\setlength{\tabcolsep}{10pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Kod} & \textbf{Značenje} \\
+  \midrule
+  \texttt{200} & obrađeno, tijelo slijedi \\
+  \texttt{201} & nastao je novi zapis \\
+  \texttt{204} & obrađeno, tijela nema \\
+  \texttt{404} & na toj putanji nema ničega \\
+  \texttt{409} & sukob sa stanjem resursa \\
+  \texttt{422} & sadržaj se ne može obraditi \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Svi iz razreda \texttt{2xx} znače da je zahtjev obrađen, a oni iz \texttt{4xx} da s njim nešto nije u redu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Četiri operacije nad zapisom}
+Nad svakim se resursom radi isto: stvara se, čita, mijenja i briše. Te operacije nose naziv CRUD (engl. \emph{create, read, update, delete}):
+
+\vspace{1.1em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{10pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}llll@{}}
   \toprule
   \textbf{Operacija} & \textbf{Metoda} & \textbf{Kod} & \textbf{Tijelo odgovora} \\
   \midrule
@@ -113,28 +163,38 @@ Nad svakim se resursom radi isto: stvara se, čita, mijenja i briše. Te četiri
   jedan zapis  & \texttt{GET}    & \texttt{200} & zapis \\
   stvaranje    & \texttt{POST}   & \texttt{201} & stvoreni zapis \\
   izmjena      & \texttt{PATCH}  & \texttt{200} & izmijenjeni zapis \\
-  brisanje     & \texttt{DELETE} & \texttt{204} & nema ga \\
+  brisanje     & \texttt{DELETE} & \texttt{204} & / \\
   \bottomrule
 \end{tabular}
 }
+\end{center}
+\end{frame}
 
-\vspace{0.25em}
-Stvaranje vraća zapis jer klijent prije odgovora ne zna oznaku koju je baza dodijelila. Brisanje ne vraća ništa, pa uz \texttt{204} tijela nema.
+% ------------------------------------------------------------
+\begin{frame}{Tijelo odgovora uz \texttt{201} i \texttt{204}}
+Dva retka iz tablice odstupaju:
+
+\vspace{0.9em}
+\begin{itemize}
+  \itemsep0.6em
+  \item \textbf{Stvaranje vraća \texttt{201} i zapis.} Klijent prije odgovora ne zna oznaku koju dodjeljuje baza, pa je mora dobiti natrag; bez nje ne može uputiti nijedan sljedeći zahtjev nad tim zapisom.
+  \item \textbf{Brisanje vraća \texttt{204} i ništa.} Zapisa više nema, pa nema ni što poslati. Tijelo uz \texttt{204} standard i ne dopušta.
+\end{itemize}
 
 \begin{konvencija}
-Ista tablica vrijedi za svaki resurs, pa tko zna jedan, zna i ostale. To je odluka pri oblikovanju sučelja, a ne zahtjev protokola.
+Sama preslika operacija u metode nije propisana. \texttt{POST} i \texttt{GET} standard opisuje, ali nigdje ne piše da izmjena mora biti \texttt{PATCH} ni da brisanje mora vratiti \texttt{204}. To je dogovor struke. Korist od njega je u tome što ga se držimo na svim resursima, pa tko nauči jedan, zna i ostale.
 \end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=12]{Pripadnost u adresi}
+\begin{frame}{Pripadnost u adresi}
 Natjecatelj uvijek pripada nekom klubu. Ta se pripadnost u adresi može izraziti na dva načina:
 
 \vspace{0.25em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{8pt}
-\renewcommand{\arraystretch}{1.18}
+\renewcommand{\arraystretch}{1.05}
 \begin{tabular}{@{}ll@{}}
   \toprule
   \textbf{Oblik} & \textbf{Adresa} \\
@@ -147,14 +207,14 @@ Natjecatelj uvijek pripada nekom klubu. Ta se pripadnost u adresi može izraziti
 \end{center}
 
 \vspace{0.3em}
-U prvom obliku pripadnost je dio adrese, pa je uvijek prisutna i ne može se izostaviti. U drugom je uvjet pretrage: izostavi li se, ruta vraća natjecatelje svih klubova, a to je ishod koji provjera vlasništva mora spriječiti.
+U prvom je obliku pripadnost dio adrese i ne može se izostaviti. U drugom je uvjet pretrage: izostavi li se, ruta vraća natjecatelje svih klubova.
 \begin{konvencija}[Izbor, ne pravilo]
-Ugniježđeni oblik odgovara odnosu u kojem podređeni zapis bez nadređenoga nema smisla. Samostalni je prikladniji kad se zapis dohvaća po više različitih kriterija, jer bi inače zahtijevao više ugniježđenih adresa za istu vrstu zapisa. U našem su projektu natjecatelji ugniježđeni pod klubom, a natjecanja stoje samostalno.
+Ugniježđeni oblik odgovara odnosu u kojem podređeni zapis bez nadređenoga nema smisla. Samostalni je prikladniji kad se zapis dohvaća po više kriterija. U našem su projektu natjecatelji ugniježđeni pod klubom, a natjecanja stoje samostalno.
 \end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Gdje se ugnježđivanje zapisuje}
+\begin{frame}[fragile]{Mjesto ugnježđivanja}
 Putanje u datoteci s rutama natjecatelja zapisane su bez prefiksa: \texttt{/} za popis i stvaranje, \texttt{/\{lifter\_id\}} za pojedinačni zapis. Puna adresa nastaje tek pri uključivanju u aplikaciju, nadovezivanjem prefiksa na te putanje:
 
 \begin{lstlisting}[language=python]
@@ -167,16 +227,36 @@ app.include_router(registrations_router,
                    prefix="/competitions/{comp_id}/registrations")
 \end{lstlisting}
 
-\vspace{0.3em}
-Time je oblik sučelja vidljiv na jednom mjestu. Iz ovog se popisa čita koja je pripadnost ugniježđena, bez otvaranja ijedne datoteke s rutama.
+\vspace{0.4em}
+Time je oblik API-ja vidljiv na jednom mjestu. Iz ovog se popisa čita koja je pripadnost ugniježđena, bez otvaranja ijedne datoteke s rutama.
 
-\vspace{0.2em}
-Oznaka \texttt{\{club\_id\}} iz prefiksa stiže u funkciju rute kao običan argument, pa je ne treba nigdje posebno izvlačiti.
+\vspace{0.9em}
+Oznaka \texttt{\{club\_id\}} time stoji u prefiksu, a ne u putanji same rute.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=14]{Čitanje i pisanje ne traže isto}
-Natjecanja čita svatko tko je prijavljen, a mijenja ih samo administrator. Ta se razlika ne vidi u tijelu funkcije nego među njezinim ovisnostima:
+\begin{frame}[fragile]{Oznaka iz prefiksa}
+\begin{lstlisting}[language=python]
+# app/routers/lifters.py
+@router.get("/", response_model=list[LifterResponse])
+async def list_lifters(
+    club_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin", "club")),
+):
+    return await lifter_service.list_lifters(db, club_id, user, ...)
+\end{lstlisting}
+
+\vspace{0.4em}
+Framework traži \texttt{club\_id} u cijeloj adresi, dakle i u prefiksu, i preda ga kao običan argument.
+
+\vspace{0.9em}
+Ruta time ne zna ni da je ugniježđena. Isti kod radi i da je adresa \texttt{/lifters/\{club\_id\}}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Različita prava za čitanje i pisanje}
+Natjecanja čita svatko prijavljen, a mijenja ih samo organizator:
 
 \begin{lstlisting}[language=python]
 # app/routers/competitions.py
@@ -195,50 +275,217 @@ async def create_competition(
 ):
     return await competition_service.create_competition(db, body)
 \end{lstlisting}
+\end{frame}
 
-\vspace{0.4em}
-Razlika je u jednoj ovisnosti. \texttt{require\_role} traži određenu ulogu, a \texttt{get\_current\_user} samo to da je korisnik utvrđen, bez obzira na to koja mu je uloga.
+% ------------------------------------------------------------
+\begin{frame}{Uloga u potpisu rute}
+\texttt{get\_current\_user} traži samo to da je korisnik utvrđen, bez obzira na to koja mu je uloga. \texttt{require\_role("admin")} uz to traži i određenu ulogu.
+
+\vspace{1.1em}
+Tko rutu smije pozvati time se čita iz njezina potpisa, a ne iz tijela funkcije. Ni \texttt{list\_competitions} ni \texttt{create\_competition} o pravima ne odlučuju same.
+
+\vspace{1.1em}
+Uz \texttt{POST} stoji i \texttt{status\_code=201}, jer stvaranje vraća drukčiji kod od ostalih operacija.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Brisanje i povezani zapisi}
 Obriše li se natjecatelj, prijave koje na njega pokazuju ostaju bez zapisa na koji se odnose. Tri su izlaza iz toga:
 
-\vspace{0.2em}
+\vspace{1.1em}
+\begin{itemize}
+  \itemsep0.7em
+  \item \textbf{Zabraniti dok veze postoje.} Zahtjev se odbija, zapis ostaje netaknut.
+  \item \textbf{Obrisati i povezane zapise.} Nestaje i prijava i svaki trag o njoj.
+  \item \textbf{Označiti stanje umjesto brisanja.} Zapis ostaje, a stupac kaže da više ne vrijedi.
+\end{itemize}
+
+\vspace{1.1em}
+Izbor ovisi o tome treba li povijest ostati dostupna.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Izostanak pravila o brisanju}
+Da izbora nema. Ruta koja briše bez ijednog od tih pravila završava neuhvaćenom pogreškom baze umjesto odgovorom koji klijent razumije.
+
+\begin{konvencija}[Izbor, ne pravilo]
+U ovom projektu natjecatelj se ne briše dok ima prijave: zahtjev vraća \texttt{409} i kod \texttt{has\_registrations}. Prijava se ne briše nego joj se \texttt{status} postavlja na \texttt{"withdrawn"}, pa odjava ostaje vidljiva.
+
+\vspace{0.5em}
+Brisanje povezanih zapisa nigdje ne upotrebljavamo, jer povijest prijava na natjecanje čuvamo.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: četiri operacije u Swaggeru}
+Prijavite se u \texttt{/docs} kao klub \texttt{behemot@plreg.hr} i radite nad njegovim natjecateljima.
+
+\vspace{1.1em}
+\begin{enumerate}
+  \itemsep0.6em
+  \item Stvorite natjecatelja, pa nad istim zapisom izvedite \texttt{GET}, \texttt{PATCH} i \texttt{DELETE}. Za svaki zabilježite kod odgovora i ima li tijela.
+  \item Stvorite još jednoga, prijavite ga na \emph{Zimski kup}, pa ga pokušajte obrisati.
+\end{enumerate}
+
+\vspace{1.1em}
+Koji ste kod dobili u drugom koraku, tko ga je podigao i zašto?
+
+\vspace{0.7em}
+Po čemu se sve razlikuju te četiri operacije? (adresa, tijelo zahtjeva, učinak na stanje, ponovljivost)
+\end{frame}
+
+% ============================================================
+\sekcija{Svojstva HTTP metoda}{Podsjetnik na metode, idempotentnost, razlika između \texttt{PUT}-a i \texttt{PATCH}-a, izbor metode za izmjenu.}
+
+% ------------------------------------------------------------
+\begin{frame}{Podsjetnik: HTTP metode}
+\vspace{0.3em}
 \begin{center}
 {\small
-\setlength{\tabcolsep}{0pt}
+\setlength{\tabcolsep}{10pt}
 \renewcommand{\arraystretch}{1.1}
-\begin{tabular}{@{}L{4.2cm}L{5.1cm}L{1.7cm}@{}}
+\begin{tabular}{@{}lL{7.6cm}@{}}
   \toprule
-  \textbf{Izlaz} & \textbf{Posljedica} & \textbf{U projektu} \\
+  \textbf{Metoda} & \textbf{Što traži od poslužitelja} \\
   \midrule
-  zabraniti dok veze postoje  & zahtjev se odbija, zapis ostaje & natjecatelj \\
-  obrisati i povezane zapise  & nestaje i prijava i povijest o njoj & --- \\
-  označiti stanje umjesto brisanja & zapis ostaje, oznaka kaže da ne vrijedi & prijava \\
+  \texttt{GET}     & prikaz resursa \\
+  \texttt{HEAD}    & isto što i \texttt{GET}, ali bez tijela odgovora \\
+  \texttt{OPTIONS} & popis metoda koje resurs podržava \\
+  \texttt{TRACE}   & zahtjev vraćen onakav kakav je stigao, za dijagnostiku \\
+  \texttt{POST}    & obradu poslanog sadržaja, najčešće stvaranje zapisa \\
+  \texttt{PUT}     & da resurs postane poslani sadržaj \\
+  \texttt{PATCH}   & izmjenu dijela resursa \\
+  \texttt{DELETE}  & brisanje resursa \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
-\vspace{0.25em}
-Izbor ovisi o tome treba li povijest zapisa ostati dostupna. Ono što se ne smije dogoditi jest da izbora nema: ruta koja briše bez ijednog od tih pravila završava neuhvaćenom pogreškom baze umjesto odgovorom koji klijent razumije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Idempotentnost}
+Metoda je idempotentna ako niz od više jednakih zahtjeva ostavlja poslužitelj u istom stanju kao i jedan takav zahtjev. Standard to svojstvo pridružuje samim metodama. Za koje od njih vrijedi?
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{14pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Metoda} & \textbf{Idempotentna} \\
+  \midrule
+  \texttt{GET}     & \\
+  \texttt{HEAD}    & \\
+  \texttt{OPTIONS} & \\
+  \texttt{TRACE}   & \\
+  \texttt{POST}    & \\
+  \texttt{PUT}     & \\
+  \texttt{PATCH}   & \\
+  \texttt{DELETE}  & \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Idempotentne metode}
+Metoda je idempotentna ako niz od više jednakih zahtjeva ostavlja poslužitelj u istom stanju kao i jedan takav zahtjev.
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{14pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}ll@{}}
+  \toprule
+  \textbf{Metoda} & \textbf{Idempotentna} \\
+  \midrule
+  \texttt{GET}     & da \\
+  \texttt{HEAD}    & da \\
+  \texttt{OPTIONS} & da \\
+  \texttt{TRACE}   & da \\
+  \texttt{POST}    & \textbf{ne} \\
+  \texttt{PUT}     & da \\
+  \texttt{PATCH}   & \textbf{ne} \\
+  \texttt{DELETE}  & da \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Posljedice idempotentnosti}
+\begin{itemize}
+  \itemsep0.6em
+  \item \texttt{GET}, \texttt{HEAD}, \texttt{OPTIONS} i \texttt{TRACE} ne mijenjaju stanje.
+  \item \texttt{PUT} i \texttt{DELETE} mijenjaju stanje, ali ponavljanje na njemu ništa ne mijenja: zapis se postavlja na poslani sadržaj, odnosno briše.
+  \item \texttt{POST} i \texttt{PATCH} nisu idempotentni.
+\end{itemize}
+
+\vspace{1.1em}
+Klijent zato smije ponoviti neuspjeli \texttt{GET} ili \texttt{DELETE} bez razmišljanja.
+
+\vspace{0.7em}
+Ponovljeni \texttt{POST} može stvoriti drugi zapis, pa zaštita od toga mora doći iz aplikacije, najčešće ograničenjem jedinstvenosti u bazi.
+\end{frame}
+
+% ------------------------------------------------------------
+
+\begin{frame}{\texttt{PUT} i \texttt{PATCH}}
+Obje mijenjaju postojeći zapis, ali tijelo zahtjeva kod njih ne znači isto. \texttt{PUT} šalje ciljno stanje zapisa, \texttt{PATCH} opis izmjene nad onim što već postoji.
+
+\vspace{0.9em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{10pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+   & \textbf{\texttt{PUT}} & \textbf{\texttt{PATCH}} \\
+  \midrule
+  Tijelo zahtjeva     & ciljno stanje & opis izmjene \\
+  Izostavljeno polje  & briše se      & ne mijenja se \\
+  Ponovljeni zahtjev  & isto stanje   & ne nužno isto stanje \\
+  Obrada u aplikaciji & zamjena       & spajanje s postojećim \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.9em}
+Ostala tri retka slijede iz prvoga. Polje koje klijent zaboravi poslati \texttt{PUT} briše, jer ga u ciljnom stanju nema. Ponavljanje \texttt{PATCH}-a ovisi o tome kakvu izmjenu nosi: \texttt{\{"first\_name": "Ana"\}} ga podnosi, \texttt{\{"total": "+5"\}} ne.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Odabir metode za izmjenu}
+\textbf{\texttt{PUT}} odgovara kad klijent drži cjelovit prikaz zapisa i mijenja ga u cijelosti, primjerice postavke ili dokument. Tada je brisanje polja izričit postupak: polje koje klijent više ne pošalje nestaje. Obrada je jednostavnija, jer nema spajanja ni dvoznačnosti između neposlanog polja i poslanog \texttt{null}.
 
 \vspace{0.25em}
-Brisanje natjecatelja koji ima prijave vraća \texttt{409} i kod \texttt{has\_registrations}.
+\textbf{\texttt{PATCH}} odgovara kad je zapis velik, a izmjena malena, i kad klijent uopće ne poznaje sva polja. Zamjena bi tada izbrisala sve čega se klijent ne sjeća poslati, pa je slanje samo izmijenjenog i sigurnije i jeftinije.
+
+\vspace{0.25em}
+\begin{konvencija}[Izbor, ne pravilo]
+U našem projektu izmjena je svugdje izvedena metodom \texttt{PATCH}, jer klub mijenja jedno ili dva polja natjecatelja i ne drži cijeli zapis. API koji se odluči za \texttt{PUT} ništa ne krši, ali mora računati na to da izostavljeno polje znači brisanje.
+\end{konvencija}
 \end{frame}
 
 % ============================================================
-\sekcija{Sheme}{Što shema provjerava, zašto jedna nije dovoljna, unos i odgovor, izmjena i neposlana polja, idempotentnost, provjere koje nadilaze tip.}
+\sekcija{Sheme}{Što shema provjerava, zašto jedna nije dovoljna, unos i odgovor, provjere koje nadilaze tip, izmjena i neposlana polja.}
 
 % ------------------------------------------------------------
 \begin{frame}{Shema kao opis ulaza i izlaza}
 Shema je zapis o tome kakve podatke ruta prima i kakve vraća. Framework je provjerava prije nego zahtjev dođe do poslovnih pravila, pa neispravan sadržaj do njih ne stiže.
 
-\vspace{0.4em}
-Shema provjerava:
+\vspace{1.1em}
+Shema provjerava troje:
 
+\vspace{0.8em}
 \begin{itemize}
+  \itemsep0.7em
   \item jesu li obavezna polja prisutna
   \item je li svako polje očekivanog tipa
   \item zadovoljava li vrijednost ograničenje zapisano uz polje, primjerice popis dopuštenih vrijednosti ili raspon
@@ -255,21 +502,23 @@ class LifterCreate(BaseModel):
     gender: Literal["M", "F"]
 \end{lstlisting}
 
-\vspace{0.5em}
+\vspace{0.4em}
 {\small
-\begin{tabular}{@{}lL{6.4cm}@{}}
+\begin{tabular}{@{}lL{7.2cm}@{}}
   \toprule
-  \textbf{Poslani spol} & \textbf{Ishod} \\
+  \textbf{Poslano} & \textbf{Ishod} \\
   \midrule
-  \enquote{M}, vrijednost s popisa & prolazi dalje \\
-  \enquote{X}, nije na popisu      & odbijeno, odgovor imenuje polje \texttt{gender} \\
-  \texttt{3}                       & odbijeno, vrijednost nije niz znakova \\
+  \texttt{"gender": "M"}   & prolazi dalje \\
+  \texttt{"gender": "X"}   & odbijeno, vrijednost nije na popisu \\
+  \texttt{"gender": 3}     & odbijeno; broj ne bi prošao ni da popisa nema \\
+  \texttt{"first\_name": ""} & odbijeno, kraće od najmanje duljine \\
+  bez \texttt{birth\_date}  & odbijeno, obavezno polje nedostaje \\
   \bottomrule
 \end{tabular}
 }
 
 \vspace{0.4em}
-\texttt{Literal} nabraja dopuštene vrijednosti, pa provjera stoji u samoj deklaraciji polja.
+\texttt{Literal} nabraja dopuštene vrijednosti, a \texttt{Field} ograničava duljinu: obje provjere stoje uz samo polje.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -297,30 +546,82 @@ Natjecatelj je u bazi jedan zapis, ali za svaku vrstu zahtjeva putuje drukčiji 
 \end{center}
 
 \vspace{0.3em}
-Stvaranje i izmjena traže različito, a odgovor nosi sve, uključujući i ono što klijent nikada ne šalje: \texttt{id} koji je dodijelila baza i \texttt{club\_id} koji je stajao u adresi.
+Stvaranje i izmjena traže različito, a odgovor nosi sve.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[shrink=10]{Koliko nam je shema potrebno?}
-Jedna shema ne bi mogla ispuniti sve tri uloge, jer bi ista polja morala istodobno tražiti i ne tražiti. Zato ih razdvajamo na \texttt{LifterCreate}, \texttt{LifterUpdate} i \texttt{LifterResponse}.
+\begin{frame}{Odakle dolazi koje polje}
+Šest polja u odgovoru stiže trima različitim putovima.
 
 \vspace{0.3em}
-Tri sheme nisu pravilo. Natjecatelj se pojavljuje u trima ulogama, pa ih ima tri; drugi zapisi mogu imati različit broj:
+\begin{center}
+\begin{tikzpicture}[
+  node distance=4mm,
+  kut/.style={draw=ink, thick, rounded corners, fill=white, align=left,
+              text width=46mm, font=\footnotesize, text=textclr, inner sep=2mm},
+  vanj/.style={draw=lineclr, thick, dashed, rounded corners, fill=bgclr, align=left,
+               text width=46mm, font=\footnotesize, text=mutedclr, inner sep=2mm},
+  odg/.style={draw=ink, thick, rounded corners, fill=white, align=left,
+              text width=38mm, font=\footnotesize, text=textclr, inner sep=2.5mm},
+  str/.style={-{Latex}, ink2, thick}
+]
+  \node[kut] (a) {\textbf{adresa rute}\\klijent šalje \texttt{club\_id}};
+  \node[kut, below=of a] (t) {\textbf{tijelo zahtjeva}\\klijent šalje ime, prezime,\\datum i spol};
+  \node[vanj, below=of t] (b) {\textbf{baza}\\dodjeljuje \texttt{id}};
+  \node[odg, right=14mm of t] (o) {\textbf{odgovor}\\\texttt{id}, ime, prezime,\\datum, spol, \texttt{club\_id}};
+
+  \draw[str] (a.east) -- (o.west);
+  \draw[str] (t.east) -- (o.west);
+  \draw[str] (b.east) -- (o.west);
+\end{tikzpicture}
+\end{center}
 
 \vspace{0.3em}
+Klijent šalje pet od šest polja, ali samo četiri u tijelu. \texttt{club\_id} putuje adresom, a \texttt{id} ne dolazi od njega. Zato ih \texttt{LifterCreate} nema ni jedno.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Tri uloge istoga polja}
+Jedna shema ne bi mogla ispuniti sve tri uloge, jer bi ista polja morala istodobno tražiti i ne tražiti.
+
+\vspace{1.1em}
 \begin{itemize}
-  \item \textbf{Prijava ima četvrtu.} \texttt{LifterBrief} sadrži samo ime i prezime i ugrađuje se u odgovor o prijavi.
-  \item \textbf{Autentikacija ima drukčiji skup shema.} Tamo stoje \texttt{LoginRequest}, \texttt{TokenResponse} i \texttt{RefreshRequest}, jer se ne stvara zapis nego izdaje token.
+  \itemsep0.7em
+  \item Pri \textbf{stvaranju} datum rođenja mora biti prisutan.
+  \item Pri \textbf{izmjeni} isti datum smije izostati, jer se mijenja samo ime.
+  \item U \textbf{odgovoru} uvijek postoji, zajedno s \texttt{id} i \texttt{club\_id}, koje klijent nikada ne šalje.
 \end{itemize}
 
-\vspace{0.3em}
+\vspace{1.1em}
+Zato ih razdvajamo: \texttt{LifterCreate}, \texttt{LifterUpdate} i \texttt{LifterResponse}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Broj shema po zapisu}
+Broj shema slijedi iz broja oblika u kojima se zapis pojavljuje:
+
+\vspace{1.1em}
+\begin{itemize}
+  \itemsep0.7em
+  \item \textbf{Autentikacija ima posve drukčiji skup.} Ondje stoje \texttt{LoginRequest}, \texttt{TokenResponse} i \texttt{RefreshRequest}, jer se ne stvara zapis nego izdaje token.
+  \item \textbf{Zapis koji se nikada ne mijenja nema shemu za izmjenu.} Nedostaje joj uloga koju bi ispunjavala.
+\end{itemize}
+
 \begin{konvencija}
-Podjela na unos, izmjenu i odgovor nije propisana nego je uobičajen način da se te tri uloge razdvoje. Broj shema u svakom slučaju slijedi iz toga u koliko se različitih oblika isti zapis pojavljuje u zahtjevima i odgovorima.
+Podjela na unos, izmjenu i odgovor nije propisana nego uobičajena. Broj shema slijedi iz toga u koliko se oblika isti zapis pojavljuje.
 \end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Shema za unos i odgovor}
+\begin{frame}[fragile]{Shema za unos}
+Ruta koja stvara natjecatelja navodi shemu kao tip tijela:
+
+\begin{lstlisting}[language=python]
+# app/routers/lifters.py
+async def create_lifter(club_id: int, body: LifterCreate, ...):
+\end{lstlisting}
+
+\vspace{0.6em}
 \begin{lstlisting}[language=python]
 # app/schemas/lifter.py
 class LifterCreate(BaseModel):
@@ -328,127 +629,127 @@ class LifterCreate(BaseModel):
     last_name: str = Field(min_length=1, max_length=80)
     birth_date: date
     gender: Literal["M", "F"]
+\end{lstlisting}
 
+\vspace{0.4em}
+Sve što u \texttt{LifterCreate} ne stoji, u tijelo zahtjeva ne ulazi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Isti natjecatelj, dva oblika}
+Redak u bazi i tijelo odgovora nisu ista stvar:
+
+\vspace{0.7em}
+\begin{center}
+\begin{tikzpicture}[
+  kut/.style={draw=ink, thick, rounded corners, fill=white, align=left,
+              text width=44mm, font=\scriptsize\ttfamily, text=textclr, inner sep=2.5mm},
+  str/.style={-{Latex}, ink2, thick},
+  opis/.style={font=\scriptsize, text=mutedclr}
+]
+  \node[kut] (b) {id\quad\ \ 31\\club\_id\ 12\\first\_name\ \ Ana\\last\_name\ \ \ Horvat\\birth\_date\ \ 2001-05-02\\gender\quad\ \ F};
+  \node[kut, right=32mm of b] (k) {\{\\\ \ "id": 31,\\\ \ "club\_id": 12,\\\ \ "first\_name": "Ana",\\\ \ ...\\\}};
+  \draw[str] (b) -- node[opis, above, yshift=0.6mm] {\texttt{LifterResponse}} (k);
+  \node[opis, below=2mm of b] {prema bazi: redak tablice};
+  \node[opis, below=2mm of k] {prema klijentu: JSON};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.7em}
+Shema odgovora je pravilo pretvorbe između ta dva oblika.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zapis i shema odgovora}
+\begin{lstlisting}[language=python]
+# app/models/lifter.py
+class Lifter(Base):
+    __tablename__ = "lifters"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    club_id: Mapped[int] = mapped_column(ForeignKey("clubs.id"))
+    first_name: Mapped[str] = mapped_column(String(80))
+    ...
+\end{lstlisting}
+
+\vspace{0.15em}
+\begin{lstlisting}[language=python]
+# app/schemas/lifter.py
 class LifterResponse(BaseModel):
     id: int
-    first_name: str
-    last_name: str
-    birth_date: date
-    gender: str
     club_id: int
+    first_name: str
+    ...
+\end{lstlisting}
+
+\vspace{0.15em}
+\codefile{repositories} vraća prvi oblik, \codefile{services} ga prosljeđuje, a ruta mora vratiti drugi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prepisivanje polja rukom}
+Pydantic po zadanom čita rječnike, ne atribute objekta, pa bi se polja prepisivala jedno po jedno:
+
+\begin{lstlisting}[language=python]
+# app/routers/lifters.py
+return LifterResponse(
+    id=lifter.id,
+    first_name=lifter.first_name,
+    last_name=lifter.last_name,
+    birth_date=lifter.birth_date,
+    gender=lifter.gender,
+    club_id=lifter.club_id,
+)
+\end{lstlisting}
+
+\vspace{0.4em}
+Taj blok stajao bi uz svaku rutu koja vraća natjecatelja: popis, dohvat, stvaranje i izmjenu. Svako novo polje tražilo bi izmjenu na sva četiri mjesta.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Jedan redak umjesto prepisivanja}
+\begin{lstlisting}[language=python]
+# app/schemas/lifter.py
+class LifterResponse(BaseModel):
+    id: int
+    club_id: int
+    first_name: str
+    ...
 
     model_config = {"from_attributes": True}
 \end{lstlisting}
 
-\vspace{0.3em}
-Ulazna shema nema \texttt{id} ni \texttt{club\_id}: prvi dodjeljuje baza, a drugi je već u adresi rute. Postavka \texttt{from\_attributes} dopušta da se izlazna shema popuni izravno iz zapisa koji je vratio ORM.
+\vspace{0.4em}
+Zbog zadnjeg retka ruta smije vratiti \texttt{Lifter} izravno. Prepisivanje polja s prethodnog slajda otpada.
 
-\vspace{0.3em}
-Izlazna shema nije samo opis. Odgovor prolazi kroz nju, pa polje koje u njoj ne stoji ne može izaći ni greškom.
+\vspace{0.7em}
+Izlazna shema nije samo opis. Odgovor prolazi kroz nju, pa polje koje u njoj ne stoji ne izlazi ni greškom.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Izmjena i neposlana polja (I)}
+\begin{frame}[fragile]{Gdje se sheme navode}
+Obje sheme stoje u potpisu rute, svaka na svojem mjestu:
+
 \begin{lstlisting}[language=python]
-# app/schemas/lifter.py
-class LifterUpdate(BaseModel):
-    first_name: str | None = Field(default=None, min_length=1, max_length=80)
-    last_name: str | None = Field(default=None, min_length=1, max_length=80)
-    birth_date: date | None = None
-    gender: str | None = Field(default=None, pattern=r"^[MF]$")
+# app/routers/lifters.py
+@router.post("/", response_model=LifterResponse, status_code=201)
+async def create_lifter(
+    club_id: int,
+    body: LifterCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin", "club")),
+):
+    return await lifter_service.create_lifter(db, club_id, body, user)
 \end{lstlisting}
 
 \vspace{0.4em}
-Sva su polja neobavezna, pa klijent šalje ona koja mijenja. Time nastaje dvoznačnost: izostalo polje i polje poslano kao \texttt{null} u shemi izgledaju jednako, a znače različito. Posljedica je da bi izmjena jednoga polja obrisala sva ostala.
+\texttt{body: LifterCreate} opisuje što ulazi, pa framework tijelo zahtjeva provjeri prije nego funkcija počne raditi. \texttt{response\_model=LifterResponse} opisuje što izlazi, pa pretvorbu iz \texttt{Lifter} u odgovor obavlja framework.
+
+\vspace{0.7em}
+Iz ta dva podatka nastaje i opis rute u \texttt{/docs}.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Izmjena i neposlana polja (II)}
-\begin{lstlisting}[language=python]
-# app/services/lifter_service.py
-for field, value in body.model_dump(exclude_unset=True).items():
-    setattr(lifter, field, value)
-\end{lstlisting}
-
-\vspace{0.4em}
-\texttt{exclude\_unset} razdvaja ta dva slučaja: u rječnik ulaze samo polja koja su doista poslana. Prazno tijelo shema propušta, pa zapis ostaje nepromijenjen, a odgovor je i dalje \texttt{200}.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Izmjena i neposlana polja (III)}
-\texttt{exclude\_unset} razlikuje poslano od neposlanoga, ali ne i poslano kao \texttt{null}. Takvo je polje poslano, pa ulazi u rječnik i pokušava upisati \texttt{null} u stupac koji ga ne dopušta. Odgovor tada dolazi iz baze, a ne iz sheme:
-
-\begin{lstlisting}[language=python]
-# app/schemas/common.py
-def reject_null(value):
-    if value is None:
-        raise ValueError("Polje ne smije biti null; izostavite ga")
-    return value
-# app/schemas/lifter.py
-_not_null = field_validator(
-    "first_name", "last_name", "birth_date", "gender", mode="before"
-)(reject_null)
-\end{lstlisting}
-
-\vspace{0.3em}
-Validator se poziva samo za poslana polja, pa izostalo polje i dalje prolazi. Zahtjev s \texttt{null} dobiva \texttt{422} i ime polja, kao i svaka druga pogreška u obliku podataka.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Idempotentnost}
-Metoda je idempotentna ako niz od više jednakih zahtjeva ostavlja poslužitelj u istom stanju kao i jedan takav zahtjev. Standard to svojstvo pridružuje samim metodama:
-
-\begin{itemize}
-  \item \texttt{GET}, \texttt{HEAD}, \texttt{OPTIONS} i \texttt{TRACE} ne mijenjaju stanje, pa su idempotentni.
-  \item \texttt{PUT} i \texttt{DELETE} mijenjaju stanje, ali su idempotentni: zapis se postavlja na zadanu vrijednost, odnosno briše.
-  \item \texttt{POST} i \texttt{PATCH} nisu idempotentni.
-\end{itemize}
-
-\vspace{0.4em}
-Posljedica je praktična: klijent smije ponoviti neuspjeli \texttt{GET} ili \texttt{DELETE} bez razmišljanja. Ponovljeni \texttt{POST} može stvoriti drugi zapis, pa zaštita od toga mora doći iz aplikacije, najčešće ograničenjem jedinstvenosti u bazi.
-\end{frame}
-
-% ------------------------------------------------------------
-
-\begin{frame}{\texttt{PUT} i \texttt{PATCH}}
-Obje metode mijenjaju postojeći zapis. Razlikuju se po tome što klijent šalje i što se događa s onim što nije poslao:
-
-\vspace{0.3em}
-{\small
-\setlength{\tabcolsep}{0pt}
-\renewcommand{\arraystretch}{1.18}
-\begin{tabular}{@{}L{4.7cm}L{2.6cm}L{3.9cm}@{}}
-  \toprule
-  & \textbf{\texttt{PUT}} & \textbf{\texttt{PATCH}} \\
-  \midrule
-  Klijent šalje               & cijeli zapis & izmijenjena polja \\
-  Izostavljeno polje          & briše se     & ne mijenja se \\
-  Ponovljeni zahtjev          & isto stanje  & ne nužno isto stanje \\
-  Stvaranje pod zadanom oznakom & moguće     & nije moguće \\
-  Obrada u aplikaciji         & zamjena      & spajanje s postojećim \\
-  \bottomrule
-\end{tabular}
-}
-
-\vspace{0.25em}
-Treći redak je idempotentnost: \texttt{PUT} se smije ponoviti nakon prekinute veze, jer ishod ne ovisi o tome je li prvi zahtjev stigao. Kod \texttt{PATCH}-a to općenito ne vrijedi.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Odabir metode za izmjenu}
-\textbf{\texttt{PUT}} odgovara kad klijent drži cjelovit prikaz zapisa i mijenja ga u cijelosti, primjerice postavke ili dokument. Tada je brisanje polja izražen postupak: polje koje klijent više ne pošalje nestaje. Obrada je jednostavnija, jer nema spajanja ni dvoznačnosti između neposlanog polja i poslanog \texttt{null}.
-
-\vspace{0.25em}
-\textbf{\texttt{PATCH}} odgovara kad je zapis velik, a izmjena malena, i kad klijent uopće ne poznaje sva polja. Zamjena bi tada izbrisala sve čega se klijent ne sjeća poslati, pa je slanje samo izmijenjenog i sigurnije i jeftinije.
-
-\vspace{0.25em}
-\begin{konvencija}[Izbor, ne pravilo]
-U našem projektu izmjena je svugdje izvedena metodom \texttt{PATCH}, jer klub mijenja jedno ili dva polja natjecatelja i ne drži cijeli zapis. Sučelje koje se odluči za \texttt{PUT} ništa ne krši, ali mora računati na to da izostavljeno polje znači brisanje.
-\end{konvencija}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Provjere koje nadilaze tip}
+\begin{frame}[fragile]{Provjere koje nadilaze tip}
 Tip polja hvata pogrešan oblik, ali ne i besmislenu vrijednost. Datum rođenja u budućnosti je ispravan datum:
 
 \begin{lstlisting}[language=python]
@@ -460,20 +761,17 @@ class LifterCreate(BaseModel):
     @classmethod
     def must_be_past(cls, v: date) -> date:
         if v >= date.today():
-            raise ValueError("Datum rodenja mora biti u proslosti")
+            raise ValueError(<@"Datum rođenja mora biti u prošlosti"@>)
         return v
 \end{lstlisting}
 
-\vspace{0.3em}
-Kategorija prijave traži istu vrstu provjere. Težinske kategorije nisu cijeli brojevi, jer uz \texttt{"83"} i \texttt{"93"} postoje i otvorene kategorije \texttt{"120+"} i \texttt{"84+"}, pa je polje niz znakova. Popis dopuštenih vrijednosti onda provjerava validator, koji poslanu vrijednost imenuje u poruci ako u popisu nije.
-
-\vspace{0.8em}
+\vspace{0.4em}
 Kad takva provjera padne, odgovor ima isti oblik kao i pogreška u tipu: imenuje polje i navodi razlog. Sloj s poslovnim pravilima time nikada ne prima vrijednost koja nema smisla.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Dokle shema seže}
-Shema vidi poslani sadržaj i ono što proces sam zna, primjerice današnji datum. Može usporediti i dva polja istog zahtjeva:
+\begin{frame}[fragile]{Doseg sheme}
+Shema vidi poslani sadržaj i današnji datum, pa može usporediti i dva polja istog zahtjeva:
 
 \begin{lstlisting}[language=python]
 # app/schemas/competition.py
@@ -482,23 +780,138 @@ Shema vidi poslani sadržaj i ono što proces sam zna, primjerice današnji datu
 def final_after_prelim(cls, v, info):
     prelim = info.data.get("prelim_deadline")
     if prelim and v <= prelim:
-        raise ValueError("final_deadline mora biti nakon prelim_deadline")
+        raise ValueError(<@"final\_deadline mora biti nakon prelim\_deadline"@>)
     return v
 \end{lstlisting}
 
-\vspace{0.3em}
-Rokovi su u shemi tipa \texttt{AwareDatetime}, pa zahtjev bez oznake zone ne prolazi.
+\vspace{0.4em}
+Rokovi su tipa \texttt{AwareDatetime}, pa zahtjev bez oznake zone ne prolazi.
 
-\vspace{0.2em}
-Ono što ne može jest pogledati u bazu. Validator je obična funkcija bez sesije, a u asinkronom radu unutar nje nema ni čekanja odgovora baze.
-
-\vspace{0.2em}
-Granica je time jasna: shema prosuđuje vrijednost samu za sebe, ne u odnosu na druge zapise. Je li natjecatelj već prijavljen, bez baze se ne zna, pa je to posao sloja \codefile{services}, koji dolazi iza nje.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Odgovor koji nosi povezani zapis}
-Popis prijava u kojem stoji samo \texttt{lifter\_id} klijentu ne znači mnogo; za svako ime trebao bi novi zahtjev. Zato odgovor nosi i sam povezani zapis, ali suženo:
+\begin{frame}[fragile]{Provjera nad cijelim modelom}
+Validator uz polje vidi samo polja provjerena prije njega, dakle ona deklarirana iznad. Usporedba koja se na taj redoslijed ne može osloniti piše se drukčije:
+
+\begin{lstlisting}[language=python]
+# app/schemas/competition.py
+@model_validator(mode="after")
+def deadlines_before_competition(self):
+    if self.final_deadline.date() >= self.date:
+        raise ValueError(<@"Rokovi moraju isteći prije dana natjecanja"@>)
+    return self
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{model\_validator} s oznakom \texttt{mode="after"} izvodi se kad su sva polja popunjena, pa im pristupa preko \texttt{self}.
+
+\vspace{0.9em}
+Rok i dan natjecanja mogu stajati u shemi bilo kojim redom, a provjera i dalje radi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Pravila koja traže bazu}
+Shema ne može pogledati u bazu. Validator je obična funkcija bez sesije, a u asinkronom radu unutar nje nema ni čekanja odgovora baze.
+
+\vspace{1.1em}
+\textbf{Shema prosuđuje vrijednost samu za sebe, ne u odnosu na druge zapise.}
+
+\vspace{1.1em}
+Je li natjecatelj već prijavljen na to natjecanje, bez baze se ne zna. Takvo je pravilo posao sloja \codefile{services}, koji dolazi iza sheme.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Izmjena i neposlana polja (I)}
+\begin{lstlisting}[language=python]
+# app/schemas/lifter.py
+class LifterUpdate(BaseModel):
+    first_name: str | None = Field(default=None, min_length=1, max_length=80)
+    last_name: str | None = Field(default=None, min_length=1, max_length=80)
+    birth_date: date | None = None
+    gender: Literal["M", "F"] | None = None
+\end{lstlisting}
+
+\vspace{0.4em}
+Sva su polja neobavezna, pa klijent šalje ona koja mijenja. Time nastaje dvoznačnost: izostalo polje i polje poslano kao \texttt{null} u shemi izgledaju jednako, a znače različito.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Izmjena i neposlana polja (II)}
+Provjerena shema stiže u servis kao \texttt{body}. Ondje se pretvara u rječnik i polje po polje prepisuje u zapis:
+
+\begin{lstlisting}[language=python]
+# app/services/lifter_service.py
+async def update_lifter(db, club_id, lifter_id, body: LifterUpdate, user):
+    lifter = await get_lifter(db, club_id, lifter_id, user)
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(lifter, field, value)
+    await db.flush()
+    return lifter
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{exclude\_unset} razdvaja ta dva slučaja: u rječnik ulaze samo polja koja su doista poslana. Bez te oznake ušla bi i neposlana, svako sa svojom zadanom vrijednošću \texttt{None}, pa bi izmjena jednoga polja izbrisala sva ostala.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Izmjena i neposlana polja (III)}
+Poslano kao \texttt{null} \texttt{exclude\_unset} ne odvaja: takvo polje ulazi u rječnik i upisuje \texttt{null} u stupac koji ga ne dopušta. Zato \texttt{LifterUpdate} dobiva još jedan redak:
+
+\begin{lstlisting}[language=python]
+# app/schemas/lifter.py
+class LifterUpdate(BaseModel):
+    first_name: str | None = Field(default=None, min_length=1, max_length=80)
+    ...
+    _not_null = field_validator(
+        "first_name", "last_name", "birth_date", "gender", mode="before"
+    )(reject_null)
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{reject\_null} je obična funkcija iz \codefile{app/schemas/common.py}: podigne \texttt{ValueError} ako je vrijednost \texttt{None}. Pydantic je pozove za svako od četiriju navedenih polja, i to samo ako je poslano.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: što čuvaju \texttt{exclude\_unset} i \texttt{reject\_null}}
+Dvije izmjene, svaka po jedan redak.
+
+\vspace{0.9em}
+\begin{enumerate}
+  \itemsep0.5em
+  \item \texttt{PATCH} natjecatelja samo s poljem \texttt{first\_name}, pa \texttt{GET} istoga zapisa. Provjerite jesu li se ostala polja promijenila.
+  \item U \codefile{lifter\_service} maknite \texttt{exclude\_unset=True} i ponovite isti \texttt{PATCH}, pa opet \texttt{GET}.
+  \item Vratite \texttt{exclude\_unset=True}, pa zakomentirajte \texttt{\_not\_null} u \texttt{LifterUpdate} i pošaljite \texttt{"last\_name": null}.
+  \item Vratite oboje.
+\end{enumerate}
+
+\vspace{0.9em}
+Usporedite odgovore iz drugoga i trećega koraka s onim iz prvoga.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odgovor o prijavi}
+\begin{lstlisting}[language=python]
+# app/schemas/registration.py
+class RegistrationResponse(BaseModel):
+    id: int
+    lifter_id: int
+    competition_id: int
+    category: str
+    total: int
+    status: str
+    registered_at: datetime
+    lifter: LifterBrief
+
+    model_config = {"from_attributes": True}
+\end{lstlisting}
+
+\vspace{0.4em}
+Uz vlastita polja prijave zadnje polje nosi i sam povezani zapis. Da odgovor sadrži samo \texttt{lifter\_id}, klijent bi za svako ime slao novi zahtjev.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Suženi povezani zapis}
+Shema natjecatelja, ali samo s onim što popis prijava treba:
 
 \begin{lstlisting}[language=python]
 # app/schemas/registration.py
@@ -507,28 +920,85 @@ class LifterBrief(BaseModel):
     last_name: str
 
     model_config = {"from_attributes": True}
-
-class RegistrationResponse(BaseModel):
-    id: int
-    lifter_id: int
-    competition_id: int
-    category: str
-    total: int
-    status: str
-    lifter: LifterBrief
 \end{lstlisting}
 
 \vspace{0.4em}
-\texttt{LifterBrief} sadrži samo ime i prezime. Datum rođenja i klub u popisu prijava nikome ne trebaju, a shema odgovora je mjesto na kojem se odlučuje koja polja povezanog zapisa izlaze van, a koja ostaju u aplikaciji.
+Datum rođenja i klub u popisu prijava nikome ne trebaju. Shema odgovora je mjesto na kojem se odlučuje koja polja povezanog zapisa izlaze van, a koja ostaju u aplikaciji.
+
+\vspace{0.7em}
+\texttt{LifterBrief} je time četvrta shema natjecatelja. Deklarirana je uz prijavu, u \codefile{app/schemas/registration.py}, jer ondje služi.
 \end{frame}
 
 % ============================================================
 \sekcija{Popisi}{Zašto popis ne vraća sve, straničenje i filtriranje, redoslijed, povezani zapisi u popisu.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Popis ima granicu}
-Pri oblikovanju rute koja vraća popis treba odlučiti koliko zapisa ona smije vratiti. Odluka „sve" zadovoljava dok ih je malo, a s rastom broja zapisa ima tri posljedice: upit čita cijelu tablicu, odgovor raste, a klijent prima više nego što može prikazati. Zato granica ulazi odmah:
+\begin{frame}{Popis bez granice}
+Zahtjev \texttt{GET /clubs/12/lifters} ne kaže koliko zapisa traži. Dok ih klub ima desetak, odgovor je nekoliko kilobajta i nitko ne primijeti ništa.
 
+\vspace{1.1em}
+Kod kluba s tri tisuće natjecatelja isti zahtjev ima tri posljedice:
+
+\vspace{0.7em}
+\begin{itemize}
+  \itemsep0.6em
+  \item upit koji čita cijelu tablicu
+  \item odgovor koji cijel putuje mrežom
+  \item klijent koji prikaže prvih dvadeset, a ostalo odbaci
+\end{itemize}
+
+\vspace{1.1em}
+Na razvojnoj bazi s troje natjecatelja ništa od toga nije vidljivo.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Straničenje}
+Odgovor se zato vraća u dijelovima. Klijent kaže koliko zapisa želi i koliko ih preskače:
+
+\vspace{1.1em}
+\begin{center}
+\begin{tikzpicture}[
+  cel/.style={draw=lineclr, thick, fill=white, minimum width=7mm,
+              minimum height=7mm, font=\scriptsize, text=mutedclr},
+  okvir/.style={draw=ink, very thick, rounded corners},
+  opis/.style={font=\scriptsize, text=textclr}
+]
+  \foreach \i in {1,...,9} {
+    \node[cel] (c\i) at (\i*7.6mm, 0) {\i};
+  }
+  \draw[okvir] ([xshift=-1.2mm,yshift=1.2mm]c1.north west)
+    rectangle ([xshift=1.2mm,yshift=-1.2mm]c3.south east);
+  \draw[okvir, draw=ink2, dashed] ([xshift=-1.2mm,yshift=1.2mm]c4.north west)
+    rectangle ([xshift=1.2mm,yshift=-1.2mm]c6.south east);
+  \node[opis, above=4mm of c2] {prva stranica};
+  \node[opis, above=4mm of c5] {druga stranica};
+  \node[opis, below=4mm of c2] {\texttt{offset=0}};
+  \node[opis, below=4mm of c5] {\texttt{offset=3}};
+\end{tikzpicture}
+\end{center}
+
+\vspace{1.1em}
+Obje stranice imaju \texttt{limit=3}, a razlikuju se po \texttt{offset}-u: \texttt{limit} je širina prozora, \texttt{offset} koliko se zapisa preskoči prije njega. Vraćanje popisa u dijelovima naziva se straničenje (engl. \emph{pagination}).
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Parametri upita}
+Granicu i pomak klijent šalje u adresi, iza upitnika:
+
+\begin{lstlisting}
+GET /clubs/1/lifters?limit=3&offset=0
+GET /clubs/1/lifters?limit=3&offset=3
+\end{lstlisting}
+
+\vspace{0.6em}
+Svaki par \texttt{ime=vrijednost} iza \texttt{?} jedan je parametar upita, a međusobno se odvajaju znakom \texttt{\&}.
+
+\vspace{0.9em}
+Parametri nisu dio putanje: obje adrese vode na istu rutu, samo s različitim vrijednostima. Zato ih ruta ne prepoznaje po mjestu nego po imenu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Granica u potpisu rute}
 \begin{lstlisting}[language=python]
 # app/routers/lifters.py
 @router.get("/", response_model=list[LifterResponse])
@@ -536,15 +1006,15 @@ async def list_lifters(
     club_id: int,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("admin", "club")),
-    gender: str | None = Query(default=None, pattern=r"^[MF]$"),
-    limit: int = Query(default=20, le=100),
+    limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    ...
 ):
     ...
 \end{lstlisting}
 
 \vspace{0.3em}
-\texttt{limit} kaže koliko zapisa, \texttt{offset} koliko ih preskočiti. Vraćanje popisa u dijelovima naziva se straničenje (engl. \emph{pagination}).
+\texttt{Query} opisuje parametar upita jednako kao što shema opisuje polje tijela: zadana vrijednost, najmanja i najveća dopuštena.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -552,20 +1022,33 @@ async def list_lifters(
 \begin{itemize}
   \item \textbf{Klijent koji o straničenju ne zna ništa dobio bi neograničen odgovor.} Zato obje vrijednosti imaju zadanu, pa se ruta ne može ni slučajno pozvati bez granice.
   \item \textbf{Klijent može zatražiti milijun zapisa.} Zato \texttt{limit} ima gornju granicu \texttt{le=100}, inače se ruta vraća na ponašanje s početka.
-  \item \textbf{Neispravna vrijednost filtra došla bi do upita.} Zato \texttt{gender} ima uzorak \texttt{\^{}[MF]\$}, koji je odbija prije toga.
+  \item \textbf{Klijent može zatražiti nula zapisa ili negativan pomak.} Zato stoje \texttt{ge=1} i \texttt{ge=0}, pa framework takav zahtjev odbija prije nego funkcija počne raditi.
 \end{itemize}
 
-\vspace{0.3em}
-Parametri upita opisani su jednako strogo kao i polja sheme, pa ih framework odbija prije nego funkcija počne raditi.
-
-\vspace{0.2em}
+\vspace{0.4em}
 \begin{konvencija}
-Nazivi \texttt{limit} i \texttt{offset} nisu propisani. U drugim se sučeljima sreću i \texttt{page} i \texttt{per\_page}, a neka uz popis vraćaju i ukupan broj zapisa. Izbor je slobodan, ali mora biti isti na svim rutama istoga sučelja.
+Nazivi \texttt{limit} i \texttt{offset} nisu propisani. U drugim se API-jima sreću i \texttt{page} i \texttt{per\_page}, a neki uz popis vraćaju i ukupan broj zapisa. Izbor je slobodan, ali mora biti isti na svim rutama istoga API-ja.
 \end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=12]{Filtar i granica u upitu}
+\begin{frame}[fragile]{Filtriranje popisa}
+Klub koji traži samo natjecateljice bez filtra dohvaća sve pa polovicu odbacuje. Zato ruta prima i uvjet pretrage:
+
+\begin{lstlisting}[language=python]
+# app/routers/lifters.py
+    gender: str | None = Query(default=None, pattern=r"^[MF]$"),
+\end{lstlisting}
+
+\vspace{0.6em}
+Zadana vrijednost \texttt{None} znači da je filtar neobavezan: izostane li, ruta vraća natjecatelje obaju spolova.
+
+\vspace{0.9em}
+\texttt{pattern} propušta samo \texttt{"M"} i \texttt{"F"}. Bez njega bi \texttt{?gender=Z} prošao do upita, koji bi uredno vratio prazan popis, pa bi se pogrešno napisan zahtjev činio ispravnim.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Filtar i granica u upitu}
 \begin{lstlisting}[language=python]
 # app/repositories/lifter_repo.py
 stmt = select(Lifter).where(Lifter.club_id == club_id)
@@ -575,18 +1058,55 @@ stmt = stmt.order_by(Lifter.id).limit(limit).offset(offset)
 \end{lstlisting}
 
 \vspace{0.3em}
-Upit se gradi postupno: pripadnost klubu provjerava se uvijek, a spol samo ako je filtar poslan. Ruta i servis samo prosljeđuju vrijednosti, a \texttt{select} i nazivi stupaca ne izlaze iz sloja \codefile{repositories}. Filtar i granica tako djeluju na upit, a ne na već dohvaćeni popis.
+Upit se gradi postupno: pripadnost klubu provjerava se uvijek, a spol samo ako je filtar poslan. Ruta i servis prosljeđuju vrijednosti, a \texttt{select} i nazivi stupaca ne izlaze iz sloja \codefile{repositories}.
 
 \vspace{0.3em}
-Straničenje ne može ispravno raditi bez izrijekom zadanog poretka zapisa, jer ga baza sama ne jamči. Bez \texttt{order\_by} postoji mogućnost da jedan zapis dođe i na prvoj i na drugoj stranici, dok drugi ne dođe ni na jednu.
+Filtar i granica tako djeluju na upit, a ne na već dohvaćeni popis.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Poredak kao uvjet straničenja}
+Straničenje ne može ispravno raditi bez izrijekom zadanog poretka zapisa, jer ga baza sama ne jamči.
+
+\vspace{1.1em}
+Bez \texttt{order\_by} postoji mogućnost da isti zapis dođe i na prvoj i na drugoj stranici, dok drugi ne dođe ni na jednu. Klijent to ne može primijetiti, jer svaka stranica izgleda uredno.
+
+\vspace{1.1em}
+Koliko redaka baza mora pročitati da vrati stotu stranicu?
+
+\pause
 \begin{konvencija}
-Uz \texttt{offset} baza pri svakom zahtjevu preskače sve prethodne retke, pa duboke stranice postaju spore. Drugi pristup pamti oznaku zadnjeg viđenog zapisa i traži one iza nje. Brži je i otporan na umetanje, ali ne dopušta skok na proizvoljnu stranicu. U našem se projektu koristi \texttt{offset}, jer su popisi kratki.
+Uz \texttt{offset} baza pri svakom zahtjevu pročita i odbaci sve prethodne retke, pa duboke stranice postaju spore. Drugi pristup pamti oznaku zadnjeg viđenog zapisa i traži one iza nje: brži je i otporan na umetanje, ali ne dopušta skok na proizvoljnu stranicu. U našem se projektu koristi \texttt{offset}, jer su popisi kratki.
 \end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
+\begin{frame}[fragile]{Odgovor koji traži dvije tablice}
+U bazi prijava ne drži natjecatelja nego samo njegovu oznaku:
+
+\begin{lstlisting}[language=python]
+# app/models/registration.py
+lifter_id: Mapped[int] = mapped_column(ForeignKey("lifters.id"))
+\end{lstlisting}
+
+\vspace{0.5em}
+Shema odgovora traži i sam zapis:
+
+\begin{lstlisting}[language=python]
+# app/schemas/registration.py
+class RegistrationResponse(BaseModel):
+    ...
+    lifter_id: int
+    lifter: LifterBrief
+\end{lstlisting}
+
+\vspace{0.5em}
+Oznaka nije zapis. Da bi od broja \texttt{31} nastao \texttt{LifterBrief}, netko mora pročitati i tablicu \texttt{lifters}.
+\end{frame}
+
+% ------------------------------------------------------------
 \begin{frame}[fragile]{Lijeno učitavanje povezanog zapisa}
-\texttt{RegistrationResponse} ima polje \texttt{lifter}, pa odgovor o prijavi nosi i ime natjecatelja. Do tog se zapisa dolazi preko veze opisane u modelu:
+Taj posao ORM nudi sam. U modelu uz strani ključ stoji i veza:
 
 \begin{lstlisting}[language=python]
 # app/models/registration.py
@@ -604,22 +1124,30 @@ ORM taj zapis ne dohvaća unaprijed nego tek u trenutku čitanja svojstva. Taj s
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Lijeno učitavanje u asinkronom radu}
+\begin{frame}[fragile]{Lijeno učitavanje u asinkronom radu}
 U sinkronom radu lijeno učitavanje prolazi neopaženo: dretva pošalje upit, pričeka odgovor i nastavi. Čekanje je dio samog čitanja svojstva i nigdje se ne vidi.
 
-\vspace{0.3em}
-U asinkronom radu, za koji smo se opredijelili pri postavljanju veze s bazom, to nije moguće. Čekanje odgovora baze mora biti izrijekom označeno s \texttt{await}, a čitanje svojstva nije izraz uz koji \texttt{await} može stajati.
+\vspace{0.5em}
+U asinkronom radu svako čekanje baze mora biti napisano:
 
-\vspace{0.3em}
-Posljedica je da \texttt{registration.lifter} ne vrati podatke nego podigne iznimku. Pritom se to ne dogodi pri dohvatu prijava nego tek kasnije, u trenutku kad se shema odgovora pokušava popuniti, pa poruka o pogrešci upućuje na mjesto udaljeno od uzroka.
+\begin{lstlisting}[language=python]
+reg = await registration_repo.get_by_id(db, 7)  <@\kom{čeka bazu}@>
+ime = reg.lifter.first_name                     <@\kom{ne čeka ništa}@>
+\end{lstlisting}
+
+\vspace{0.4em}
+Prvi je redak poziv funkcije, pa uz njega \texttt{await} može stajati. Drugi je čitanje atributa, koje Python izvede odmah: ORM bi upit morao poslati unutar te točke, a ondje se na bazu više nema kako čekati.
+
+\vspace{0.5em}
+Zato \texttt{reg.lifter} ne vrati podatke nego podigne iznimku, i to tek kad se shema odgovora pokušava popuniti, pa poruka upućuje na mjesto daleko od uzroka.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=8]{Dohvat povezanih zapisa unaprijed}
-Lijeno učitavanje ima i drugu cijenu: popis od pedeset prijava izveo bi pedeset i jedan upit, jedan za sam popis i po jedan za natjecatelja svake prijave. Toliki se broj upita naziva problemom N+1. Za vrijeme razvoja aplikacije, kad je broj prijava mali, razlika se ne primijeti, ali u produkciji s nekoliko tisuća zapisa postaje najskuplji dio odgovora.
+\begin{frame}[fragile]{Dohvat povezanih zapisa unaprijed}
+U sinkronom radu lijeno učitavanje ne bi puklo nego poskupjelo: popis od pedeset prijava izveo bi pedeset i jedan upit, jedan za popis i po jedan za natjecatelja. To se naziva problemom N+1.
 
 \vspace{0.3em}
-Oba se rješavaju istim zahvatom, traženjem povezanih zapisa u istom upitu, dok se za odgovor baze još smije čekati:
+Asinkroni rad tu mogućnost uklanja: povezane zapise treba zatražiti u istom dohvatu, dok se na bazu još smije čekati:
 
 \begin{lstlisting}[language=python]
 # app/repositories/registration_repo.py
@@ -631,110 +1159,56 @@ stmt = (
 \end{lstlisting}
 
 \vspace{0.3em}
-\texttt{selectinload} nalaže ORM-u da nakon upita za prijave izvede još jedan upit, kojim odjednom dohvaća sve njihove natjecatelje. Dakle dva upita ukupno, bez obzira na broj prijava, i nijedno čitanje svojstva koje bi podiglo iznimku.
+\texttt{selectinload} nalaže ORM-u da nakon upita za prijave izvede još jedan, kojim odjednom dohvaća sve natjecatelje. Dva upita ukupno, bez obzira na broj prijava.
 \end{frame}
 
-% ============================================================
-\sekcija{Od modela do tablice}{Zapis opisan u kodu, uvođenje nove tablice, upis i potvrda transakcije.}
-
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=10]{Zapis opisan u kodu}
-Svaki resurs ima svoj model. Prijava je među njima najpotpunija, jer nosi i vezu prema drugim zapisima i vlastite podatke:
+\begin{frame}[fragile]{Vježba: priprema prijava}
+Prazan popis nema što pokazati, pa ga prvo treba napuniti. Prijavite se kao klub \texttt{behemot@plreg.hr}.
 
-\begin{lstlisting}[language=python]
-# app/models/registration.py
-class Registration(Base):
-    __tablename__ = "registrations"
+\vspace{0.8em}
+\begin{enumerate}
+  \itemsep0.5em
+  \item \texttt{GET /competitions} daje oznaku natjecanja \emph{Zimski kup}.
+  \item \texttt{GET /clubs} daje oznaku vašega kluba, a \texttt{GET /clubs/\{id\}/lifters} oznake Ane i Ivana.
+  \item Oboje prijavite na natjecanje, svakoga svojim zahtjevom:
+\end{enumerate}
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    lifter_id: Mapped[int] = mapped_column(ForeignKey("lifters.id"))
-    competition_id: Mapped[int] = mapped_column(
-        ForeignKey("competitions.id")
-    )
-    category: Mapped[str] = mapped_column(String(20), nullable=False)
-    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    registered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+\begin{lstlisting}
+POST /competitions/<oznaka natjecanja>/registrations
+
+{"lifter_id": <oznaka Ivana>, "category": "83", "total": 0}
+{"lifter_id": <oznaka Ane>,   "category": "63", "total": 0}
 \end{lstlisting}
 
-\vspace{0.3em}
-Dva strana ključa nose vezu, \texttt{category} i \texttt{total} vlastite podatke, a \texttt{registered\_at} popunjava baza, pa vrijeme upisa ne ovisi o satu poslužitelja.
+\vspace{0.4em}
+Kategorija mora odgovarati spolu natjecatelja, inače odgovor je \texttt{400}.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=6]{Uvođenje nove tablice}
-Model opisan u Pythonu još nije tablica. Alembic uspoređuje stanje baze s onim što vidi u \texttt{Base.metadata}, a tamo dolaze samo razredi koji su negdje uvezeni:
+\begin{frame}{Vježba: brojanje upita}
+\begin{enumerate}
+  \itemsep0.5em
+  \item U \codefile{app/core/database.py} dodajte \texttt{echo=True} u \texttt{create\_async\_engine} i ponovno pokrenite poslužitelj.
+  \item Dohvatite popis prijava i u konzoli prebrojite \texttt{SELECT} naredbe.
+  \item Pronađite među njima upit nad tablicom \texttt{lifters} i pročitajte što stoji u njegovu \texttt{WHERE ... IN (...)}.
+  \item Vratite \texttt{echo} na staro.
+\end{enumerate}
 
-\begin{lstlisting}[language=python]
-# app/models/__init__.py
-from app.core.database import Base
-from app.models.club import Club
-from app.models.competition import Competition
-from app.models.lifter import Lifter
-from app.models.registration import Registration
-from app.models.user import User
-\end{lstlisting}
-
-\vspace{0.3em}
-Izostane li redak, \texttt{alembic revision -{}-autogenerate} neće prijaviti pogrešku. Napravit će praznu migraciju, jer razliku između modela i baze nije ni vidio.
-
-\vspace{0.3em}
-Nova tablica tako ne nastaje pokretanjem aplikacije nego migracijom, jednako kao i prva tablica u projektu.
+\vspace{1.1em}
+Koliko bi upita nad \texttt{lifters} bilo da natjecanje ima pedeset prijava?
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Tri koraka upisa}
-\begin{lstlisting}[language=python]
-# app/repositories/lifter_repo.py
-async def create(db: AsyncSession, lifter: Lifter) -> Lifter:
-    db.add(lifter)
-    await db.flush()
-    return lifter
-\end{lstlisting}
-
-\vspace{0.2em}
-\begin{itemize}
-  \item \texttt{db.add} stavlja objekt u sesiju. U bazi se još ništa nije dogodilo i zapis nema oznaku.
-  \item \texttt{db.flush} šalje naredbu upisa, unutar otvorene transakcije. Baza dodjeljuje oznaku i zapis je od tog trenutka vidljiv daljnjim upitima iste transakcije.
-  \item Zapis još nije trajan. Ako se transakcija poništi, nestaje, a do potvrde ga nijedan drugi zahtjev ne vidi.
-\end{itemize}
-
-\vspace{0.2em}
-Zato servis smije odmah nakon \texttt{create} dohvatiti isti zapis i pročitati njegovu oznaku, iako transakcija još nije potvrđena.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Tko potvrđuje transakciju}
-Kad bi sloj \codefile{repositories} sam potvrđivao, svaki bi upis postao trajan čim se izvede. Operacija koja upisuje dva zapisa pa padne na drugome ostavila bi prvi u bazi.
-
-\begin{lstlisting}[language=python]
-# app/core/deps.py
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-\end{lstlisting}
-
-\vspace{0.3em}
-Zato sloj \codefile{repositories} ide samo do \texttt{flush}, a \texttt{commit} izvodi ovisnost koja drži sesiju, i to tek kad cijela obrada prođe bez iznimke. Izađe li iznimka iz bilo kojeg sloja, slijedi \texttt{rollback} i u bazi ne ostaje ništa od tog zahtjeva.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[shrink=6]{Sažetak}
+\begin{frame}{Sažetak}
 
 \begin{itemize}
   \item Resurs je vrsta zapisa objavljena pod vlastitom adresom; preslikavanje iz tablice ne mora biti jedan na jedan.
   \item Nad svakim se resursom ponavljaju iste četiri operacije; stvaranje vraća zapis jer oznaku dodjeljuje baza, brisanje ne vraća ništa.
-  \item Ugniježđena adresa nosi pripadnost i ne može se izostaviti; kod samostalne je pripadnost uvjet pretrage i mora se provjeriti kao i svaki drugi.
+  \item Ugniježđena adresa nosi pripadnost; kod samostalne je pripadnost uvjet pretrage koji se mora provjeriti.
   \item Unos, izmjena i odgovor tri su različite sheme, a \texttt{exclude\_unset} razlikuje neposlano polje od poslanog praznog.
   \item Shema prosuđuje vrijednost samu za sebe; pravilo koje traži uvid u bazu pripada sloju iznad nje.
   \item Popis se vraća u dijelovima, s gornjom granicom i zadanim redoslijedom; povezani zapisi traže se unaprijed.
-  \item \texttt{flush} šalje upis i smije stajati u sloju \codefile{repositories}; \texttt{commit} ga čini trajnim i izvodi ga ovisnost koja drži sesiju.
 \end{itemize}
 \end{frame}
 
