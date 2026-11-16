@@ -19,7 +19,7 @@
 \end{enumerate}
 
 \vspace{0.6em}
-Aplikacija radi kad se isproba rukom. Ovo predavanje uređuje kako se zna da radi i nakon sljedeće izmjene.
+Aplikacija radi kad se isproba rukom. Ovo predavanje uređuje kako se to zna i nakon sljedeće izmjene: testom na razini na kojoj se pogreška može pojaviti, uz provjeru da test i mjera pokrivenosti vide ono što tvrde.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -27,517 +27,1019 @@ Aplikacija radi kad se isproba rukom. Ovo predavanje uređuje kako se zna da rad
 Nakon ovog predavanja student može:
 
 \begin{itemize}
-  \item reći što test dokazuje, a što ne
-  \item odabrati razinu testa prema onome što treba provjeriti
-  \item pročitati mjeru pokrivenosti koda i reći gdje je ona zavaravajuća
-  \item napisati jedinični test pomoćne funkcije i pohrane u klijentskom dijelu
-  \item napisati test komponente koji provjerava njezino sučelje
-  \item napisati test prijave koji se izvodi u pregledniku
+  \item odabrati razinu testa prema pogrešci koju test treba uhvatiti
+  \item provjeriti test namjernim kvarom, a mjeru pokrivenosti retkom za koji zna da se izvodi
+  \item napisati jedinični test klijentskog dijela koji ne ovisi o vremenskoj zoni ni o danu pokretanja
+  \item zamijeniti modul ili funkciju preglednika lažnom inačicom u jediničnom testu
+  \item napisati test kroz preglednik koji podatke priprema sam i elemente traži po ulozi i oznaci
+  \item uključiti automatsku provjeru pristupačnosti u test kroz preglednik
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Domena primjera}
-Aplikacija ima pravila na obje strane. Poslužitelj odbija prijavu nakon roka, a sučelje gumb za prijavu onemogućuje čim razdoblje istekne.
+Klubovi prijavljuju natjecatelje na natjecanja, a organizator unosi natjecanja s dvama rokovima. Backend (poslužiteljski dio) provodi pravila, a frontend (klijentski dio) ih prikazuje: ne nudi radnju koju rok više ne dopušta, ispisuje rokove po zagrebačkom vremenu, a u obrascu nudi samo kategorije koje odgovaraju spolu natjecatelja.
 
 \vspace{0.9em}
-Poslužitelj već ima testove: oni šalju zahtjeve nad praznom bazom, prijavljuju se pripremljenim računima i vrijeme po potrebi zamrzavaju.
+Backend ima testove koji šalju zahtjeve nad zasebnom bazom. Frontend nema nijedan: sve što se o njemu zna, zna se jer je netko kliknuo i vidio da radi.
 
 \vspace{0.9em}
-Klijentski dio nema nijedan. Sve što je o njemu poznato zna se jer je netko kliknuo i vidio da radi.
+Neki podatci postoje na objema stranama. Popis težinskih kategorija stoji i u shemi backenda i u kodu frontenda.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Izmjena koja ništa ne sruši (I)}
-Pravilo o kategoriji stoji u sloju pravila:
+Savez dopusti nastup juniorkama u kategoriji do 43 kg. Na backendu se popis ženskih kategorija proširi:
 
 \begin{lstlisting}[language=python]
-# app/services/registration_service.py
-if category not in CATEGORIES_BY_GENDER[lifter.gender]:
-    raise AppError("invalid_category", <@"Kategorija ne odgovara spolu"@>, 400)
+# app/schemas/registration.py
+FEMALE_CATEGORIES = ["43", "47", "52", "57", "63", "69", ...]
 \end{lstlisting}
 
-\vspace{0.5em}
-Netko pri uređivanju popisa kategorija zamijeni redoslijed pa muške kategorije završe i u ženskom popisu.
+\vspace{0.1em}
+Na frontendu popis ostaje kakav je bio:
 
-\vspace{0.5em}
-Aplikacija se pokreće. Svaka ruta odgovara. Prijave prolaze, i one koje ne bi smjele.
+\begin{lstlisting}[language=typescript]
+// src/lib/categories.ts
+export const CATEGORIES: Record<Gender, readonly string[]> = {
+  M: ['59', '66', '74', '83', '93', '105', '120', '120+'],
+  F: ['47', '52', '57', '63', '69', '76', '84', '84+'],
+}
+\end{lstlisting}
+
+\vspace{0.1em}
+Testovi backenda prolaze, a frontend se gradi bez pogreške. Klub juniorku od 42 kg ne može prijaviti, jer obrazac ne nudi kategoriju 43. Dva popisa istog podatka razišla su se, a nijedna provjera to nije prijavila.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Izmjena koja ništa ne sruši (II)}
-Pogreška se ne javlja ni u jednom dnevniku, jer s gledišta programa ništa nije pošlo po zlu. Zahtjev je prošao, zapis je upisan, odgovor je \texttt{201}.
+Prvi je odgovor komentar \enquote{mijenjati zajedno} uz oba popisa. U ovom projektu komentar stoji samo u datoteci frontenda, a i kad bi stajao na obama mjestima, čita ga samo onaj tko datoteku otvori.
 
 \vspace{0.9em}
-Vidi je tek čovjek koji zna pravilo, i to kad popis stigne do suca.
+Drugi je odgovor jedan izvor: frontend dohvaća kategorije s backenda. Drugi popis time nestaje, ali API dobiva rutu više, a obrazac čeka na dohvat prije prikaza.
 
 \vspace{0.9em}
-Test je zapis pravila koji se izvodi. Dok god postoji, izmjena koja pravilo prekrši ne prolazi tiho nego pada s imenom pravila koje je prekršila.
+Treći je odgovor provjera koja oba popisa pročita i usporedi. Izmjena koja ih razdvoji tada ne prolazi tiho: provjera pada s imenom pravila koje je prekršeno. Takva provjera je \textbf{test}: zapis pravila koji se izvodi.
 \end{frame}
 
 % ============================================================
-\sekcija{Što test dokazuje}{Granica onoga što test pokazuje, tri razine testa i njihova cijena, oblik i ime testa.}
+\sekcija{Što test dokazuje}{Doseg prolaznog testa, razine testa i cijena svake, oblik i ime testa.}
 
 % ------------------------------------------------------------
-\begin{frame}{Što test pokazuje, a što ne}
-Test koji prođe pokazuje da je za zadane ulaze dobiven očekivan ishod. Ne pokazuje da je kod ispravan, jer ulaze bira onaj tko test piše.
+\begin{frame}{Doseg prolaznog testa}
+Ispit pokazuje da student zna riješiti zadatke koji su bili na ispitu. O ostatku gradiva ne govori ništa, a zadatke je odabrao nastavnik.
 
 \vspace{0.9em}
-Iz toga slijedi mjerilo za izbor: testira se ono što se ne smije pokvariti, a ne ono što je lako napisati.
+S testom je jednako. Kad prođe, pokazuje da je za ulaze koje je test zadao dobiven očekivan ishod. Ne pokazuje da je kod ispravan, jer ulaze bira onaj tko test piše.
 
 \vspace{0.9em}
-Zeleni test dokazuje da je pravilo vrijedilo za taj zahtjev. Ne dokazuje da stoji i na ruti koja nema test.
+Odatle mjerilo izbora: testira se ono što se ne smije pokvariti, a ne ono što je lako napisati. Ruta ili prikaz bez testa ostaju neprovjereni, koliko god ostalih testova prolazilo.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Tri razine testa}
+\begin{frame}{Razine testa}
 \vspace{0.3em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{2.5cm}L{4.1cm}L{4.4cm}@{}}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{2.6cm}L{4.3cm}L{4.4cm}@{}}
   \toprule
-  \textbf{Razina} & \textbf{Što obuhvaća} & \textbf{Čime se plaća} \\
+  \textbf{Razina} & \textbf{Obuhvaća} & \textbf{Cijena} \\
   \midrule
-  jedinični & jednu funkciju, bez mreže i baze & ne vidi vezu među dijelovima \\
-  nad sučeljem & zahtjev kroz sve slojeve do baze & traži pokrenutu bazu \\
-  u pregledniku & cijeli put od klika do odgovora & spor i traži pokrenuto sve \\
+  jedinični & jednu funkciju ili modul, bez mreže i baze & ne vidi vezu među dijelovima \\
+  nad API-jem & zahtjev kroz sve slojeve backenda do baze & traži bazu; ne vidi frontend \\
+  kroz preglednik & put od klika do baze i natrag & traži pokrenuto sve; sporiji \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Niža razina pada brže i točnije: kad padne jedinični test, mjesto pogreške je jedna funkcija. Kad padne test u pregledniku, pogreška je negdje između klika i baze.
+Niža razina pada brže i točnije: kad padne jedinični test, pogreška je u jednoj funkciji. Kad padne test kroz preglednik, pogreška je negdje između klika i baze.
 
 \vspace{0.4em}
-Zato se testovi niže razine pišu u velikom broju, a oni iz preglednika samo za nekoliko puteva koje korisnik doista prolazi.
+Testovi niže razine zato se pišu u velikom broju, a testovi kroz preglednik za nekoliko puteva kojima korisnik prolazi.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Oblik testa}
 Svaki test ima tri dijela, uvijek istim redom:
 
-\vspace{0.7em}
+\vspace{0.6em}
 \begin{itemize}
   \itemsep0.5em
-  \item \textbf{Priprema.} Stanje koje test traži: zapisi u bazi, račun, zamrznut trenutak.
-  \item \textbf{Radnja.} Jedan poziv ili jedan zahtjev.
-  \item \textbf{Tvrdnja.} Što je ishod morao biti: statusni kod, polje u odgovoru, stanje zapisa.
+  \item \textbf{Priprema.} Stanje koje test traži: zapisi u bazi, prijavljeni račun, zadan trenutak.
+  \item \textbf{Radnja.} Jedan poziv funkcije ili jedan zahtjev.
+  \item \textbf{Tvrdnja.} Kakav je ishod morao biti: statusni kod, polje u odgovoru, tekst na zaslonu.
 \end{itemize}
 
-\vspace{0.9em}
-Jedan test provjerava jedno pravilo. Test koji provjerava pet stvari, kad padne, ne kaže koja je od tih pet prestala vrijediti.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Ime testa}
-Ime testa je ime pravila, a ne opis koda:
-
-\begin{lstlisting}[language=python]
-def test_update_works(): ...
-
-def test_klub_ne_moze_prijaviti_nakon_prelim_roka(): ...
-\end{lstlisting}
-
-\vspace{0.5em}
-Prvo ime pri padu kaže da nešto ne radi. Drugo kaže koje je pravilo prekršeno, pa se iz ispisa zna što tražiti i prije nego se otvori kod.
-
-\vspace{0.5em}
-Ispis neuspjelog testa čita se prije koda: ime govori pravilo, a tvrdnja koja je pala govori očekivanu i dobivenu vrijednost.
+\vspace{0.8em}
+Jedan test provjerava jedno pravilo, a ime mu je ime tog pravila: \texttt{test\_refresh\_rejected\_after\_deactivation}, a ne \texttt{test\_refresh\_works}. Kad test padne, ispis prvo kaže koje je pravilo prekršeno, a tvrdnja koja je pala kaže očekivanu i dobivenu vrijednost.
 \end{frame}
 
 % ============================================================
-\sekcija{Testovi poslužitelja}{Što je već napisano, mjera pokrivenosti i njezina granica, područja koja moraju biti pokrivena.}
+\sekcija{Testovi poslužitelja}{Mjera pokrivenosti, mjerni alat koji dio izvedenog koda ne vidi, test koji prolazi zbog druge provjere, granica mjere.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Što već stoji}
-Testovi poslužitelja pokreću se jednom naredbom, uz pokrenutu bazu:
+\begin{frame}[fragile]{Pokrivenost koda}
+Nadzornik koji obilazi zgradu bilježi u koje je prostorije ušao. Popis kaže gdje nije bio, ali ne kaže je li u prostoriji u kojoj je bio išta pregledao.
+
+\vspace{0.7em}
+\textbf{Pokrivenost koda} (engl. \emph{code coverage}) bilježi isto za testove: koje je retke aplikacije izveo barem jedan test. Za pytest je mjeri dodatak \texttt{pytest-cov}:
 
 \begin{lstlisting}[language=bash]
-docker compose up -d db
-cd api
-pytest
+pytest --cov
 \end{lstlisting}
 
-\vspace{0.5em}
-Rade nad zasebnom bazom koja se stvara sama, a tablice se prazne prije svakog testa, pa redoslijed izvođenja ne mijenja ishod.
-
-\vspace{0.5em}
-Zahtjevi idu kroz aplikaciju bez pokrenutog poslužitelja. Računi, klubovi i natjecanja pripremaju se funkcijama koje pytest poziva sam, a vrijeme se ondje gdje pravilo ovisi o roku zamrzava na zadani trenutak.
+\vspace{0.3em}
+Ispis za svaku datoteku navodi broj naredbi (\texttt{Stmts}), broj neizvedenih (\texttt{Miss}), udio izvedenih (\texttt{Cover}) i brojeve neizvedenih redaka (\texttt{Missing}).
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Koje retke nijedan test ne izvodi}
-\begin{lstlisting}[language=bash]
-uv pip install pytest-cov
-pytest --cov=app --cov-report=term-missing
+\begin{frame}[fragile]{Pokrivenost sloja services (I)}
+Prvo mjerenje dalo je ovaj ispis, uz testove koji svi prolaze. Stupac \texttt{Missing} ovdje je izostavljen:
+
+\begin{lstlisting}[keepspaces=true]
+Name                                  Stmts   Miss  Cover
+app/services/auth_service.py             31      9    71%
+app/services/club_service.py             56     29    48%
+app/services/competition_service.py      24     11    54%
+app/services/lifter_service.py           35     17    51%
+app/services/registration_service.py     78     44    44%
+...
+108 passed in 14.53s
 \end{lstlisting}
 
 \vspace{0.4em}
-\begin{lstlisting}[language=bash]
+Prema mjeri, gotovo pola redaka sloja \codefile{services} nijedan test ne izvodi, a u tom sloju stoje poslovna pravila.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Pokrivenost sloja services (II)}
+Prvi je odgovor dopisati testove za sloj \codefile{services}. Za retke koje mjera prijavljuje kao neizvedene testovi već postoje: test u kojem klub prijavljuje svojeg natjecatelja izvodi funkciju \texttt{create\_registration} i tvrdi da je odgovor \texttt{201}.
+
+\vspace{0.9em}
+Kad bi se ti retci doista preskakali, upis se ne bi dogodio i taj test ne bi prošao. Test prolazi, pa su se retci izveli.
+
+\pause
+\vspace{0.9em}
+Pogreška je u mjernom alatu: dio izvedenog koda ne vidi. Prije nego se broju povjeruje, provjerava se redak za koji se zna da ga test izvodi. Ako ga mjera prijavljuje kao neizveden, kvar je u mjerenju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Postavka mjernog alata}
+SQLAlchemy u asinkronom radu izvodi dio posla u \emph{greenletima}, lakim tokovima izvođenja koji se izmjenjuju unutar iste dretve operacijskog sustava.
+
+\vspace{0.5em}
+Bez posebne postavke alat \texttt{coverage.py} ne prati prelazak između greenleta, pa ne bilježi retke koji se izvedu nakon povratka iz baze, dakle iza \texttt{await}:
+
+\begin{lstlisting}
+# api/pyproject.toml
+[tool.coverage.run]
+source = ["app"]
+concurrency = ["greenlet", "thread"]
+omit = ["app/seed.py"]
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{concurrency} mjernom alatu kaže koje tokove izvođenja aplikacija koristi. \texttt{omit} izostavlja početne podatke, koji nisu dio aplikacije, pa ih testovi i ne izvode.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pokrivenost sloja services (III)}
+Uz postavku iz prethodnog slajda isti testovi nad istom aplikacijom daju ovaj ispis:
+
+\begin{lstlisting}[keepspaces=true]
 Name                                  Stmts   Miss  Cover   Missing
-app/services/registration_service.py     62      4    94%   88-91
-app/routers/clubs.py                     30      0   100%
+app/services/auth_service.py             31      1    97%   48
+app/services/club_service.py             56      3    95%   65-66, 87
+app/services/competition_service.py      24      1    96%   40
+app/services/lifter_service.py           35      2    94%   70-72
+app/services/registration_service.py     78      2    97%   43, 69
 \end{lstlisting}
 
 \vspace{0.4em}
-Stupac s nepokrivenim retcima pokazuje mjesta kroz koja nijedan test nije prošao. To su najčešće grane s odbijanjem, dakle mjesta na kojima pravila stoje.
+Datoteka \texttt{registration\_service.py} u prvom ispisu ima 44~\% izvedenih redaka, a u ovom 97~\%. Nijedan test nije promijenjen.
+
+\vspace{0.4em}
+Preostali retci sada su doista neizvedeni, a svaki od njih vrijedi pogledati.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Granica te mjere}
-Mjera pokrivenosti broji koji su se retci izveli, a ne što je provjereno. Test koji pozove funkciju i ne tvrdi ništa daje jednaku pokrivenost kao i test koji provjeri ishod.
+\begin{frame}[fragile]{Test koji prolazi zbog druge provjere (I)}
+Redak 43 u \texttt{registration\_service.py} odbija prijavu koja ne pripada natjecanju iz adrese. Za to pravilo test postoji i prolazi:
 
-\vspace{0.9em}
-Zato cijela pokrivenost nije cilj. Cilj je da svako pravilo ima test koji ga imenuje, a mjera služi za suprotno pitanje: koji dio koda nijedan test ne dira.
+\begin{lstlisting}[language=python]
+# tests/test_registrations.py
+async def test_registration_under_wrong_competition_is_404(
+    client, db, lifter, competition
+):
+    reg = await add_registration(db, lifter, competition, "83")
+    headers = await auth_header(client, "testclub", "klub123")
+    resp = await client.get(
+        f"/competitions/9999/registrations/{reg.id}", headers=headers
+    )
+    assert resp.status_code == 404
+\end{lstlisting}
 
-\vspace{0.9em}
-\begin{konvencija}[Izbor, ne pravilo]
-U ovom projektu pravila i odbijanja u sloju \codefile{services} imaju test svako za sebe, a kod koji samo prosljeđuje vrijednosti nema vlastiti test.
+\vspace{0.3em}
+Mjera unatoč tome kaže da redak 43 nijedan test ne izvodi. Test nosi ime pravila do kojega ne dolazi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Test koji prolazi zbog druge provjere (II)}
+\begin{lstlisting}[language=python]
+# app/services/registration_service.py
+async def get_registration(
+    db: AsyncSession, comp_id: int, reg_id: int, current_user: User
+) -> Registration:
+    await get_competition_or_404(db, comp_id)
+    reg = await _get_registration_or_404(db, comp_id, reg_id)
+    _check_lifter_ownership(reg.lifter, current_user)
+    return reg
+\end{lstlisting}
+
+\vspace{0.4em}
+Natjecanje 9999 ne postoji, pa zahtjev odbija prva provjera, s istim statusom \texttt{404}. Do provjere pripada li prijava natjecanju iz adrese ne dolazi.
+
+\vspace{0.4em}
+Tvrdnja o polju \texttt{code} ne bi pomogla, jer obje provjere vraćaju \texttt{not\_found}. Test treba drugu pripremu: natjecanje iz adrese mora postojati. Tada zahtjev prolazi prvu provjeru, odbija ga tek provjera pripadnosti i redak 43 se izvodi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Test koji prolazi zbog druge provjere (III)}
+\vspace{-0.2em}
+\begin{lstlisting}[language=python]
+# tests/test_registrations.py
+async def test_registration_under_other_existing_competition_is_404(
+    client, db, lifter, competition
+):
+    other = Competition(
+        name="Drugi kup", location="Split", date=date(2026, 6, 20),
+        prelim_deadline=datetime(2026, 5, 20, tzinfo=timezone.utc),
+        final_deadline=datetime(2026, 6, 5, tzinfo=timezone.utc),
+    )
+    db.add(other)
+    await db.commit()
+    reg = await add_registration(db, lifter, competition, "83")
+    headers = await auth_header(client, "testclub", "klub123")
+    resp = await client.get(url(other, reg.id), headers=headers)
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "not_found"
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Granica mjere}
+Pokrivenost broji izvedene retke, a ne provjerene tvrdnje. Test koji pozove funkciju i ništa ne tvrdi daje jednaku pokrivenost kao test koji provjeri ishod.
+
+\vspace{0.7em}
+Ni redak koji ostane neizveden nije uvijek propust:
+
+\vspace{0.3em}
+\begin{itemize}
+  \itemsep0.4em
+  \item testovi zamjenjuju \texttt{get\_db} iz \codefile{app/core/deps.py} vlastitom sesijom nad testnom bazom
+  \item grane koje hvataju \texttt{IntegrityError} odgovaraju na utrku dvaju zahtjeva između provjere i upisa, koju je u testu teško izazvati
+\end{itemize}
+
+\vspace{0.6em}
+\begin{konvencija}
+U ovom projektu svako pravilo i svako odbijanje u sloju \codefile{services} ima vlastiti test. Mjera pokrivenosti nije cilj, nego služi za suprotno pitanje: koji dio koda nijedan test ne dira.
 \end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Što mora biti pokriveno}
-\vspace{0.3em}
-\begin{center}
-{\small
-\setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{3.1cm}L{8.1cm}@{}}
-  \toprule
-  \textbf{Područje} & \textbf{Najmanje} \\
-  \midrule
-  prijava & ispravna lozinka, kriva lozinka, istekao token, obnova \\
-  uloge & za svaku rutu tko smije i tko dobiva \texttt{403} \\
-  vlasništvo & račun jednog kluba nad zapisom drugoga \\
-  poslovna pravila & svako razdoblje puta svaka radnja iz matrice \\
-  ograničenja & dvostruka prijava daje \texttt{409}, neispravno tijelo \texttt{422} \\
-  \bottomrule
-\end{tabular}
-}
-\end{center}
-
-\vspace{0.6em}
-Mjerilo za pojedini test: ako se ne može reći što bi se pokvarilo da ga nema, test ne nosi ništa.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vježba: pokvareno pravilo}
-Radite u mapi \codefile{api}, uz pokrenutu bazu.
+\begin{frame}{Vježba: mjera i test pod istim imenom}
+Radite u mapi \codefile{api}, uz pokrenutu bazu i aktivno virtualno okruženje.
 
 \vspace{0.8em}
 \begin{enumerate}
   \itemsep0.4em
-  \item Pokrenite \texttt{pytest} i zabilježite koliko je testova prošlo.
-  \item U \codefile{app/core/phases.py} zamijenite \texttt{now < prelim} sa \texttt{now <= prelim}.
-  \item Pokrenite \texttt{pytest} ponovno i pročitajte ime testa koji je pao.
-  \item Vratite izmjenu, pa u \codefile{app/services/registration\_service.py} maknite provjeru kategorije.
-  \item Pokrenite \texttt{pytest} i usporedite broj testova koji padaju.
+  \item Pokrenite \texttt{pytest -{}-cov} i zabilježite postotak i neizvedene retke za \codefile{registration\_service.py}.
+  \item U \codefile{pyproject.toml} zakomentirajte redak \texttt{concurrency} i ponovite prvi korak.
+  \item Vratite redak. U \codefile{registration\_service.py} nađite uvjet koji odbija prijavu drugog natjecanja i uklonite samo tu provjeru.
+  \item Pokrenite \texttt{pytest tests/test\_registrations.py} i zabilježite imena testova koji su pali.
 \end{enumerate}
 
 \vspace{0.8em}
-Koje pravilo imenuje test koji je pao u trećem koraku i koja ste dva broja dobili u petome?
+Zašto se postotak u drugom koraku promijenio iako nijedan test nije promijenjen, i po čemu se u četvrtom koraku razlikuju dva testa prijave pod tuđim natjecanjem?
 \end{frame}
 
 % ============================================================
-\sekcija{Testovi klijentskog dijela}{Zašto su potrebni, postavljanje alata, test pomoćne funkcije i pohrane, test komponente.}
+\sekcija{Testovi klijentskog dijela}{Pogreške koje backend ne vidi, vrijeme i zona kao ulaz testa, isti podatak na dvjema stranama, lažne zamjene modula i mreže, provjera testa namjernim kvarom.}
 
 % ------------------------------------------------------------
-\begin{frame}{Zašto klijentski dio treba svoje testove}
-Poslužitelj odbija zahtjev koji krši pravilo i time štiti podatke. Prikaz koji taj odgovor krivo protumači podatke ne kvari, ali korisniku ne kaže istinu.
+\begin{frame}{Pogreške frontenda}
+Backend odbija zahtjev koji krši pravilo i time štiti podatke. Frontend koji pogriješi podatke ne kvari, ali korisniku ne kaže istinu:
 
-\vspace{0.7em}
+\vspace{0.6em}
 \begin{itemize}
   \itemsep0.45em
-  \item Funkcija koja poruke iz odgovora razvrstava po poljima prestane raditi nakon izmjene oblika odgovora, pa obrazac nijednu poruku ne pokaže.
-  \item Pohrana nakon izmjene ostane u stanju učitavanja, pa prikaz zauvijek pokazuje da čeka.
-  \item Komponenta prestane javljati događaj, pa gumb izgleda ispravno i ne radi ništa.
+  \item datum natjecanja ispiše se dan ranije korisniku zapadno od Greenwicha
+  \item poruka poslužitelja ne dođe do polja na koje se odnosi, pa obrazac pogrešku ne pokaže
+  \item pohrana nakon neuspjelog dohvata ostane u stanju dohvata, pa prikaz zauvijek čeka
+  \item istodobni zahtjevi s isteklim tokenom pokrenu svaki svoju obnovu tokena
 \end{itemize}
 
-\vspace{0.7em}
-Nijedno od toga poslužitelj ne vidi, pa nijedan njegov test to ne hvata.
+\vspace{0.6em}
+Nijednu od tih pogrešaka testovi backenda ne vide, jer se dogode u pregledniku. Zato frontend dobiva vlastite testove.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Postavljanje alata}
-\begin{lstlisting}[language=bash]
-npm install -D vitest @vue/test-utils jsdom
-\end{lstlisting}
-
-\vspace{0.4em}
+\begin{frame}[fragile]{Alat za jedinične testove}
+\vspace{-0.2em}
 \begin{lstlisting}[language=typescript]
-// vite.config.ts
+// vitest.config.ts
+process.env.TZ = 'America/Los_Angeles'
+
 export default defineConfig({
-  plugins: [vue()],
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   test: {
-    environment: 'jsdom',
-    globals: true,
+    include: ['src/**/__tests__/*.test.ts'],
+    environment: 'node',
   },
 })
 \end{lstlisting}
 
-\vspace{0.4em}
-Postavka \texttt{jsdom} daje stablo elemenata izvan preglednika, pa se komponente mogu prikazati bez otvaranja prozora. Testovi se pokreću naredbom \texttt{npm run test}.
+\vspace{0.2em}
+Vitest izvodi testove u Nodeu i pokreće se naredbom \texttt{npm test}. Uz \texttt{environment: 'node'} test nema stablo elemenata, jer ga testirane funkcije ne trebaju. Redak s \texttt{TZ} objašnjava sljedeći slajd.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Test pomoćne funkcije}
-Funkcija koja poruke iz odgovora \texttt{422} razvrstava po poljima nema ni mrežu ni prikaz, pa je njezin test kratak:
+\begin{frame}[fragile]{Zona u kojoj se test izvodi (I)}
+Kalendar koji termin pohrani kao ponoć po UTC-u u Zagrebu ga prikaže tog dana u jedan sat, a u Kaliforniji prethodnog dana poslijepodne. Isto se dogodi datumu bez vremena koji se pretvori u \texttt{Date}:
+
+\begin{lstlisting}[language=typescript, keepspaces=true]
+new Date('2027-03-14').toLocaleDateString('hr-HR')
+// u zoni Europe/Zagreb:      14. 03. 2027.
+// u zoni America/Los_Angeles: 13. 03. 2027.
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{new Date('2027-03-14')} je ponoć po UTC-u, a ispis je u zoni računala.
+
+\vspace{0.4em}
+Test pokrenut na računalu u Zagrebu prolazi, a organizator na putu zapadno od Greenwicha vidi dan ranije. Pogrešku sakriva zona u kojoj se test izvodi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zona u kojoj se test izvodi (II)}
+Vitest zato izvodi testove u zoni zapadno od UTC-a, postavkom \texttt{process.env.TZ}. Kod koji miješa zone tada pada na svakom računalu:
 
 \begin{lstlisting}[language=typescript]
-// utils/greske.test.ts
-it('razvrstava poruke po imenu polja', () => {
-  const odgovor = { code: 'validation_error', message: '...',
-    errors: [{ field: 'birth_date', message: 'Mora biti u proslosti' }] }
+// src/lib/format.ts
+export function formatDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+  if (!match) return value
+  const [, year, month, day] = match
+  return `${Number(day)}. ${Number(month)}. ${year}.`
+}
+\end{lstlisting}
 
-  expect(poPolju(odgovor)).toEqual({
-    birth_date: 'Mora biti u proslosti',
+\vspace{-0.2em}
+\begin{lstlisting}[language=typescript]
+// src/lib/__tests__/format.test.ts
+it('daje isti dan i zapadno od UTC-a', () => {
+  expect(formatDate('2027-03-14')).toBe('14. 3. 2027.')
+})
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{formatDate} datum čita kao tekst, pa daje isti dan u svakoj zoni.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prelazak na ljetno vrijeme}
+Rok upisan po zagrebačkom vremenu dobiva pomak \texttt{+01:00} zimi i \texttt{+02:00} ljeti. Zagreb prelazi na ljetno vrijeme 28.03.2027., a Kalifornija dva tjedna ranije:
+
+\begin{lstlisting}[language=typescript]
+// src/lib/__tests__/datetime.test.ts
+it('<@prati prelazak na ljetno vrijeme u Zagrebu, a ne u zoni računala@>',
+  () => {
+    expect(fromLocalInput('2027-03-27T12:00'))
+      .toBe('2027-03-27T12:00:00+01:00')
+    expect(fromLocalInput('2027-03-28T12:00'))
+      .toBe('2027-03-28T12:00:00+02:00')
   })
-})
+\end{lstlisting}
 
-it('vraca prazan objekt kad polja errors nema', () => {
-  expect(poPolju({ code: 'duplicate', message: '...' })).toEqual({})
+\vspace{0.3em}
+Dana 27.03. u zoni testa ljetno vrijeme već vrijedi, a u Zagrebu još ne. Test zato razlikuje funkciju koja pomak računa za Zagreb od one koja ga računa za zonu računala ili ga uzima kao stalan.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Današnji dan kao argument}
+Funkcija koja sama čita sat ne može se provjeriti na granici bez zamrzavanja vremena. Funkcija \texttt{validateLifter}, koja provjerava obrazac natjecatelja, prima današnji dan kao argument, pa test zadaje i dan i granicu:
+
+\begin{lstlisting}[language=typescript]
+// src/lib/__tests__/validation.test.ts
+const TODAY = '2026-11-26'
+
+it('<@datum rođenja mora biti prije današnjeg dana@>', () => {
+  expect(validateLifter(
+    { ...VALID, birth_date: '2026-11-25' }, TODAY)).toEqual({})
+  expect(validateLifter({ ...VALID, birth_date: TODAY }, TODAY))
+    .toEqual({ birth_date: '<@Datum rođenja mora biti u prošlosti.@>' })
+})
+\end{lstlisting}
+
+\vspace{0.3em}
+Test ima oba slučaja uz granicu. Prvi pokazuje da pravilo propušta ispravan unos, drugi da odbija današnji dan.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Isti popis na dvjema stranama (I)}
+Provjera s početka predavanja u projektu postoji kao test. Čita datoteku backenda kao tekst i iz nje vadi popis:
+
+\begin{lstlisting}[language=typescript]
+// src/lib/__tests__/categories.test.ts
+const SCHEMA = fileURLToPath(new URL(
+  '../../../../api/app/schemas/registration.py', import.meta.url))
+
+function pythonList(source: string, name: string): string[] {
+  const match = new RegExp(`^${name} = \\[(.*)\\]$`, 'm').exec(source)
+  if (!match) throw new Error(...)  <@\komts{popis nije pronađen}@>
+  return [...match[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!)
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Regularni izraz traži redak koji počinje imenom popisa, a iz njega uzima vrijednosti u navodnicima.
+\end{frame}
+
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Isti popis na dvjema stranama (II)}
+\begin{lstlisting}[language=typescript]
+// src/lib/__tests__/categories.test.ts
+const source = readFileSync(SCHEMA, 'utf8')
+
+it('<@ženske kategorije jednake su onima u shemi backenda@>', () => {
+  expect([...CATEGORIES.F])
+    .toEqual(pythonList(source, 'FEMALE_CATEGORIES'))
 })
 \end{lstlisting}
 
 \vspace{0.4em}
-Drugi test čuva odgovore \texttt{409} i \texttt{400}, koji polje \texttt{errors} ne nose.
+Uz izmjenu s početka predavanja, kategoriju 43 samo na backendu, ovaj test pada s imenom pravila koje je prekršeno. Komentar \enquote{mijenjati zajedno} sada provjerava stroj.
+
+\vspace{0.4em}
+Cijena je ovisnost o obliku retka u Pythonu: popis prelomljen u više redaka izraz ne pronalazi, pa test pada i bez razilaženja.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Test pohrane}
-Pohrana poziva mrežu, pa se mreža u testu zamjenjuje unaprijed zadanim odgovorom:
+\begin{frame}[fragile]{Lažna zamjena modula (I)}
+Pohrana natjecatelja dohvaća popis funkcijom \texttt{fetchLifters}, koja šalje zahtjev. Test pohrane ne treba poslužitelj: modul se zamjenjuje lažnom inačicom (engl. \emph{mock}), čije odgovore zadaje test.
 
 \begin{lstlisting}[language=typescript]
-vi.mock('@/api/client')
-beforeEach(() => setActivePinia(createPinia()))
+// src/stores/__tests__/lifters.test.ts
+vi.mock('@/api/lifters', () => ({ fetchLifters: vi.fn() }))
 
-it('dohvat popunjava popis i gasi ucitavanje', async () => {
-  vi.mocked(api.get).mockResolvedValue(
-    { data: [{ id: 1, first_name: 'Ivan', last_name: 'Peric' }] })
-  const pohrana = useLifterStore()
-  await pohrana.dohvati(1)
-  expect(pohrana.lifters).toHaveLength(1)
-  expect(pohrana.ucitavanje).toBe(false)
-  expect(pohrana.greska).toBeNull()
+beforeEach(() => {
+  setActivePinia(createPinia())
+  vi.mocked(fetchLifters).mockReset()
+  useAuthStore().user = { id: 5, username: 'behemot@plreg.hr',
+    role: 'club', club_id: 7, is_active: true }
+})
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{vi.mock} zamjenjuje modul za svaki uvoz u ovoj datoteci, pa i za uvoz unutar pohrane. \texttt{setActivePinia(createPinia())} prije svakog testa daje novu, praznu pohranu, pa stanje jednog testa ne prelazi u drugi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Lažna zamjena modula (II)}
+\begin{lstlisting}[language=typescript]
+// src/stores/__tests__/lifters.test.ts
+it('<@neuspjeli dohvat ostavlja prikazani popis i bilježi neuspjeh@>',
+  async () => {
+    vi.mocked(fetchLifters)
+      .mockResolvedValueOnce([ANA])
+      .mockRejectedValueOnce(new Error('<@mreža@>'))
+    const store = useLiftersStore()
+    await store.load()
+    await expect(store.load()).rejects.toThrow('<@mreža@>')
+    expect(store.items).toEqual([ANA])
+    expect(store.failed).toBe(true)
+    expect(store.pending).toBe(false)
+  })
+\end{lstlisting}
+
+\vspace{0.3em}
+Prvi dohvat uspije, drugi padne. Popis iz prvoga mora ostati, a neuspjeh biti zabilježen. Zadnja tvrdnja čuva ono što se lako zaboravi: prikaz koji nakon neuspjeha zauvijek čeka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Lažni poslužitelj}
+Kad pristupni token istekne, prvi zahtjev koji dobije \texttt{401} traži novi par tokena, a ostali čekaju ishod iste obnove. Za provjeru toga test treba poslužitelj koji odgovara po pravilu, pa zamjenjuje globalne objekte preglednika:
+
+\begin{lstlisting}[language=typescript]
+// src/api/__tests__/http.test.ts
+beforeEach(() => {
+  vi.stubGlobal('localStorage', memoryStorage())
+  server = fakeServer()
+  vi.stubGlobal('fetch', server)
+})
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{memoryStorage} drži zapise u memoriji, pa test ne ovisi o pohrani okruženja u kojem se izvodi. \texttt{fakeServer} prihvaća samo token \texttt{novi}: na zahtjev za obnovu vraća par s njim, a na svaki drugi token odgovara \texttt{401}. Bilježi i svaki poziv, pa test može prebrojiti zahtjeve za obnovu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Istodobni odgovori 401}
+\begin{lstlisting}[language=typescript]
+// src/api/__tests__/http.test.ts
+it('tri istodobna odgovora 401 <@pokreću@> jednu obnovu', async () => {
+  saveTokens({ access_token: 'stari', refresh_token: 'obnova',
+    token_type: 'bearer' })
+  await Promise.all([
+    request('GET', '/competitions/'),
+    request('GET', '/auth/me'),
+    request('GET', '/clubs/'),
+  ])
+  expect(refreshCalls()).toHaveLength(1)
 })
 \end{lstlisting}
 
 \vspace{0.4em}
-Zamijenjena mreža znači da test provjerava pohranu, a ne API.
+Tri zahtjeva kreću s istim tokenom koji poslužitelj ne prihvaća i dobivaju \texttt{401} u istom trenutku. Tvrdnja ne gleda odgovore, nego broj zahtjeva za obnovu koje je lažni poslužitelj primio.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Test neuspjelog dohvata}
-Grana s pogreškom ima vlastiti test, jer se u radu rijetko vidi:
+\begin{frame}[fragile]{Provjera testa namjernim kvarom (I)}
+Test koji od prvog pokretanja prolazi nikad nije pokazao da može pasti: ako tvrdnja ne gleda redak koji test čuva, prolazit će i bez njega.
 
 \begin{lstlisting}[language=typescript]
-it('neuspjeli dohvat postavlja poruku i gasi ucitavanje', async () => {
-  vi.mocked(api.get).mockRejectedValue(new Error('mreza'))
+// src/api/http.ts
+let refreshing: Promise<boolean> | null = null
+function refreshTokens(): Promise<boolean> {
+  refreshing ??= (async () => {
+    <@\komts{zahtjev za obnovu i spremanje novog para}@>
+    ...
+  })().finally(() => {
+    refreshing = null
+  })
+  return refreshing
+}
+\end{lstlisting}
 
-  const pohrana = useLifterStore()
-  await pohrana.dohvati(1)
+\vspace{0.3em}
+Jednu obnovu čuva operator \texttt{??=}: nova se pokreće samo ako nijedna nije u tijeku.
+\end{frame}
 
-  expect(pohrana.greska).not.toBeNull()
-  expect(pohrana.ucitavanje).toBe(false)
-})
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Provjera testa namjernim kvarom (II)}
+Operator \texttt{??=} zamijeni se s \texttt{=}, pa svaki poziv pokreće novu obnovu:
+
+\begin{lstlisting}[keepspaces=true]
+ > src/api/__tests__/http.test.ts (6 tests | 1 failed)
+     x tri istodobna odgovora 401 <@pokreću@> jednu obnovu
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
 \end{lstlisting}
 
 \vspace{0.4em}
-Tvrdnja o \texttt{ucitavanje} čuva ono što se lako zaboravi: prikaz koji nakon neuspjeha zauvijek pokazuje da čeka.
+Pao je test koji tu pogrešku čuva, i nijedan drugi. Kvar koji ne obori nijedan test pokazuje da ponašanje koje bi kvar promijenio nitko ne provjerava.
+
+\vspace{0.4em}
+Provjera traje jedno pokretanje i radi se rukom, za pravila koja se lako pokvare. Alati za testiranje mutacijama (engl. \emph{mutation testing}) unose takve kvarove sami, redom kroz cijeli kod.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Test komponente}
-Komponenta se u testu prikaže, dobije svojstva i provjeri se što javlja prema van:
+\begin{frame}{Opseg jediničnih testova}
+Test se piše, čita i mijenja uz svaku izmjenu koda koji dira. Zato se ne piše za:
 
-\begin{lstlisting}[language=typescript]
-it('prikazuje oznaku i poruku o pogresci', () => {
-  const w = mount(PoljeObrasca, {
-    props: { oznaka: 'Ime', greska: 'Obavezno', modelValue: '' } })
-  expect(w.text()).toContain('Ime')
-  expect(w.find('.error').text()).toBe('Obavezno')
-})
-
-it('javlja promjenu pri unosu', async () => {
-  const w = mount(PoljeObrasca, {
-    props: { oznaka: 'Ime', modelValue: '' } })
-  await w.find('input').setValue('Marko')
-  expect(w.emitted('update:modelValue')![0]).toEqual(['Marko'])
-})
-\end{lstlisting}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Što se ne testira}
-Test ima cijenu: piše se, čita se i mijenja se uz svaku izmjenu koda koji dira.
-
-\vspace{0.7em}
+\vspace{0.6em}
 \begin{itemize}
   \itemsep0.45em
-  \item Ponašanje samog okvira, primjerice da se prikaz osvježi kad se vrijednost promijeni.
-  \item Tuđe knjižnice, koje imaju vlastite testove.
-  \item Prikaz bez ijedne odluke u sebi; test bi mu samo prepisao predložak.
+  \item ponašanje \emph{frameworka}, primjerice da se prikaz osvježi kad se vrijednost promijeni
+  \item tuđe knjižnice, koje imaju vlastite testove
+  \item predložak bez ijedne odluke, koji bi test samo prepisao
 \end{itemize}
 
-\vspace{0.7em}
-Ostaje ono što sadrži odluku: pretvorba podataka, uvjet koji nešto skriva ili onemogućuje, i ponašanje nakon neuspjelog zahtjeva.
+\vspace{0.6em}
+Ostaje ono što sadrži odluku: pretvorba podataka, uvjet koji radnju skriva ili onemogućuje i ponašanje nakon neuspjelog zahtjeva.
+
+\vspace{0.6em}
+\begin{konvencija}
+U ovom projektu jedinične testove imaju čiste funkcije iz \codefile{src/lib}, pohrane i sloj koji šalje zahtjeve. Komponente provjerava test kroz preglednik.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: test pohrane}
-Radite u klijentskom dijelu, s postavljenim alatom.
+\begin{frame}[fragile]{Vježba: zona i namjerni kvar}
+Radite u mapi \codefile{web}. Testovi se pokreću naredbom \texttt{npm test}.
 
-\vspace{0.8em}
+\vspace{0.4em}
 \begin{enumerate}
-  \itemsep0.4em
-  \item Napišite test koji provjerava da uspješan dohvat popunjava popis.
-  \item Napišite test za neuspjeli dohvat, s tvrdnjom o poruci i o stanju učitavanja.
-  \item U pohrani maknite redak koji gasi stanje učitavanja i pokrenite testove.
-  \item Vratite redak, pa u funkciji koja razvrstava poruke zamijenite \texttt{field} s \texttt{loc}.
-  \item Pokrenite testove i pročitajte koja je tvrdnja pala.
+  \itemsep0.3em
+  \item U \codefile{src/lib/format.ts} zamijenite tijelo funkcije \texttt{formatDate} ovim retcima i pokrenite testove:
+\begin{lstlisting}[language=typescript]
+const d = new Date(value)
+return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}.`
+\end{lstlisting}
+  \item U \codefile{vitest.config.ts} zakomentirajte redak koji postavlja \texttt{TZ} i ponovite testove.
+  \item Vratite oba retka. U \codefile{src/api/http.ts} promijenite redak koji pamti obnovu u tijeku tako da svaki poziv \texttt{refreshTokens} pokrene novu, i ponovite testove.
 \end{enumerate}
 
-\vspace{0.8em}
-Koji je test pao u trećem koraku, a koji u petome, i koju su razliku ispisali?
+\vspace{0.4em}
+Po čemu se razlikuju popisi palih testova u prvom i drugom koraku i što ta razlika govori o korisniku zapadno od Greenwicha?
 \end{frame}
 
 % ============================================================
-\sekcija{Test kroz preglednik}{Što niže razine ne vide, test prijave, stabilne oznake elemenata i poznato polazno stanje.}
+\sekcija{Test kroz preglednik}{Pogreške u spoju dijelova, polazno stanje i priprema podataka kroz API, lokatori po ulozi i oznaci, provjera pristupačnosti i nalazi na uskom zaslonu.}
 
 % ------------------------------------------------------------
-\begin{frame}{Što niže razine ne vide}
-Jedinični testovi provjeravaju dijelove. Svaki od njih može biti zelen, a aplikacija svejedno ne radi:
+\begin{frame}{Pogreške u spoju dijelova}
+Jedinični testovi provjeravaju dijelove. Svaki od njih može prolaziti, a aplikacija svejedno ne radi:
 
-\vspace{0.7em}
+\vspace{0.6em}
 \begin{itemize}
   \itemsep0.45em
-  \item Pohrana sprema token, a presretač ga čita pod drugim imenom.
-  \item Obrazac šalje ispravan zahtjev, a poslužitelj ga odbije jer dopuštenje izvora nije postavljeno.
-  \item Provjera prije navigacije traži podatke koji se pri pokretanju dohvaćaju tek poslije nje.
+  \item pohrana prijave sprema token pod jednim ključem, a sloj koji šalje zahtjeve čita ga pod drugim
+  \item provjera prije navigacije pita je li korisnik prijavljen prije nego je dohvat korisnika završio
+  \item zahtjev bez kose crte na kraju adrese dobije preusmjerenje na adresu koja iza posrednika vodi na krivo mjesto
 \end{itemize}
 
-\vspace{0.7em}
-Takve pogreške postoje samo u spoju dijelova. Vidi ih test koji aplikaciju pokreće onako kako je pokreće korisnik: u pregledniku, protiv pokrenutog poslužitelja.
+\vspace{0.6em}
+Takve pogreške postoje samo u spoju dijelova. Vidi ih test koji aplikaciju pokreće onako kako je pokreće korisnik: u pregledniku, nad pokrenutim backendom i bazom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Alat za testove kroz preglednik (I)}
+\begin{lstlisting}[language=typescript]
+// playwright.config.ts
+const BASE_URL = process.env.E2E_URL ?? 'http://127.0.0.1:5173'
+export default defineConfig({
+  testDir: 'e2e',
+  retries: 0,
+  use: { baseURL: BASE_URL, locale: 'hr-HR',
+         timezoneId: 'Europe/Zagreb', trace: 'retain-on-failure' },
+  projects: [
+    { name: '<@računalo@>', use: { ...devices['Desktop Chrome'] } },
+    { name: 'mobitel', use: { ...devices['Pixel 7'] } },
+  ],
+  ...  <@\komts{pokretanje aplikacije: sljedeći slajd}@>
+})
+\end{lstlisting}
+
+\vspace{0.3em}
+Svaki test izvodi se u pravom pregledniku dvaput, kao na računalu i kao na mobitelu. Zapis tijeka (engl. \emph{trace}) ostaje samo za pali test.
+\end{frame}
+
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Alat za testove kroz preglednik (II)}
+\begin{lstlisting}[language=typescript]
+// playwright.config.ts
+  webServer: process.env.E2E_URL ? undefined : {
+    command: 'npm run dev', url: BASE_URL, reuseExistingServer: true,
+  },
+\end{lstlisting}
+
+\vspace{0.3em}
+Bez varijable \texttt{E2E\_URL} Playwright sam pokreće razvojni poslužitelj frontenda, ako već ne radi, a on module prevodi tek pri prvom zahtjevu. Uz varijablu testovi idu na zadanu adresu, primjerice na izgrađenu aplikaciju.
+
+\vspace{0.5em}
+\begin{konvencija}
+Projekt test koji ponekad padne popravlja, a ne ponavlja (\texttt{retries: 0}), jer bi ponavljanje nestabilnost sakrilo. Mjerodavno je pokretanje nad izgrađenom aplikacijom.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Test prijave}
 \begin{lstlisting}[language=typescript]
-// tests/e2e/prijava.spec.ts
-test('prijava vodi na pocetnu stranicu', async ({ page }) => {
-  await page.goto('/login')
-  await page.getByTestId('username').fill('behemot@plreg.hr')
-  await page.getByTestId('password').fill('behemot123')
-  await page.getByTestId('submit').click()
-  await expect(page).toHaveURL('/')
-})
-
-test('kriva lozinka ostaje na prijavi', async ({ page }) => {
-  await page.goto('/login')
-  await page.getByTestId('username').fill('behemot@plreg.hr')
-  await page.getByTestId('password').fill('krivo')
-  await page.getByTestId('submit').click()
-  await expect(page.getByTestId('greska')).toBeVisible()
-})
+// e2e/prijava.spec.ts
+test('kriva lozinka daje poruku i ostavlja korisnika na obrascu',
+  async ({ page }) => {
+    await page.goto('/prijava')
+    await expectAccessible(page)  <@\komts{pristupačnost, na kraju cjeline}@>
+    await page.getByLabel('<@Korisničko ime@>').fill(CLUB.username)
+    await page.getByLabel('Lozinka').fill('kriva-lozinka')
+    await page.getByRole('button', { name: 'Prijavi se' }).click()
+    await expect(page.getByRole('alert'))
+      .toHaveText('<@Neispravno korisničko ime ili lozinka@>')
+    await expect(page).toHaveURL(/\/prijava$/)
+  })
 \end{lstlisting}
+
+\vspace{0.3em}
+Test radi ono što radi korisnik: otvara stranicu, upisuje u polja, pritišće gumb i čita poruku. Zadnja tvrdnja provjerava adresu, jer kriva lozinka ne smije voditi dalje.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Stabilne oznake elemenata}
-Test koji element traži po tekstu ili po nazivu razreda pada pri svakoj promjeni teksta ili stila:
+\begin{frame}[fragile]{Lokatori po ulozi i oznaci}
+\texttt{getByLabel} nalazi polje po tekstu povezane oznake, a \texttt{getByRole} element po ulozi i nazivu, kako ih vidi čitač zaslona:
 
-\begin{lstlisting}[language=html]
-<input v-model="username" data-testid="username">
-<button type="submit" data-testid="submit">Prijava</button>
+\begin{lstlisting}[language=html, morecomment={[s]{<!--}{-->}}]
+<!-- src/views/LoginView.vue -->
+<label for="username"><@Korisničko ime@></label>
+<input id="username" v-model="username"
+       autocomplete="username" required />
 \end{lstlisting}
 
-\vspace{0.4em}
-Atribut \texttt{data-testid} postoji samo zato da ga test nađe. Preglednik ga ne tumači, a izmjena izgleda ga ne dira.
+\vspace{0.3em}
+Test ne nalazi polje čija oznaka s njim nije povezana, jer se \texttt{for} i \texttt{id} razlikuju. Čitač zaslona takvom polju ne čita oznaku, pa je lokator i provjera pristupačnosti.
 
 \vspace{0.4em}
-Alat uz to sam čeka da element postane dostupan, pa u testu nema čekanja na zadan broj sekundi. Test koji čeka fiksno vrijeme na sporijem računalu pada bez razloga.
+\begin{konvencija}
+Elementi se mogu tražiti i po atributu \texttt{data-testid}, koji ne ovisi o tekstu. Projekt ih traži po ulozi i oznaci, pa promjena teksta koji korisnik vidi smije oboriti test.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Poznato polazno stanje}
-Test u pregledniku radi protiv stvarnog poslužitelja i stvarne baze, pa ovisi o tome što je u njoj:
+\begin{frame}{Polazno stanje (I)}
+Laboratorijski pokus počinje od pripremljenog uzorka, a ne od onoga što je ostalo iza prethodne skupine. Test kroz preglednik radi nad stvarnom bazom, pa ishod ovisi o tome što u njoj zatekne.
 
-\begin{lstlisting}[language=bash]
-docker compose up -d db
-cd api && alembic upgrade head && python -m app.seed
-uvicorn app.main:app &
-cd ../web && npx playwright test
-\end{lstlisting}
+\vspace{0.9em}
+Test koji odjavi prijavu ostavlja je odjavljenom. Sljedeće pokretanje istog testa uz istu prijavu nalazi gumb \enquote{Vrati prijavu} umjesto gumba \enquote{Odjavi} i pada, iako se kod nije promijenio.
 
-\vspace{0.4em}
-Punjenje početnim podatcima vraća bazu u poznato stanje, pa računi i natjecanja iz testa postoje i imaju očekivane vrijednosti.
-
-\vspace{0.4em}
-Test koji prvi put prođe, a drugi put padne jer je prvi put nešto upisao, ne čuva ništa. Zato svaki niz testova počinje od istog stanja.
+\vspace{0.9em}
+Isto se dogodi dvama testovima koji se izvode istodobno i dijele zapis: ishod ovisi o tome koji je prvi stigao.
 \end{frame}
 
+
 % ------------------------------------------------------------
-\begin{frame}{Kada se testovi pokreću}
+\begin{frame}{Polazno stanje (II)}
 \vspace{0.3em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
 \renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{3.0cm}L{3.5cm}L{4.6cm}@{}}
+\begin{tabular}{@{}L{4.2cm}L{3.6cm}L{4.0cm}@{}}
   \toprule
-  \textbf{Razina} & \textbf{Trajanje} & \textbf{Kada} \\
+  \textbf{Pristup} & \textbf{Postupak} & \textbf{Cijena} \\
   \midrule
-  jedinični, klijent & sekunde & pri svakoj izmjeni \\
-  nad sučeljem & desetak sekundi & prije svakog upisa u granu \\
-  u pregledniku & minute & prije spajanja grana \\
+  prazna baza za svaki test & brisanje i ponovno punjenje & sporo; test mora dirati bazu mimo API-ja \\
+  zajednički zapisi & svi testovi rade nad istim podatcima & test ovisi o tome što su drugi promijenili \\
+  vlastiti zapisi & test ih stvara kroz API, s jedinstvenim imenom & baza raste sa svakim pokretanjem \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Test koji se ne izvodi sam ne izvodi se dugo. Zato se pokretanje veže uz radnju koja se ionako radi, a ne uz nečiju odluku da je vrijeme za provjeru.
-
-\vspace{0.4em}
-Za studentski projekt obvezni su testovi poslužitelja i jedinični testovi klijentskog dijela. Test u pregledniku pokriva prijavu i barem jedno poslovno pravilo.
+\begin{konvencija}
+U ovom projektu računi dolaze iz početnih podataka, a natjecanje i natjecatelja svaki test stvara sam, s vremenom i slučajnim brojem u imenu.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: test prijave}
-Backend je pokrenut i baza je napunjena početnim podatcima.
+\begin{frame}[fragile]{Priprema podataka kroz API}
+\begin{lstlisting}[language=typescript]
+// e2e/helpers.ts
+export async function createOpenCompetition(
+  request: APIRequestContext) {
+  const admin = await apiAs(request, ADMIN)
+  const competition = await admin('POST', '/competitions/', {
+    name: `E2E kup ${unique()}`,
+    location: 'Zadar',
+    date: at(60).slice(0, 10),
+    prelim_deadline: at(20),
+    final_deadline: at(40),
+  })
+  <@\komts{vraća natjecanje i funkcije za pomicanje rokova}@>
+  ...
+}
+\end{lstlisting}
 
-\vspace{0.8em}
+\vspace{0.3em}
+Natjecanje nastaje zahtjevom organizatora, mimo obrasca, jer obrazac nije predmet ovog testa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Rok u testu kroz preglednik (I)}
+Test kroz preglednik ne može zamrznuti sat backenda: backend radi u svojem procesu i čita vlastiti sat. Test zato pomiče podatke i rokove natjecanja premješta u prošlost:
+
+\begin{lstlisting}[language=typescript]
+// e2e/helpers.ts
+const DAY = 24 * 60 * 60 * 1000
+const at = (days: number) =>
+  new Date(Date.now() + days * DAY).toISOString()
+
+  <@\komts{u povratnoj vrijednosti funkcije createOpenCompetition}@>
+  passPrelim: () => admin('PATCH', `/competitions/${competition.id}`,
+    { prelim_deadline: at(-2) }),
+  close: () => admin('PATCH', `/competitions/${competition.id}`,
+    { prelim_deadline: at(-2), final_deadline: at(-1) }),
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{at(n)} je trenutak $n$ dana od sada. Rok se pomiče za dane, a ne za sekunde, pa ishod ne ovisi o tome koliko test traje.
+\end{frame}
+
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Rok u testu kroz preglednik (II)}
+\begin{lstlisting}[language=typescript]
+// e2e/prijave.spec.ts
+test(
+  '<@nakon preliminarnog roka nema nove prijave, a odjava je dopuštena@>',
+  async ({ page, request }) => {
+    const { competition, passPrelim } =
+      await createOpenCompetition(request)
+    const lifter = await createLifter(request, competition.id)
+    await passPrelim()
+    await login(page, CLUB)
+    await page.goto(`/natjecanja/${competition.id}`)
+    await expect(page.getByText('Rok za nove prijave je istekao.'))
+      .toBeVisible()
+    ...  <@\komts{gumba za novu prijavu nema, a gumb Odjavi je omogućen}@>
+  })
+\end{lstlisting}
+
+\vspace{0.3em}
+Natjecatelj se prijavljuje dok je razdoblje \texttt{open}, a rok se pomiče tek iza toga. Test tako provjerava odjavu prijave koja je nastala prije roka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Provjera pristupačnosti}
+Smjernice za pristupačnost web sadržaja (engl. \emph{Web Content Accessibility Guidelines}, WCAG) propisuju kriterije za korisnike čitača zaslona, tipkovnice i povećanog prikaza. Dio se može provjeriti strojno: kontrast teksta, oznaka polja, naziv gumba, uloga elementa.
+
+\begin{lstlisting}[language=typescript]
+// e2e/helpers.ts
+export async function expectAccessible(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze()
+  expect(results.violations.map((v) =>
+    `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([])
+}
+\end{lstlisting}
+
+\vspace{0.2em}
+Knjižnica axe provjerava kriterije razina A i AA nad stranicom kakva je u trenutku poziva. Ne može procijeniti je li oznaka smislena ni je li redoslijed fokusa logičan; to ostaje ručnoj provjeri.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Okvir tablice na mobitelu (I)}
+U prvom pokretanju testova kroz preglednik test pravila nakon konačnog roka u projektu \texttt{mobitel} pada na provjeri pristupačnosti:
+
+\begin{lstlisting}[keepspaces=true]
+[mobitel] > prijave.spec.ts > nakon <@konačnog@> roka radnje su ...
+    + Array [
+    +   "scrollable-region-focusable: Scrollable region must
+         have keyboard access (1)",
+    + ]
+\end{lstlisting}
+
+\vspace{0.4em}
+Isti test u projektu \texttt{računalo} prolazi. Provjera tipova i jedinični testovi prolaze.
+
+\vspace{0.4em}
+Na računalu tablica stane u širinu. Na mobitelu se okvir tablice pomiče vodoravno, a korisnik tipkovnice do stupaca izvan zaslona ne dolazi, jer okvir ne može dobiti fokus.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Okvir tablice na mobitelu (II)}
+Okvir tablice postaje zasebna komponenta, koju koriste sve tablice:
+
+\begin{lstlisting}[language=html, morecomment={[s]{<!--}{-->}}]
+<!-- src/components/TableScroll.vue -->
+<script setup lang="ts">
+defineProps<{ label: string }>()
+</script>
+<template>
+  <div class="table-wrap" tabindex="0" role="region"
+       :aria-label="label">
+    <slot />
+  </div>
+</template>
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{tabindex="0"} okviru daje fokus, pa ga strelice pomiču. \texttt{role="region"} i \texttt{aria-label} čitaču zaslona kažu što je u okviru.
+
+\vspace{0.3em}
+Cijena je dodatno zaustavljanje pri kretanju tipkom \kbd{Tab}, i onda kad se okvir ne pomiče.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Širina stranice na mobitelu (I)}
+Test prijave natjecatelja na mobitelu pada na kliku na gumb Odjavi: klik prima obrazac iznad tablice. Snimka stranice pokazuje razlog:
+
+\vspace{0.4em}
+\begin{center}
+\begin{tikzpicture}
+  \node[anchor=south west, inner sep=0] (img) at (0,0)
+    {\includegraphics[width=7.2cm]{slike/sirina-stranice-mobitel.png}};
+  \fill[red, opacity=0.10] (0.730*7.2, 0) rectangle (7.2, 3.52);
+  \draw[dashed, very thick, color=red!75!black]
+    (0.730*7.2, -0.15) -- (0.730*7.2, 3.67);
+  \node[font=\scriptsize, color=red!75!black, anchor=north east]
+    at (0.730*7.2 - 0.05, -0.15) {rub zaslona};
+  \node[font=\scriptsize, color=red!75!black, anchor=north west]
+    at (0.730*7.2 + 0.05, -0.15) {višak};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+Navigacija završava na rubu zaslona, a stranica se nastavlja desno od njega, iako je svaki vidljivi element uži od zaslona.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Širina stranice na mobitelu (II)}
+Gumb u retku tablice nosi skriveni natpis za čitač zaslona, s razredom \texttt{.sr-only}, koji je postavljen apsolutno. Apsolutno postavljen element smješta se prema najbližem pozicioniranom pretku. Okvir tablice to nije bio, pa se natpis smjestio prema cijeloj stranici, izašao iz okvira koji se pomiče i proširio stranicu.
+
+\begin{lstlisting}
+/* src/assets/main.css */
+.sr-only { position: absolute; ... }
+.table-wrap {
+  position: relative;
+  overflow-x: auto;
+  ...
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Uz \texttt{position: relative} okvir tablice postaje taj predak, pa natpis ostaje u okviru koji se pomiče.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Širina stranice na mobitelu (III)}
+Ispravak čuva tvrdnja u testu prijave natjecatelja:
+
+\begin{lstlisting}[language=typescript]
+// e2e/helpers.ts
+export async function expectNoHorizontalScroll(page: Page) {
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth
+      - document.documentElement.clientWidth)
+  expect(overflow, '<@stranica je šira od zaslona@>')
+    .toBeLessThanOrEqual(0)
+}
+\end{lstlisting}
+
+\vspace{0.4em}
+\texttt{scrollWidth} je širina sadržaja, a \texttt{clientWidth} širina vidljivog dijela. Razlika veća od nule znači da se stranica pomiče vodoravno.
+
+\vspace{0.4em}
+Oba kvara prošla su provjeru tipova, jedinične testove i test kroz preglednik na računalu. Uhvatio ih je isti test na uskom zaslonu, jer natjecatelju daje dugo prezime; uz kratka imena natpis ostaje unutar zaslona.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Pokretanje testova}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{3.3cm}L{3.5cm}L{4.8cm}@{}}
+  \toprule
+  \textbf{Razina} & \textbf{Trajanje} & \textbf{Pokreće se} \\
+  \midrule
+  jedinični, frontend & sekunde & pri svakoj izmjeni \\
+  nad API-jem & desetci sekundi & prije svakog \texttt{commita} \\
+  kroz preglednik & desetci sekundi i više & prije spajanja u glavni \texttt{branch} \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Test koji se ne izvodi sam ne izvodi se dugo. Pokretanje se zato veže uz radnju koja se ionako radi, a ne uz nečiju odluku da je vrijeme za provjeru.
+
+\vspace{0.6em}
+Kad se svi testovi pokreću sami na svaku izmjenu u repozitoriju, nijedna razina ne ovisi o tome je li se netko sjetio pokrenuti je.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: nalazi na uskom zaslonu}
+Backend radi nad bazom s početnim podatcima. Testovi se pokreću iz mape \codefile{web}.
+
+\vspace{0.7em}
 \begin{enumerate}
-  \itemsep0.4em
-  \item Dodajte \texttt{data-testid} poljima i gumbu na stranici za prijavu.
-  \item Napišite test koji se prijavljuje kao \texttt{behemot@plreg.hr} i provjerava adresu nakon prijave.
-  \item Napišite drugi test s krivom lozinkom i tvrdnjom da je poruka vidljiva.
-  \item Zaustavite backend i pokrenite oba testa.
-  \item Pokrenite backend bez punjenja početnim podatcima i ponovite drugi korak.
+  \itemsep0.35em
+  \item Pokrenite \texttt{npx playwright test} i zabilježite u kojim se projektima testovi izvode.
+  \item U \codefile{src/components/TableScroll.vue} uklonite atribut koji okviru daje fokus i pokrenite \texttt{npx playwright test -{}-project=mobitel}.
+  \item Pokrenite iste testove s \texttt{-{}-project=računalo}.
+  \item Vratite atribut. U \codefile{src/assets/main.css} nađite deklaraciju koja apsolutno postavljene elemente drži u okviru tablice, uklonite je i ponovite drugi korak.
 \end{enumerate}
 
-\vspace{0.8em}
-Koji je test pao u četvrtom koraku, a koji u petome, i koja razina testa bi svaku od tih pogrešaka uhvatila ranije?
+\vspace{0.7em}
+Po čemu se razlikuju ishodi drugog i trećeg koraka i koji element u četvrtom koraku određuje širinu stranice?
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Sažetak}
 \begin{itemize}
-  \itemsep0.3em
-  \item Test pokazuje da je za zadane ulaze ishod očekivan, ne da je kod ispravan.
-  \item Niža razina pada brže i točnije; viša vidi spoj dijelova.
-  \item Test ima pripremu, jednu radnju i tvrdnju; ime mu je ime pravila.
-  \item Testovi poslužitelja rade nad praznom bazom i zamrznutim vremenom.
-  \item Mjera pokrivenosti broji izvedene retke, ne provjerene tvrdnje.
-  \item Klijentski testovi čuvaju pretvorbu, pohranu i sučelje komponente.
-  \item Grana s pogreškom ima vlastiti test, jer se u radu rijetko vidi.
-  \item Ponašanje okvira i tuđih knjižnica se ne testira.
-  \item Test u pregledniku hvata pogreške iz spoja dijelova.
-  \item Svaki niz testova počinje od istog poznatog stanja.
+  \itemsep0.2em
+  \item Prolazni test pokazuje ishod za zadane ulaze, ne ispravnost koda.
+  \item Niža razina testa pada brže i točnije, a viša vidi spoj dijelova.
+  \item Pokrivenost broji izvedene retke, a ne provjerene tvrdnje.
+  \item Mjera se provjerava retkom za koji se zna da ga test izvodi.
+  \item Neizveden redak otkriva test koji prolazi zbog druge provjere.
+  \item Jedinični test frontenda izvodi se u zoni zapadno od UTC-a.
+  \item Funkcija koja ovisi o današnjem danu prima ga kao argument.
+  \item Podatak na objema stranama čuva test koji čita oba izvora.
+  \item Test se provjerava namjernim kvarom koji ga mora oboriti.
+  \item Test kroz preglednik stvara svoje podatke i traži po ulozi i oznaci.
+  \item Test na uskom zaslonu nalazi kvarove koje računalo ne pokazuje.
 \end{itemize}
 \end{frame}
 
