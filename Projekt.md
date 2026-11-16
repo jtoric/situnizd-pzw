@@ -114,85 +114,89 @@
 
 ---
 
-## **Predavanje 7 — Frontend: arhitektura SPA \+ router \+ layout**
+## **Predavanje 7 — Frontend: arhitektura jednostranične aplikacije, router i raspored** (tag `predavanje-07`)
 
-1. `feat(web): scaffold typescript app with layout, router, and navigation shell`
+1. `feat(web): scaffold Vue app with TypeScript, Vite, router and Pinia`
 
-2. `feat(web): add route structure for admin and club areas`
+2. `feat(web): add types mirroring API response schemas`
 
-3. `chore(web): add eslint/prettier and basic project conventions`
-
-4. `docs: add frontend structure and component guidelines`
+3. `docs: document frontend structure, commands and conventions`
 
 ---
 
-## **Predavanje 8 — Frontend: API komunikacija \+ auth flow (JWT) \+ guards**
+## **Predavanje 8 — Frontend: komunikacija s API-jem, prijava (JWT) i zaštita ruta** (tag `predavanje-08`)
 
-1. `feat(web): add API client wrapper with base URL and interceptors`
+1. `feat(web): add API client with ApiError, token refresh and dev proxy`
 
-2. `feat(web): implement auth store (Pinia) and login page`
+2. `feat(web): add auth store, login view and session restore`
 
-3. `feat(web): add route guards for role-based access (admin/club)`
+3. `feat(web): guard routes by login and role`
 
-4. `feat(web): implement token refresh flow and 401 handling`
+4. `feat(web): add notifications and global error handling`
 
-5. `fix(web): add global error handling and toast/alert pattern`
-
----
-
-## **Predavanje 9 — Frontend: state management \+ UX discipline (lifters \+ prijave)**
-
-1. `feat(web): add lifters list view with loading/error/empty states`
-
-2. `feat(web): add lifter create/edit form with validation`
-
-3. `feat(web): add competitions list and registration form`
-
-4. `feat(web): add my registrations view with status badges`
-
-5. `refactor(web): extract reusable form and table components`
+5. `docs: describe the path of a request through the frontend`
 
 ---
 
-## **Predavanje 10 — Frontend: kompleksne tablice (admin) \+ filter/pagination \+ permission-aware UI**
+## **Predavanje 9 — Frontend: upravljanje stanjem i stanja sučelja (natjecatelji i prijave)** (tag `predavanje-09`)
 
-1. `feat(web): add admin competitions CRUD screens`
+1. `feat(web): add lifters store and lists with loading, error and empty states`
 
-2. `feat(web): add admin registrations table with filters and pagination`
+2. `feat(web): add lifter form with client checks and server field errors`
 
-3. `feat(web): add approve/reject UI with modal and reason`
+3. `feat(web): add competition page with registration form, withdraw and reactivate`
 
-4. `feat(web): add CSV export button and download flow`
-
-5. `fix(web): disable actions based on competition phase (prelim/final/locked)`
+4. `docs: describe where frontend state lives and view states`
 
 ---
 
-## **Predavanje 11 — Testiranje full-stack aplikacije**
+## **Predavanje 10 — Frontend: tablice, filtri, stranice i sučelje organizatora** (tag `predavanje-10`)
 
-1. `test(api): add conftest with async client and db fixtures`
+1. `feat(web): add admin competition list and form with deadlines in Zagreb time`
 
-2. `test(api): add coverage config and fill gaps in rule tests`
+2. `feat(web): add admin clubs list and club creation`
 
-3. `test(web): add vitest setup with util and store unit tests`
+3. `feat(web): add registrations table with filter, pages, search, sort, CSV and phase-aware actions`
 
-4. `test(web): add component tests for form field`
+4. `feat(web): confirm lifter deletion in an accessible dialog`
 
-5. `test(e2e): add playwright login and phase rule tests`
+5. `docs: describe the organizer interface`
 
 ---
 
-## **Predavanje 12 — Frontend: production \+ deploy \+ polish**
+## **Predavanje 11 — Testiranje cjelovite aplikacije** (tag `predavanje-11`)
 
-1. `chore: configure production env and CORS settings for deployment`
+1. `test(api): add coverage config that follows async code in greenlets`
 
-2. `feat(web): add build-time env config and runtime API base handling`
+2. `test(api): cover registration lookup, deadline update and refresh after deactivation`
 
-3. `ci: add pipeline for lint/test/build (api + web)`
+3. `test(web): add Vitest and Playwright, unit tests for lib functions`
 
-4. `docs: add deploy guide (Railway) and production checklist`
+4. `test(web): test lifters store and token refresh with mocked modules`
 
-5. `refactor: final cleanup, remove dead code, tighten types and validation`
+5. `test(e2e): add browser tests for login, registration and deadlines with axe`
+
+6. `fix(web): keep scrollable tables keyboard accessible and inside the page`
+
+7. `docs: describe test levels, coverage and browser tests`
+
+---
+
+## **Predavanje 12 — Produkcija: Docker, nginx, CI i postavljanje** (tag `predavanje-12`)
+
+1. `feat(api): production settings, database health check and first organizer account`
+
+2. `build: add Dockerfiles, nginx config and production compose`
+
+3. `test(e2e): check nginx headers, caching and route fallback against the built app`
+
+4. `ci: run backend, frontend and browser tests on every push`
+
+5. `chore: add database backup with restore check`
+
+6. `docs: add production guide and checklist`
+
+7. `chore: keep LF line endings for shell scripts`
 
 ---
 

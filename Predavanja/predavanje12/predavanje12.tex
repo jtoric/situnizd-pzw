@@ -18,7 +18,7 @@
 \end{enumerate}
 
 \vspace{0.6em}
-Aplikacija dosad radi na jednom računalu, uz tri pokrenuta programa. Ovo predavanje je pretvara u nešto što netko drugi otvori na adresi.
+Aplikacija dosad radi na jednom računalu, s razvojnim vrijednostima koje su javne. Ovo predavanje diže aplikaciju u produkcijskom obliku jednom naredbom i provjerava da radi, da ne kreće s javnom tajnom i da se njezini podatci mogu vratiti iz kopije.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -26,411 +26,1021 @@ Aplikacija dosad radi na jednom računalu, uz tri pokrenuta programa. Ovo predav
 Nakon ovog predavanja student može:
 
 \begin{itemize}
-  \item nabrojiti što se razlikuje između razvoja i produkcije i zašto
-  \item izgraditi klijentski dio i reći što iz izgradnje izlazi
-  \item razlikovati tajnu koja smije biti u klijentu od one koja ne smije
-  \item postaviti bazu, poslužitelj i klijentski dio na javnu adresu
-  \item objasniti zašto poslužitelj svaku nepoznatu adresu vraća kao početnu stranicu
-  \item provesti migracije pri postavljanju nove inačice
+  \itemsep0.3em
+  \item podići aplikaciju u produkcijskom obliku jednom naredbom i objasniti po čemu se taj oblik razlikuje od razvojnog
+  \item razlikovati vrijednost koja smije ući u izgrađeni frontend od tajne koja ostaje na poslužitelju
+  \item pročitati stanje kontejnera i provjeriti zdravlje aplikacije kad baza prestane odgovarati
+  \item provjeriti zaglavlja odgovora i odgovor poslužitelja na osvježenu rutu aplikacije
+  \item napraviti kopiju baze i pokazati da se iz nje mogu vratiti podatci
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Domena primjera}
-Aplikacija ima tri dijela koja se pokreću zasebno: baza u kontejneru, poslužitelj na \texttt{localhost:8000} i klijentski dio na \texttt{localhost:5173}.
+Aplikacija je dovršena. Klub prijavljuje svoje natjecatelje na natjecanje, a organizator objavljuje natjecanja i određuje rokove.
 
 \vspace{0.9em}
-Konfiguracija stoji u datoteci \texttt{.env}, koja nije u repozitoriju. Tajna za potpisivanje tokena u njoj je označena kao razvojna.
+Sve to dosad radi na računalu na kojem se aplikacija razvija: baza u kontejneru, a backend (poslužiteljski dio) i frontend (klijentski dio) u dvama prozorima terminala.
 
 \vspace{0.9em}
-Da bi aplikaciju otvorio klub sa svojeg računala, sva tri dijela moraju postojati negdje drugdje, na adresama koje nisu \texttt{localhost}.
+Savez želi da klubovi aplikaciju otvaraju na adresi, sa svojih računala. Na poslužitelju nitko ne pokreće naredbe nakon ponovnog pokretanja računala, a podatci su stvarni klubovi i stvarni natjecatelji. Kod aplikacije se ne mijenja; mijenja se način na koji se ona gradi, pokreće i konfigurira.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Aplikacija koja radi samo ovdje (I)}
-Upute za pokretanje glase ovako:
-
-\begin{lstlisting}[language=bash]
-docker compose up -d db
-cd api && alembic upgrade head && python -m app.seed
-uvicorn app.main:app --reload
-cd ../web && npm run dev
-\end{lstlisting}
-
-\vspace{0.5em}
-Svaki od tih redaka pretpostavlja ovo računalo: instaliran Docker, datoteku \texttt{.env} koja nije u repozitoriju, i dva programa koji ostaju pokrenuti u dvama prozorima.
-
-\vspace{0.5em}
-Ništa od toga klub nema ni može imati.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Aplikacija koja radi samo ovdje (II)}
-Postavljanje u produkciju nije jedna naredba više. Mijenja se nekoliko stvari odjednom:
-
-\vspace{0.6em}
-\begin{itemize}
-  \itemsep0.45em
-  \item klijentski dio više ne poslužuje razvojni alat nego gotove datoteke
-  \item adrese prestaju biti \texttt{localhost}, pa se mijenja i dopuštenje izvora
-  \item konfiguracija ne dolazi iz datoteke nego iz okoline u kojoj aplikacija radi
-  \item baza nije u kontejneru koji se briše jednom naredbom
-\end{itemize}
-
-\vspace{0.6em}
-Svaka od tih promjena ima svoj razlog i svoju zamku, a većina ih se vidi tek nakon što je aplikacija već vani.
-\end{frame}
-
-% ============================================================
-\sekcija{Razvoj i produkcija}{Što se razlikuje, izgradnja klijentskog dijela, konfiguracija iz okoline i tajne koje ne smiju izaći.}
-
-% ------------------------------------------------------------
-\begin{frame}{Što se razlikuje}
-\vspace{0.3em}
-\begin{center}
-{\small
-\setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{2.9cm}L{4.1cm}L{4.1cm}@{}}
-  \toprule
-   & \textbf{Razvoj} & \textbf{Produkcija} \\
-  \midrule
-  Klijentski dio & modul po modul, uz zamjenu & nekoliko gotovih datoteka \\
-  Konfiguracija & iz datoteke \texttt{.env} & iz varijabli okoline \\
-  Baza & kontejner na istom računalu & zaseban poslužitelj \\
-  Pogreška & ispis s cijelim tragom & poruka bez pojedinosti \\
-  Dopušteni izvor & \texttt{localhost:5173} & adresa aplikacije \\
-  \bottomrule
-\end{tabular}
-}
-\end{center}
-
-\vspace{0.6em}
-Razlike nisu stvar ukusa. Svaka od njih postoji zato što u produkciji vrijedi nešto što u razvoju ne vrijedi: podatci su tuđi, adresa je javna, a program nitko ne gleda dok radi.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Izgradnja klijentskog dijela}
-\begin{lstlisting}[language=bash]
-cd web
-npm run build
-\end{lstlisting}
-
-\vspace{0.4em}
-\begin{lstlisting}[language=bash]
-dist/index.html
-dist/assets/index-a3f21c9b.js
-dist/assets/index-7d1e044a.css
-\end{lstlisting}
-
-\vspace{0.4em}
-Iz svih modula nastaje nekoliko datoteka. Opisi tipova iz njih nestaju, jer ih preglednik ne izvodi, a imena su skraćena i kod je sažet.
-
-\vspace{0.4em}
-U imenu datoteke stoji niz znakova izveden iz njezina sadržaja. Promjena koda daje drugo ime, pa preglednik koji staru inačicu ima spremljenu ne nastavi raditi s njom.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Konfiguracija poslužitelja}
-Poslužitelj konfiguraciju čita kroz jedan razred, a varijabla okoline ima prednost pred datotekom:
+\begin{frame}[fragile]{Token potpisan razvojnim ključem (I)}
+Backend pristupni token potpisuje ključem iz varijable \texttt{JWT\_SECRET} i prihvaća svaki token s ispravnim potpisom. Razvojni ključ stoji u predlošku \texttt{.env.example}, koji je u repozitoriju:
 
 \begin{lstlisting}[language=python]
-# app/core/config.py
-class Settings(BaseSettings):
-    ENV: str = "dev"
-    DATABASE_URL: str
-    JWT_SECRET: str = "change-me"
-    JWT_ISSUER: str = "sit-unizd"
-\end{lstlisting}
-
-\vspace{0.4em}
-Zato se pri postavljanju ne mijenja nijedan redak koda. Iste vrijednosti koje u razvoju stoje u \texttt{.env} postavljaju se kao varijable okoline, a aplikacija ih čita na isti način.
-
-\vspace{0.4em}
-Polje bez zadane vrijednosti, poput \texttt{DATABASE\_URL}, aplikacija traži pri pokretanju. Bez nje se ne pokreće, umjesto da se sruši pri prvom zahtjevu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Konfiguracija klijentskog dijela}
-Klijentski dio nema okolinu u kojoj se izvodi; izvodi se u tuđem pregledniku. Vrijednosti mu se zato upisuju pri izgradnji:
-
-\begin{lstlisting}[language=bash]
-# web/.env.production
-VITE_API_URL=https://api.plreg.hr
-\end{lstlisting}
-
-\vspace{0.4em}
-\begin{lstlisting}[language=typescript]
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL })
-\end{lstlisting}
-
-\vspace{0.4em}
-Alat u kod upisuje samo varijable s predmetkom \texttt{VITE\_}. Ostale prešućuje, zato da tajna ne iziđe slučajno.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Tajne koje ne smiju izaći}
-Vrijednost upisana u klijentski dio nalazi se u datoteci koju preglednik preuzme. Svatko tko aplikaciju otvori može je pročitati.
-
-\vspace{0.9em}
-Zato u klijentu smije stajati samo ono što je ionako javno: adresa API-ja, naziv aplikacije, oznaka inačice. Tajna za potpisivanje tokena, lozinka baze i ključevi vanjskih usluga ostaju na poslužitelju.
-
-\vspace{0.9em}
-Isto vrijedi za repozitorij. Datoteka \texttt{.env} u njega ne ulazi, a predložak \texttt{.env.example} nosi imena varijabli i razvojne vrijednosti, nikad prave.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Tajna koja se mijenja}
-Razvojna tajna stoji u predlošku i time je javna. Za produkciju se stvara nova:
-
-\begin{lstlisting}[language=bash]
-openssl rand -hex 32
-\end{lstlisting}
-
-\vspace{0.5em}
-Tokeni su potpisani tom tajnom, pa njezina promjena čini sve izdane tokene nevaljanima. Svi prijavljeni korisnici time odmah ispadaju iz aplikacije.
-
-\vspace{0.5em}
-To je u produkciji posljedica s kojom se računa, a ujedno i jedini način da se pristup oduzme svima odjednom.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vježba: što je završilo u izgrađenom kodu}
-Radite u mapi \codefile{web}.
-
-\vspace{0.8em}
-\begin{enumerate}
-  \itemsep0.4em
-  \item U \texttt{.env} dodajte \texttt{VITE\_API\_URL} i varijablu \texttt{TAJNA} s prepoznatljivom vrijednošću.
-  \item Pokrenite izgradnju i pogledajte koje su datoteke nastale u \codefile{dist}.
-  \item Potražite obje vrijednosti u nastalim datotekama.
-  \item Preimenujte \texttt{TAJNA} u \texttt{VITE\_TAJNA}, izgradite ponovno i potražite je opet.
-  \item Usporedite imena datoteka iz drugog i četvrtog koraka.
-\end{enumerate}
-
-\vspace{0.8em}
-Koju ste od dviju vrijednosti našli u trećem koraku, a koju u četvrtom, i zašto se imena datoteka razlikuju?
-\end{frame}
-
-% ============================================================
-\sekcija{Postavljanje aplikacije}{Tri dijela i njihova mjesta, baza i migracije, posluživanje izgrađenih datoteka i adrese koje poslužitelj ne poznaje.}
-
-% ------------------------------------------------------------
-\begin{frame}{Tri dijela i tri mjesta}
-\vspace{0.3em}
-\begin{center}
-{\small
-\setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{2.8cm}L{4.2cm}L{4.1cm}@{}}
-  \toprule
-  \textbf{Dio} & \textbf{Što mu treba} & \textbf{Što daje} \\
-  \midrule
-  baza & trajna pohrana, sigurnosna kopija & adresu za spajanje \\
-  poslužitelj & Python, migracije, varijable okoline & adresu API-ja \\
-  klijentski dio & posluživanje gotovih datoteka & adresu aplikacije \\
-  \bottomrule
-\end{tabular}
-}
-\end{center}
-
-\vspace{0.6em}
-Platforme za postavljanje nude sva tri kao zasebne usluge. Svaka dobiva svoju adresu, a aplikacija se sastavlja time što se te adrese upišu jedna drugoj u konfiguraciju.
-
-\vspace{0.4em}
-Redoslijed postavljanja slijedi iz toga: prvo baza, pa poslužitelj, pa klijentski dio.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Baza izvan razvojnog računala}
-Baza iz \texttt{docker-compose.yml} postoji radi razvoja. Njezin volumen briše se jednom naredbom, a dostupna je samo s tog računala.
-
-\begin{lstlisting}[language=bash]
-DATABASE_URL=postgresql+asyncpg://korisnik:lozinka@host:5432/baza
-\end{lstlisting}
-
-\vspace{0.4em}
-U produkciji bazu drži usluga koja je čuva i radi sigurnosne kopije. Aplikacija od nje dobiva isti oblik adrese, pa se mijenja samo vrijednost varijable.
-
-\vspace{0.4em}
-Predmetak \texttt{postgresql+asyncpg} ostaje, jer imenuje upravljački program kojim aplikacija radi, a ne mjesto na kojem je baza.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Migracije pri postavljanju}
-Nova inačica koda često traži i novi oblik tablica. Migracije se zato izvode kao korak postavljanja, prije nego nova inačica počne primati zahtjeve:
-
-\begin{lstlisting}[language=bash]
-alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000
-\end{lstlisting}
-
-\vspace{0.4em}
-Stvaranje tablica iz modela u produkciji ne dolazi u obzir: ono ne zna što je u bazi već upisano i ne nosi korak unatrag.
-
-\vspace{0.4em}
-Punjenje početnim podatcima je razvojni alat. U produkciji se upisuje samo prvi račun organizatora, i to jednom.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Posluživanje izgrađenih datoteka}
-Klijentski dio nakon izgradnje nema ništa što se izvodi na poslužitelju. To su obične datoteke i poslužuje ih bilo što što zna vratiti datoteku na zahtjev:
-
-\begin{lstlisting}[language=bash]
-npm run build
-npx serve dist        <@\kom{isto se dobije i na platformi za postavljanje}@>
-\end{lstlisting}
-
-\vspace{0.4em}
-Zato se klijentski dio postavlja kao statični sadržaj, bez pokrenutog procesa. Platforme to nude kao najjeftiniju uslugu, a mnoge i bez naplate.
-
-\vspace{0.4em}
-Jedna postavka ipak je potrebna, i bez nje aplikacija radi sve dok korisnik ne osvježi stranicu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Adresa koju poslužitelj ne poznaje}
-Korisnik otvori \texttt{/lifters} i osvježi stranicu. Preglednik tu adresu šalje poslužitelju, koji u svojim datotekama traži \texttt{lifters} i ne nalazi je, pa vraća \texttt{404}.
-
-\vspace{0.9em}
-Rute postoje samo u pokrenutoj aplikaciji, a ona se pokreće tek nakon što se učita \texttt{index.html}. Poslužitelj za njih ne zna.
-
-\vspace{0.9em}
-Zato se postavlja pravilo: adresu koja ne odgovara nijednoj datoteci vrati kao \texttt{index.html}. Aplikacija se pokrene, pročita adresu iz trake i prikaže pripadni prikaz.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vježba: osvježena stranica}
-Radite s izgrađenim klijentskim dijelom.
-
-\vspace{0.8em}
-\begin{enumerate}
-  \itemsep0.4em
-  \item Izgradite projekt i poslužite mapu \codefile{dist}.
-  \item Otvorite početnu adresu i kroz navigaciju dođite do popisa natjecatelja.
-  \item Osvježite stranicu i pogledajte što je poslužitelj vratio.
-  \item Zabilježite adresu i statusni kod iz kartice Mreža.
-  \item Pokrenite razvojni poslužitelj i ponovite treći korak.
-\end{enumerate}
-
-\vspace{0.8em}
-Zašto se treći i peti korak razlikuju, iako je kod isti?
-\end{frame}
-
-% ============================================================
-\sekcija{Što se mijenja kad aplikacija izađe van}{Dopuštenje izvora, veza koju nitko ne čita, pogreške i dnevnik, popis provjere prije predaje.}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Dopuštenje izvora u produkciji}
-U razvoju je dopušten izvor \texttt{localhost:5173}. Nakon postavljanja to je adresa koja više ne postoji, pa svaki zahtjev iz aplikacije ostaje bez odgovora koji skripta smije pročitati.
-
-\begin{lstlisting}[language=python]
-# app/main.py
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[settings.FRONTEND_ORIGIN],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+import time, jwt
+token = jwt.encode(
+    {"sub": "1", "type": "access", "iss": "sit-unizd",
+     "exp": int(time.time()) + 900},
+    "dev-only-secret-change-me-in-production-0123456789",
+    algorithm="HS256",
 )
 \end{lstlisting}
 
-\vspace{0.4em}
-Izvor dolazi iz konfiguracije, kao i sve ostalo što se razlikuje među okolinama. Zvjezdica na tom mjestu dopušta svakoj stranici čitanje odgovora i u produkciji ne stoji.
+\begin{lstlisting}
+GET /auth/me    Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+200 {"id": 1, "username": "admin@plreg.hr", "role": "admin", ...}
+\end{lstlisting}
+
+\vspace{0.2em}
+Nitko se nije prijavio, a backend pošiljatelja prihvaća kao organizatora. S razvojnim ključem token može potpisati svatko tko čita repozitorij.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Veza koju nitko ne čita}
-Token putuje u zaglavlju svakog zahtjeva. Poslan nezaštićenom vezom, čitljiv je svakome tko promet prati, a time je i prijava njegova.
+\begin{frame}{Token potpisan razvojnim ključem (II)}
+Prvi odgovor je ključ na poslužitelju zamijeniti tajnim. On vrijedi dok se netko toga sjeti: s javnim ključem aplikacija radi jednako kao s tajnim, pa propust ništa ne javlja.
 
 \vspace{0.9em}
-Zato se aplikacija poslužuje preko \texttt{https}. Platforme ga daju same i obnavljaju potvrdu bez zahvata, pa je jedino što ostaje provjeriti da se nijedan zahtjev ne šalje na \texttt{http}.
+Isti propust imaju i ostali dijelovi razvojne okoline: početni podatci s lozinkama iz koda, opis API-ja sa svim rutama i baza otvorena na vratima računala. Sve to radi i na poslužitelju, a ondje ne bi smjelo postojati.
 
 \vspace{0.9em}
-Zahtjev s nezaštićene stranice prema zaštićenoj preglednik ionako odbija, pa pomiješane adrese padaju odmah, a ne tiho.
+Drugi odgovor je razliku zapisati u projekt. Produkcija dobiva vlastitu konfiguraciju i vlastito pokretanje, a aplikacija odbija krenuti kad tajna nedostaje ili je javna. Taj oblik aplikacije opisuje jedna datoteka, \codefile{docker-compose.prod.yml}.
 \end{frame}
 
-% ------------------------------------------------------------
-\begin{frame}{Pogreška koju korisnik vidi}
-U razvoju aplikacija radi s uključenim ispisom pojedinosti: odgovor na neuhvaćenu iznimku nosi trag poziva, imena datoteka i retke koda.
-
-\vspace{0.9em}
-U produkciji to je opis unutrašnjosti aplikacije, dan svakome tko pošalje zahtjev. Zato odgovor ostaje na kratkoj poruci i statusu, a pojedinosti idu u dnevnik.
-
-\vspace{0.9em}
-Postavka koja to razdvaja je varijabla \texttt{ENV}, ista ona koja u razvoju uključuje ispis upita prema bazi.
-\end{frame}
+% ============================================================
+\sekcija{Razvoj i produkcija}{Razlike dvaju oblika aplikacije, izgradnja frontenda, vrijednosti koje ulaze u izgrađeni kod, tajne izvan repozitorija i backend koji ne kreće s javnim ključem.}
 
 % ------------------------------------------------------------
-\begin{frame}{Što ide u dnevnik}
+\begin{frame}{Razvojni i produkcijski oblik}
 \vspace{0.3em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
 \renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{4.6cm}L{6.6cm}@{}}
+\begin{tabular}{@{}L{3.2cm}L{4.2cm}L{4.0cm}@{}}
   \toprule
-  \textbf{Zapisuje se} & \textbf{Ne zapisuje se} \\
+   & \textbf{Razvoj} & \textbf{Produkcija} \\
   \midrule
-  metoda, putanja, statusni kod & lozinka, ni u jednom obliku \\
-  trajanje obrade & token i zaglavlje \texttt{Authorization} \\
-  oznaka korisnika & cijelo tijelo zahtjeva \\
-  trag neuhvaćene iznimke & osobni podatci koji nisu potrebni \\
+  \texttt{JWT\_SECRET} & iz predloška, javan & tajan \\
+  opis API-ja & uključen & isključen \\
+  frontend & Vite, modul po modul & izgrađene datoteke \\
+  prosljeđivanje \texttt{/api} & Vite & nginx \\
+  baza & vrata otvorena na računalu & samo na unutarnjoj mreži \\
+  početni podatci & klubovi s lozinkama iz koda & samo organizator \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Dnevnik je trajan i čita ga više ljudi nego bazu. Podatak koji u njemu ne treba stajati obično ondje završi jednom jedinom naredbom za ispis, ostavljenom pri traženju pogreške.
+Razlike slijede iz okolnosti produkcije: adresa je javna, podatci su stvarni, a aplikaciju nitko ne nadzire dok radi.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Popis provjere prije predaje}
-\begin{itemize}
-  \itemsep0.4em
-  \item Svježi klon se pokreće prema uputama iz \codefile{README.md}, bez usmene dopune.
-  \item \texttt{.env} nije u repozitoriju, a \texttt{.env.example} nosi sva imena varijabli.
-  \item Tajna u produkciji nije ona iz predloška.
-  \item Migracije prolaze i unatrag, nad bazom koja ima zapise.
-  \item Svi testovi prolaze, a izgradnja klijentskog dijela završava bez pogreške.
-  \item Dopušteni izvor je adresa aplikacije, bez zvjezdice.
-  \item Nepoznata adresa vraća početnu stranicu, pa osvježavanje radi.
-  \item Povijest izmjena pokazuje rad kroz semestar.
-\end{itemize}
+\begin{frame}[fragile]{Izgradnja frontenda}
+Razvojni poslužitelj pregledniku šalje module jedan po jedan. Za produkciju se moduli slažu u gotove datoteke:
+
+\begin{lstlisting}[language=bash]
+cd web && npm run build
+\end{lstlisting}
+
+\begin{lstlisting}
+dist/index.html
+dist/assets/index-Cq4PozwH.js
+dist/assets/index-CfnOPL9v.css
+dist/assets/LiftersView-CLijwUws.js
+...
+\end{lstlisting}
+
+\vspace{0.2em}
+Naredba prvo provjerava tipove, pa tek onda gradi: kod s pogreškom u tipovima ne može biti izgrađen. Prikaz koji se učitava tek na svojoj ruti dobiva vlastitu datoteku.
+
+\vspace{0.3em}
+Niz znakova u imenu, \texttt{Cq4PozwH}, izveden je iz sadržaja datoteke. Ako se sadržaj promijeni, mijenja se i ime.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: promijenjena tajna}
-Backend je pokrenut, a vi ste prijavljeni u aplikaciji.
+\begin{frame}[fragile]{Vrijednost upisana pri izgradnji}
+Frontend se izvodi u pregledniku korisnika, pa okoline iz koje bi čitao konfiguraciju nema. Vite vrijednost zato upisuje pri izgradnji, na mjesto na kojem je kod čita, i to samo za varijable s predmetkom \texttt{VITE\_}:
+
+\begin{lstlisting}[language=typescript]
+// web/src/api/http.ts
+export const API_BASE: string = import.meta.env.VITE_API_URL ?? '/api'
+\end{lstlisting}
+
+\vspace{0.4em}
+Upisana vrijednost postaje dio datoteke iz \codefile{dist/assets/}, a tu datoteku preuzima svatko tko otvori aplikaciju. Vrijednost je zato javna, kakvo god joj bilo ime.
+
+\vspace{0.4em}
+U frontend smije ući adresa API-ja. Ključ za potpis, lozinka baze i pristupni ključ vanjske usluge ne smiju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Mjesto vrijednosti}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{2.7cm}L{3.5cm}L{3.1cm}L{2.3cm}@{}}
+  \toprule
+  \textbf{Vrijednost} & \textbf{Mjesto} & \textbf{Tko je vidi} & \textbf{Promjena traži} \\
+  \midrule
+  \texttt{VITE\_API\_URL} & izgrađeni frontend & svatko tko otvori aplikaciju & novu izgradnju \\
+  \texttt{JWT\_SECRET}, \texttt{DB\_PASSWORD} & \codefile{.env.prod} na poslužitelju & tko ima pristup poslužitelju & ponovno pokretanje \\
+  \texttt{ENV}, \texttt{JWT\_ISSUER} & datoteka Composea u repozitoriju & svatko tko čita repozitorij & ponovno pokretanje \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Koliko je vrijednost javna, određuje mjesto na kojem završi. Projekt ne zadaje \texttt{VITE\_API\_URL}, pa frontend zahtjeve šalje na relativnu adresu \texttt{/api}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Tajne izvan repozitorija}
+\begin{lstlisting}
+# .env.prod.example
+...
+DB_PASSWORD=
+JWT_SECRET=
+<@\kom{Vrata na računalu na kojima nginx prima zahtjeve}@>
+WEB_PORT=8080
+\end{lstlisting}
+
+\vspace{0.3em}
+Predložak nosi imena varijabli s praznim vrijednostima i ulazi u repozitorij. Datoteka \codefile{.env.prod} s pravim vrijednostima nastaje na poslužitelju kopiranjem predloška, a git je zanemaruje (\codefile{.gitignore}).
+
+\vspace{0.4em}
+\begin{konvencija}[Izbor, ne pravilo]
+Projekt tajne stvara naredbom \texttt{openssl rand -hex 32}. Heksadekadski zapis ima samo znamenke i slova od \texttt{a} do \texttt{f}, pa lozinka baze ulazi u adresu \texttt{DATABASE\_URL} bez kodiranja; znakovi \texttt{@}, \texttt{/} i \texttt{:} u adresi imaju značenje.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Varijabla bez vrijednosti (I)}
+Datoteka \codefile{.env.prod} može nedostajati ili imati praznu vrijednost. Compose vrijednosti iz nje umeće u opis servisa:
+
+\begin{lstlisting}
+# docker-compose.prod.yml
+  db:
+    environment:
+      ...
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?postavite DB_PASSWORD u .env.prod}
+  api:
+    environment:
+      ENV: prod
+      DATABASE_URL: postgresql+asyncpg://pl_user:${DB_PASSWORD}@db:5432/pl_reg
+      JWT_SECRET: ${JWT_SECRET:?postavite JWT_SECRET u .env.prod}
+\end{lstlisting}
+
+\vspace{0.2em}
+Oblik \texttt{\$\{JWT\_SECRET:?poruka\}} zaustavlja Compose prije pokretanja ijednog kontejnera, ako varijabla nije zadana ili je prazna.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Varijabla bez vrijednosti (II)}
+Pokretanje s praznim \texttt{JWT\_SECRET} staje prije nego nastane ijedan kontejner:
+
+\begin{lstlisting}
+error while interpolating services.api.environment.JWT_SECRET:
+required variable JWT_SECRET is missing a value:
+postavite JWT_SECRET u .env.prod
+\end{lstlisting}
+
+\vspace{0.4em}
+Poruka imenuje varijablu i datoteku u kojoj je treba zadati.
+
+\vspace{0.4em}
+Bez oblika s upitnikom prazna vrijednost stigla bi do kontejnera, a pogreška bi se vidjela tek u zapisniku (engl. \emph{log}) jednoga od njih, nakon što se ostali već pokrenu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Provjera ključa pri pokretanju (I)}
+Compose provjerava da vrijednost postoji. Backend provjerava je li tajna:
+
+\begin{lstlisting}[language=python]
+# api/app/core/config.py
+class Settings(BaseSettings):
+    ...
+    JWT_SECRET: str = "change-me"
+    ...
+    @model_validator(mode="after")
+    def secret_is_private_outside_dev(self):
+        if self.ENV != "dev" and (
+            self.JWT_SECRET in PUBLIC_SECRETS or len(self.JWT_SECRET) < 32
+        ):
+            raise ValueError(
+                "JWT_SECRET mora biti tajan i imati barem 32 znaka; "
+                "stvoriti ga naredbom openssl rand -hex 32"
+            )
+        return self
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Provjera ključa pri pokretanju (II)}
+Skup \texttt{PUBLIC\_SECRETS} nosi ključeve koji stoje u kodu i u predlošku. Postavke se čitaju pri uvozu modula, prije prvog zahtjeva, pa s javnim ili kratkim ključem backend ne kreće, a zapisnik kontejnera završava porukom:
+
+\begin{lstlisting}
+pydantic_core._pydantic_core.ValidationError: 1 validation error
+for Settings
+  Value error, JWT_SECRET mora biti tajan i imati barem 32 znaka;
+  stvoriti ga naredbom openssl rand -hex 32
+\end{lstlisting}
+
+\vspace{0.4em}
+Aplikacija koja ne kreće odmah se primijeti. Aplikacija koja radi s javnim ključem ne pokazuje nikakav kvar, sve dok netko ne potpiše vlastiti token.
+
+\vspace{0.4em}
+U razvoju (\texttt{ENV=dev}) javni ključ i dalje vrijedi, pa razvojna okolina radi bez izmjene. Oba smjera pravila provjeravaju testovi u \codefile{api/tests/test\_health.py}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Opis API-ja u produkciji (I)}
+Opis API-ja i Swagger koji se iz njega gradi nabrajaju svaku rutu, s primjerom tijela. Na javnoj adresi taj popis dobiva svatko. Backend ga zato objavljuje samo u razvoju:
+
+\begin{lstlisting}[language=python]
+# api/app/main.py
+def create_app(config: Settings = settings) -> FastAPI:
+    setup_logging(debug=config.is_dev)
+    app = FastAPI(
+        title=config.APP_NAME,
+        debug=config.is_dev,
+        openapi_url="/openapi.json" if config.is_dev else None,
+    )
+    ...
+\end{lstlisting}
+
+\vspace{0.2em}
+Bez opisa nema ni Swaggera, jer se Swagger gradi iz opisa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Opis API-ja u produkciji (II)}
+U produkcijskom obliku obje adrese vraćaju \texttt{404}:
+
+\begin{lstlisting}
+GET /api/openapi.json   404
+GET /api/docs           404
+\end{lstlisting}
+
+\vspace{0.6em}
+\begin{konvencija}[Izbor, ne pravilo]
+Rute se mogu iščitati i iz izgrađenog frontenda, pa isključen opis API ne skriva. Projekt ga isključuje zato što ga klijent ne treba. Pristup i dalje provjerava backend, pri svakom zahtjevu.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: vrijednost u izgrađenom kodu}
+Paketi frontenda su instalirani. Vite pri izgradnji čita i datoteku \codefile{.env.production.local}, ako postoji:
+
+\begin{lstlisting}[language=bash]
+VITE_API_URL=https://api.primjer.hr
+\end{lstlisting}
+
+\begin{enumerate}
+  \itemsep0.15em
+  \item Pokrenite \texttt{npm run build} i prepišite imena datoteka iz \codefile{dist/assets} koja počinju s \texttt{index}.
+  \item Nađite datoteku iz \codefile{dist/assets} u kojoj stoji tekst \texttt{network\_error}.
+  \item U mapi \codefile{web} napravite \codefile{.env.production.local} s retkom iz isječka, ponovite izgradnju i potražite adresu \texttt{api.primjer.hr} u \codefile{dist/assets}.
+  \item Usporedite imena datoteka s onima iz prvog koraka.
+  \item Obrišite \codefile{.env.production.local} i ponovite izgradnju, da \codefile{dist} opet odgovara projektu.
+\end{enumerate}
+
+\vspace{0.2em}
+Koje su datoteke promijenile ime između prvog i trećeg koraka i zašto, i tko sve može pročitati adresu iz isječka?
+\end{frame}
+
+% ============================================================
+\sekcija{Postavljanje aplikacije}{Slika i kontejner, slike backenda i frontenda, servisi i redoslijed njihova pokretanja, provjera zdravlja koja uključuje bazu i prvi račun organizatora.}
+
+% ------------------------------------------------------------
+\begin{frame}{Slika i kontejner (I)}
+Predložak dokumenta sadrži ono što treba svaki dokument koji iz njega nastane: zaglavlje, stilove i prazna polja. Iz jednog predloška nastaje bilo koliko dokumenata, a izmjena dokumenta ne mijenja predložak.
+
+\vspace{0.9em}
+Slika (engl. \emph{image}) je takav predložak za program: operacijski sustav, jezik, paketi i kod aplikacije, složeni u jedan datotečni sustav. Kontejner je pokrenuta kopija slike. Kontejner se briše i stvara iznova, a slika ostaje ista.
+
+\vspace{0.9em}
+Opis slike stoji u datoteci \codefile{Dockerfile}, uz kod koji slika nosi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Slika i kontejner (II)}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{3.0cm}L{3.9cm}L{4.4cm}@{}}
+  \toprule
+   & \textbf{Program na računalu} & \textbf{Kontejner iz slike} \\
+  \midrule
+  Python i paketi & ono što je instalirano na računalu & ono što je zapisano u slici \\
+  pokretanje & rukom, u terminalu & Docker, prema opisu u datoteci \\
+  isto okruženje drugdje & slaže se iznova & ista slika, na svakom računalu s Dockerom \\
+  cijena & ništa dodatno & izgradnja slike nakon izmjene koda \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Docker Compose iz jedne datoteke pokreće više kontejnera i opisuje njihove veze. Projekt ga koristi od početka, za razvojnu bazu; produkcijski oblik dodaje backend i frontend.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Slika backenda (I)}
+\begin{lstlisting}
+# api/Dockerfile
+FROM python:3.13-slim
+...
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY alembic.ini .
+COPY alembic ./alembic
+COPY app ./app
+...
+\end{lstlisting}
+
+\vspace{0.3em}
+Svaka naredba u opisu daje jedan sloj slike. Docker sloj ponovno koristi dok se ne promijeni ono od čega nastaje.
+
+\vspace{0.3em}
+Paketi zato idu prije koda: izmjena jedne rute mijenja tek sloj s kodom, pa ne pokreće ponovnu instalaciju paketa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Slika backenda (II)}
+\begin{lstlisting}
+# api/Dockerfile
+...
+RUN useradd --create-home --uid 1000 appuser
+USER appuser
+EXPOSE 8000
+
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash]
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec api whoami
+appuser
+\end{lstlisting}
+
+\vspace{0.3em}
+Bez naredbe \texttt{USER} proces bi u kontejneru radio kao \texttt{root}. Tko probije aplikaciju, dobio bi sva prava nad kontejnerom; ovako ima prava korisnika koji ne smije mijenjati ni kod koji izvodi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Migracije pri pokretanju}
+Nova inačica koda može tražiti i novi oblik tablica. Backend zato prije pokretanja izvodi \texttt{alembic upgrade head}. Zapisnik prvog pokretanja nad praznom bazom izgleda ovako:
+
+\begin{lstlisting}
+api-1 | INFO  [alembic.runtime.migration] Running upgrade  -> 001, ...
+api-1 | INFO  [alembic.runtime.migration] Running upgrade 001 -> 002, ...
+api-1 | INFO  [alembic.runtime.migration] Running upgrade 002 -> 003, ...
+api-1 | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+\end{lstlisting}
+
+\vspace{0.2em}
+Nad bazom koja je već na zadnjoj migraciji naredba ne radi ništa, pa se smije izvesti pri svakom pokretanju.
+
+\vspace{0.3em}
+\begin{konvencija}[Razlikuje se od projekta do projekta]
+Projekt pokreće jedan kontejner backenda. Uz više njih svaki bi pri pokretanju pokušao izvesti migracije, pa se one tada izdvajaju u zaseban korak koji se izvodi jednom.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Slika frontenda}
+\begin{lstlisting}
+# web/Dockerfile
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:1.29-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+\end{lstlisting}
+
+\vspace{0.3em}
+Opis ima dvije faze. Node, paketi i izvorni kod trebaju samo za izgradnju; konačna slika počinje iznova od nginxa i iz prve faze preuzima jedino mapu \codefile{dist}.
+
+\vspace{0.3em}
+Na poslužitelju tako ne radi nijedan program koji izvodi JavaScript.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Osnovne slike}
+Svaki opis počinje od gotove slike, a baza je gotova slika bez vlastitog opisa:
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{2.8cm}L{3.6cm}L{4.6cm}@{}}
+  \toprule
+  \textbf{Servis} & \textbf{Osnovna slika} & \textbf{Uloga} \\
+  \midrule
+  \texttt{api} & \texttt{python:3.13-slim} & Python za backend \\
+  \texttt{web}, prva faza & \texttt{node:24-alpine} & samo izgradnja \\
+  \texttt{web} & \texttt{nginx:1.29-alpine} & posluživanje mape \codefile{dist} \\
+  \texttt{db} & \texttt{postgres:16} & baza \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+\begin{konvencija}[Izbor, ne pravilo]
+Osnovne slike i njihove inačice izbor su projekta. Inačice \texttt{slim} i \texttt{alpine} izostavljaju alate koji programu pri radu ne trebaju, pa je slika manja.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Servisi produkcijskog oblika}
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  kut/.style={draw=lineclr,fill=tint,rounded corners=2pt,inner sep=5pt,minimum height=10mm,minimum width=20mm,align=center},
+  str/.style={-{Stealth[length=2mm]},draw=ink2,thick}
+]
+  \draw[dashed,draw=ink2,rounded corners=3pt] (2.55,-1.75) rectangle (12.0,1.15);
+  \node[font=\scriptsize,color=mutedclr,anchor=north east] at (11.9,1.1) {unutarnja mreža Composea};
+
+  \node[kut] (b) at (0.6,0) {preglednik};
+  \node[kut] (w) at (4.2,0) {\texttt{web}\\nginx};
+  \node[kut] (a) at (7.5,0) {\texttt{api}\\uvicorn};
+  \node[kut] (d) at (10.7,0) {\texttt{db}\\PostgreSQL};
+
+  \draw[str] (b) -- node[above,font=\scriptsize]{\texttt{:8080}} (w);
+  \draw[str] (w) -- node[above,font=\scriptsize]{\texttt{/api/}} node[below,font=\scriptsize]{\texttt{api:8000}} (a);
+  \draw[str] (a) -- node[above,font=\scriptsize]{\texttt{db:5432}} (d);
+
+  \node[font=\scriptsize,color=mutedclr,align=center] at (4.2,-1.25) {ostale putanje:\\datoteke iz \texttt{dist/}};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.6em}
+Izvana su dostupna samo vrata nginxa. Backend i baza imaju vrata samo na unutarnjoj mreži, a servisi se međusobno nalaze po imenu: \texttt{api} i \texttt{db} su imena servisa iz \codefile{docker-compose.prod.yml}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Baza na unutarnjoj mreži}
+\begin{lstlisting}
+# docker-compose.prod.yml
+services:
+  db:
+    ...
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ...
+\end{lstlisting}
+
+\vspace{0.2em}
+{\small
+\setlength{\tabcolsep}{8pt}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  \texttt{NAME} & \texttt{STATUS} & \texttt{PORTS} \\
+  \midrule
+  \texttt{plreg-prod-api-1} & \texttt{Up 14 minutes (healthy)} & \texttt{8000/tcp} \\
+  \texttt{plreg-prod-db-1} & \texttt{Up 14 minutes (healthy)} & \texttt{5432/tcp} \\
+  \texttt{plreg-prod-web-1} & \texttt{Up 14 minutes} & \texttt{0.0.0.0:8080->80/tcp} \\
+  \bottomrule
+\end{tabular}
+}
+
+\vspace{0.3em}
+Razvojna baza ima stavku \texttt{ports}, da do nje s računala dođu migracije i testovi. Produkcijska je nema, pa vrata \texttt{5432} postoje samo na unutarnjoj mreži.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ime projekta i volumen}
+Obje datoteke Composea stoje u istoj mapi i obje imaju volumen \texttt{pgdata}. Compose zadano uzima ime projekta iz imena mape, a volumen dobiva ime projekta kao predmetak, pa bi produkcijski oblik dijelio bazu s razvojnim.
+
+\begin{lstlisting}
+# docker-compose.prod.yml
+name: plreg-prod
+\end{lstlisting}
+
+\begin{lstlisting}
+DRIVER    VOLUME NAME
+local     plreg-prod_pgdata
+local     situnizd-pzw-projekt_pgdata
+\end{lstlisting}
+
+\vspace{0.3em}
+Vlastito ime odvaja i volumen. Brisanje razvojne baze naredbom \texttt{docker compose down -v} produkcijske podatke ne dira.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Redoslijed pokretanja}
+\begin{lstlisting}
+# docker-compose.prod.yml
+  api:
+    build: ./api
+    ...
+    depends_on:
+      db:
+        condition: service_healthy
+    ...
+\end{lstlisting}
+
+\vspace{0.2em}
+Uvjet \texttt{service\_healthy} čeka da servis o kojem se ovisi bude zdrav, a ne samo pokrenut. Baza koja se tek inicijalizira ne prima veze, pa bi backend bez tog uvjeta pao na migracijama.
+
+\vspace{0.3em}
+Servis \texttt{web} istim uvjetom čeka backend, da nginx prve zahtjeve ne prosljeđuje backendu koji još ne odgovara.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zdravlje servisa}
+\begin{lstlisting}
+# docker-compose.prod.yml
+  api:
+    ...
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/')"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+    ...
+\end{lstlisting}
+
+\vspace{0.3em}
+Docker naredbu iz \texttt{test} izvodi unutar kontejnera. Servis je zdrav dok naredba uspijeva, a nezdrav kad zaredom ne uspije onoliko puta koliko zadaje \texttt{retries}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ponovno pokretanje kontejnera}
+Na poslužitelju nitko ne pokreće aplikaciju nakon što se ona sruši ili nakon ponovnog pokretanja računala. Ponašanje nakon pada zadaje se uz svaki servis; isječak pokazuje backend:
+
+\begin{lstlisting}
+# docker-compose.prod.yml
+  api:
+    ...
+    restart: unless-stopped
+\end{lstlisting}
+
+\vspace{0.3em}
+Vrijednost \texttt{unless-stopped} kontejner koji se zaustavi pokreće ponovno, i nakon ponovnog pokretanja Dockera, osim kad je zaustavljen rukom.
+
+\vspace{0.3em}
+\begin{konvencija}[Izbor, ne pravilo]
+Politika ponovnog pokretanja, kao i razmaci i broj provjera zdravlja, izbor su projekta.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ruta za provjeru zdravlja}
+Proces koji radi, a ne dolazi do baze, na svaki bi pravi zahtjev odgovorio sa \texttt{500}. Ruta koju poziva provjera zdravlja zato pita i bazu, upitom koji ne čita podatke:
+
+\begin{lstlisting}[language=python]
+# api/app/routers/health.py
+@router.get("/")
+async def health(db: AsyncSession = Depends(get_db)):
+    try:
+        await db.execute(text("SELECT 1"))
+    except (SQLAlchemyError, OSError):
+        return JSONResponse(status_code=503, content={"status": "error"})
+    return {"status": "ok"}
+\end{lstlisting}
+
+\begin{lstlisting}
+GET /api/health/   200  {"status":"ok"}
+<@\kom{nakon docker compose ... stop db}@>
+GET /api/health/   503  {"status":"error"}
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Početni podatci u produkciji}
+Početni podatci za razvoj stvaraju organizatora i dva kluba. Lozinke im stoje u kodu, a naredba ih na kraju i ispisuje:
+
+\begin{lstlisting}[language=bash]
+python -m app.seed
+\end{lstlisting}
+
+\begin{lstlisting}
+Seed gotov.
+  organizator: admin@plreg.hr / admin123
+  PLK Behemot: behemot@plreg.hr / behemot123
+  PK Sokol: sokol@plreg.hr / sokol123
+  ...
+\end{lstlisting}
+
+\vspace{0.3em}
+Na poslužitelju bi to bili stvarni računi s lozinkama koje zna svatko tko čita repozitorij, a među njima i račun organizatora.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prvi račun organizatora}
+U produkciji se upisuje samo organizator, s lozinkom iz okoline:
+
+\begin{lstlisting}[language=python]
+# api/app/create_admin.py
+def main() -> int:
+    username = os.environ.get("ADMIN_USERNAME", "").strip()
+    password = os.environ.get("ADMIN_PASSWORD", "")
+    if not username or len(password) < MIN_PASSWORD_LENGTH:
+        print(...)
+        return 1
+    created = asyncio.run(create_admin(username, password))
+    ...
+\end{lstlisting}
+
+\begin{lstlisting}
+Potrebni su ADMIN_USERNAME i ADMIN_PASSWORD (barem 12 znakova).
+Organizator je stvoren.
+<@Račun već postoji; nije mijenjan.@>
+\end{lstlisting}
+
+\vspace{0.2em}
+Najmanja duljina lozinke u ovom je projektu dvanaest znakova. Račun koji već postoji naredba ne mijenja, pa se smije pokrenuti više puta.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: produkcijski oblik iz praznog stanja}
+Produkcijski oblik aplikacije nije pokrenut ili je obrisan naredbom \texttt{down -v}. Naredba iz isječka pokreće se iz korijena repozitorija, s riječima iz koraka umjesto \texttt{<naredba>}:
+
+\begin{lstlisting}[language=bash]
+docker compose -f docker-compose.prod.yml --env-file .env.prod <naredba>
+\end{lstlisting}
+
+\begin{enumerate}
+  \itemsep0.2em
+  \item Kopirajte \codefile{.env.prod.example} u \codefile{.env.prod}, bez izmjena, i pokrenite naredbu s \texttt{up -d -{}-build}.
+  \item U \codefile{.env.prod} upišite \texttt{DB\_PASSWORD} iz \texttt{openssl rand -hex 32} i \texttt{JWT\_SECRET=kratak}, pa ponovite prvi korak bez kopiranja.
+  \item Pokrenite naredbu s \texttt{logs api} i pročitajte zadnje retke.
+  \item Upišite \texttt{JWT\_SECRET} iz \texttt{openssl rand -hex 32}, pa pokrenite naredbu s \texttt{up -d -{}-build}, a zatim s \texttt{ps}.
+\end{enumerate}
+
+\vspace{0.2em}
+Koja je provjera zaustavila pokretanje u prvom koraku, a koja u drugom, i zašto projektu trebaju obje?
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: zaustavljena baza}
+Produkcijski oblik radi na vratima \texttt{8080}. Naredba iz isječka pokreće se iz korijena repozitorija, s riječima iz koraka umjesto \texttt{<naredba>}:
+
+\begin{lstlisting}[language=bash]
+docker compose -f docker-compose.prod.yml --env-file .env.prod <naredba>
+\end{lstlisting}
+
+\begin{enumerate}
+  \itemsep0.3em
+  \item Otvorite \texttt{http://127.0.0.1:8080/api/health/} i zabilježite statusni kod.
+  \item Pokrenite naredbu sa \texttt{stop db} i ponovite prvi korak.
+  \item Pričekajte minutu i pokrenite naredbu s \texttt{ps}.
+  \item Pokrenite naredbu sa \texttt{start db}, pa ponovite prvi i treći korak.
+\end{enumerate}
+
+\vspace{0.8em}
+Koje postavke u \codefile{docker-compose.prod.yml} određuju kada se mijenja stanje servisa \texttt{api} i zašto ruta za provjeru zdravlja uopće pita bazu?
+\end{frame}
+
+% ============================================================
+\sekcija{Što se mijenja kad aplikacija izađe van}{Ruta pri osvježavanju stranice, prosljeđivanje na backend, predmemorija preglednika, sigurnosna zaglavlja, zapisnik i kopija baze koja se provjerava vraćanjem.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Osvježavanje rute aplikacije (I)}
+Klub otvori natjecanje, adresa u traci je \texttt{/natjecanja/1}, i osvježi stranicu. Preglednik tu adresu šalje poslužitelju. Izgrađene datoteke ovdje poslužuje obični poslužitelj datoteka:
+
+\begin{lstlisting}[language=bash]
+cd web/dist
+python -m http.server 4000
+\end{lstlisting}
+
+\begin{lstlisting}
+"GET / HTTP/1.1" 200 -
+"GET /natjecanja/1 HTTP/1.1" 404 -
+\end{lstlisting}
+
+\vspace{0.3em}
+Poslužitelj u mapi traži datoteku \texttt{natjecanja/1} i ne nalazi je. Početna stranica radi, a osvježavanje bilo koje druge stranice aplikacije daje \texttt{404}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Osvježavanje rute aplikacije (II)}
+Rute postoje samo u aplikaciji, a aplikacija se pokreće tek kad se učita \texttt{index.html}. Razvojni poslužitelj nepoznatu putanju sam vraća kao \texttt{index.html}, pa se kvar u razvoju ne vidi. nginx dobiva to pravilo izrijekom:
+
+\begin{lstlisting}
+# web/nginx.conf
+    location / {
+        expires -1;
+        try_files $uri $uri/ /index.html;
+    }
+\end{lstlisting}
+
+\begin{lstlisting}
+GET /natjecanja/1    200  text/html
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{try\_files} redom traži datoteku, pa mapu, i na kraju vraća \texttt{index.html} sa statusom \texttt{200}. Aplikacija se pokrene, pročita adresu iz trake i prikaže pripadni prikaz.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prosljeđivanje na backend}
+Preglednik skripti daje odgovor samo s izvora s kojeg je došla stranica, a izvor čine shema, ime domaćina i vrata. Frontend zato zahtjeve šalje na relativnu adresu \texttt{/api}, koju u razvoju backendu prosljeđuje Vite. Uz izgrađene datoteke Vitea nema, pa tu ulogu preuzima nginx:
+
+\begin{lstlisting}
+# web/nginx.conf
+    location /api/ {
+        proxy_pass http://api:8000/;
+        ...
+    }
+\end{lstlisting}
+
+\vspace{0.3em}
+Kosa crta na kraju adrese u \texttt{proxy\_pass} zamjenjuje dio putanje koji je odgovarao lokaciji: \texttt{/api/competitions/} backendu stiže kao \texttt{/competitions/}.
+
+\vspace{0.3em}
+Stranica i API time dijele izvor u produkciji jednako kao u razvoju, a frontend ne mora znati u kojem se od tih oblika izvodi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Predmemorija preglednika (I)}
+Vlasnik enciklopedije ne provjerava svaki dan je li se njegov svezak promijenio: novo izdanje dobiva novi broj, a staro ostaje kakvo jest. Dnevne novine, naprotiv, vrijede jedan dan i svako se jutro uzimaju nove.
+
+\vspace{0.9em}
+Preglednik datoteke drži u predmemoriji (engl. \emph{cache}) i ponovno ih koristi bez novog preuzimanja. Zaglavlje \texttt{Cache-Control} u odgovoru kaže koliko dugo smije koristiti spremljenu kopiju bez pitanja.
+
+\vspace{0.9em}
+Izgrađeni frontend ima obje vrste datoteka. Datoteke iz \codefile{/assets/} su sveske enciklopedije, jer im ime slijedi iz sadržaja. \texttt{index.html} su novine: uvijek isto ime, a sadržaj nosi imena trenutnih datoteka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Predmemorija preglednika (II)}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}L{2.3cm}L{3.2cm}L{5.6cm}@{}}
+  \toprule
+  \textbf{Datoteka} & \textbf{\texttt{Cache-Control}} & \textbf{Posljedica obrnutog izbora} \\
+  \midrule
+  \texttt{index.html} & \texttt{no-cache} & korisnik i nakon objave dobiva staru aplikaciju \\
+  \codefile{/assets/...} & \texttt{max-age=31536000} & svako učitavanje ponovno preuzima isti kod \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+\texttt{no-cache} ne zabranjuje spremanje. Preglednik kopiju smije čuvati, ali prije upotrebe pita poslužitelj je li još ista.
+
+\vspace{0.4em}
+\texttt{max-age} je u sekundama, ovdje godinu dana. Nova inačica aplikacije ne ovisi o tom roku, jer donosi datoteke novih imena, a njih preglednik u predmemoriji nema.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Predmemorija u nginxu}
+\begin{lstlisting}
+# web/nginx.conf
+    location /assets/ {
+        expires 1y;
+        try_files $uri =404;
+    }
+    ...
+    location / {
+        expires -1;
+        try_files $uri $uri/ /index.html;
+    }
+\end{lstlisting}
+
+\vspace{0.3em}
+Direktiva \mbox{\texttt{expires 1y}} daje \mbox{\texttt{Cache-Control: max-age=31536000}}, a \mbox{\texttt{expires -1}} daje \texttt{no-cache}.
+
+\vspace{0.3em}
+\texttt{=404} na kraju lokacije \codefile{/assets/} vraća \texttt{404} za datoteku koja ne postoji. Bez toga bi preglednik umjesto skripte dobio \texttt{index.html} i javio pogrešku u sintaksi, koja o pravom uzroku ne govori ništa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Popis dopuštenih izvora sadržaja}
+Recepcija zgrade ima popis dobavljača koje smije pustiti unutra. Onaj koga nema na popisu ostaje vani, koliko god uvjerljivo objasnio zašto je došao.
+
+\vspace{0.9em}
+Pravila sigurnosti sadržaja (engl. \emph{Content Security Policy}, CSP) takav su popis za stranicu. Poslužitelj ga šalje u zaglavlju, a preglednik ne izvodi i ne učitava ništa što na popisu nije: skriptu s druge adrese, skriptu napisanu unutar HTML-a ni zahtjev prema adresi koja nije navedena.
+
+\vspace{0.9em}
+Kad u stranicu dospije tuđi HTML sa skriptom, primjerice kroz ime natjecatelja koje bi neki prikaz ispisao kao HTML umjesto kao tekst, preglednik tu skriptu odbija. Token iz pohrane preglednika tada ne može otići na tuđu adresu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Sigurnosna zaglavlja u nginxu}
+\begin{lstlisting}
+# web/nginx.conf
+    add_header Content-Security-Policy
+        "default-src 'self'; script-src 'self'; style-src 'self';
+        img-src 'self' data:; font-src 'self'; connect-src 'self';
+        object-src 'none'; base-uri 'self'; form-action 'self';
+        frame-ancestors 'none'" always;
+    ...
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{'self'} je izvor same stranice, a \texttt{always} šalje zaglavlje i uz odgovore \texttt{4xx} i \texttt{5xx}.
+
+\vspace{0.3em}
+Ovako strogo pravilo moguće je jer aplikacija nema ni skripti ni stilova napisanih unutar HTML-a: Vite skripte i stilove komponenata izdvaja u datoteke iz \codefile{/assets/}, a Vue tekst iz podataka ispisuje kao tekst. Da CSP ne blokira ništa od same aplikacije, provjerava test u \codefile{web/e2e/produkcija.spec.ts}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zaglavlje u lokaciji}
+Lokacija \codefile{/assets/} treba vlastito zaglavlje za predmemoriju. Najkraći zapis bio bi \texttt{add\_header Cache-Control} unutar te lokacije, uz zaglavlja koja su zadana na razini poslužitelja.
+
+\pause
+\vspace{0.9em}
+nginx u lokaciji koja ima ijedan \texttt{add\_header} ne nasljeđuje nijedan \texttt{add\_header} s razine poslužitelja. Datoteke iz \codefile{/assets/} tada ostaju bez CSP-a i ostalih sigurnosnih zaglavlja, a nigdje se ne javlja pogreška.
+
+\vspace{0.9em}
+Predmemorija se zato zadaje direktivom \texttt{expires}, koja nije \texttt{add\_header} i nasljeđivanje ne prekida. Test u \codefile{web/e2e/produkcija.spec.ts} sigurnosna zaglavlja traži na nekoliko vrsta odgovora: na stranici, na odgovoru API-ja i na nepostojećoj datoteci.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zapisnik kontejnera}
+Na poslužitelju nitko ne gleda terminal u kojem aplikacija radi. Ono što backend ispisuje čuva Docker, a čita se naredbom \texttt{docker compose ... logs api}:
+
+\begin{lstlisting}
+api-1 | INFO:     172.23.0.4:32976 - "GET /health/ HTTP/1.1" 200 OK
+api-1 | INFO:     172.23.0.4:32990 - "GET /docs HTTP/1.1" 404 Not Found
+\end{lstlisting}
+
+\vspace{0.2em}
+Adresa u retku je adresa nginxa na unutarnjoj mreži, a ne korisnika: uvicorn zaglavlju \texttt{X-Forwarded-For} vjeruje samo kad mu se to izrijekom dopusti.
+
+\vspace{0.2em}
+Uz retke o zahtjevima zapisnik nosi i ono što zapiše sam kod:
+
+\begin{lstlisting}[language=python]
+# api/app/services/club_service.py
+    logger.info("club password reset: club_id=%s", club_id)
+\end{lstlisting}
+
+\vspace{0.2em}
+Redak kaže čiji je račun promijenjen. Nova lozinka u njemu ne stoji, jer zapisnik čita više ljudi nego bazu i čuva se dulje od pojedinog zahtjeva.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Provjera kopije}
+Rezervni ključ koji nitko nije probao u bravi samo izgleda kao rezervni ključ. Je li pravi, pokaže se tek kad glavni nestane, a tada je kasno za izradu novoga.
+
+\vspace{0.5em}
+Kopija baze ima isti problem. Naredba može spremiti krivu bazu, praznu datoteku ili kopiju koja se ne može vratiti, a sve tri izgledaju jednako: datoteka postoji i ima ime s datumom.
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{3.6cm}L{3.9cm}L{3.6cm}@{}}
+  \toprule
+  \textbf{Provjera} & \textbf{Što dokazuje} & \textbf{Što propušta} \\
+  \midrule
+  datoteka postoji & naredba je nešto zapisala & praznu kopiju, krivu bazu \\
+  datoteka nije prazna & \texttt{pg\_dump} je nešto ispisao & kopiju koja se ne vraća \\
+  vraćena u privremenu bazu & iz nje nastaju tablice i retci & ništa od navedenoga \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Kopija s provjerom vraćanja}
+\begin{lstlisting}[language=bash]
+# scripts/backup.sh
+...
+"${COMPOSE[@]}" exec -T db pg_dump -U pl_user pl_reg | gzip > "$FILE"
+
+"${COMPOSE[@]}" exec -T db dropdb -U pl_user --if-exists "$CHECK_DB"
+"${COMPOSE[@]}" exec -T db createdb -U pl_user "$CHECK_DB"
+gunzip -c "$FILE" | "${COMPOSE[@]}" exec -T db psql -q -v ON_ERROR_STOP=1 -U pl_user -d "$CHECK_DB" > /dev/null
+USERS=$("${COMPOSE[@]}" exec -T db psql -tA -U pl_user -d "$CHECK_DB" -c "SELECT count(*) FROM users")
+"${COMPOSE[@]}" exec -T db dropdb -U pl_user "$CHECK_DB"
+...
+\end{lstlisting}
+
+\vspace{0.3em}
+Skripta kopiju odmah vraća u privremenu bazu na istom poslužitelju baze, broji retke tablice \texttt{users} i privremenu bazu briše. Kopija iz koje se ne dobije nijedan korisnik javlja se kao pogreška.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pogreška u nizu naredbi}
+\begin{lstlisting}[language=bash]
+# scripts/backup.sh
+set -euo pipefail
+...
+"${COMPOSE[@]}" exec -T db pg_dump -U pl_user pl_reg | gzip > "$FILE"
+\end{lstlisting}
+
+\vspace{0.3em}
+Naredbe povezane cijevi čine jedan niz. Ljuska ishod niza zadano uzima od zadnje naredbe: ako \texttt{pg\_dump} padne, \texttt{gzip} uspješno sažme njegov prazan izlaz, a niz prolazi.
+
+\vspace{0.3em}
+\texttt{-e} prekida skriptu na prvoj naredbi koja ne uspije, \texttt{-u} na nezadanoj varijabli, a \texttt{-o pipefail} niz proglašava neuspjelim čim ne uspije bilo koja naredba u njemu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Kopija po rasporedu}
+\begin{lstlisting}[language=bash]
+bash scripts/backup.sh
+\end{lstlisting}
+
+\begin{lstlisting}
+<@Kopija backups/pl\_reg-20261116-052331.sql.gz je vraćena@>
+<@u privremenu bazu: korisnika 4.@>
+\end{lstlisting}
+
+\vspace{0.4em}
+Kopija na disku poslužitelja nestaje zajedno s diskom. Kopija koja se pokreće rukom izostane onoga dana kad se toga nitko ne sjeti.
+
+\vspace{0.4em}
+\begin{konvencija}[Razlikuje se od projekta do projekta]
+Na poslužitelju se skripta pokreće po rasporedu, npr. svake noći, a kopije se drže i na drugom računalu. Koliko često i koliko dugo, ovisi o tome koliko podataka smije nestati.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: ruta, predmemorija i CSP}
+Produkcijski oblik radi na vratima \texttt{8080}, razvojni poslužitelj frontenda na vratima \texttt{5173}, a u mapi \codefile{web/dist} je izgradnja iz projekta.
+
+\begin{lstlisting}[language=javascript]
+document.body.insertAdjacentHTML('beforeend',
+  '<img src="x" onerror="console.log(1)">')
+\end{lstlisting}
+
+\begin{enumerate}
+  \itemsep0.2em
+  \item U mapi \codefile{web/dist} pokrenite \texttt{python -m http.server 4000} i otvorite \texttt{http://127.0.0.1:4000/natjecanja/1}.
+  \item Otvorite istu putanju na vratima \texttt{8080}.
+  \item Usporedite zaglavlja koja \texttt{curl -I} vraća za \texttt{/natjecanja/1} i za datoteku iz \codefile{/assets/}.
+  \item Na stranici na vratima \texttt{8080} pokrenite u konzoli preglednika redak iz isječka, pa isto na vratima \texttt{5173}.
+\end{enumerate}
+
+\vspace{0.2em}
+Objasnite po čemu se razlikuju ispisi u konzoli u četvrtom koraku i koje zaglavlje odgovora ih razdvaja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: kopija i vraćanje}
+Produkcijski oblik radi s početnim podatcima. Naredbe se pokreću u bashu (na Windowsu Git Bash), iz korijena repozitorija.
 
 \vspace{0.8em}
 \begin{enumerate}
   \itemsep0.4em
-  \item Iz pohrane preglednika prepišite pristupni token.
-  \item Pošaljite \texttt{GET /auth/me} s tim tokenom i zabilježite odgovor.
-  \item U \texttt{.env} postavite novu vrijednost \texttt{JWT\_SECRET} i ponovno pokrenite poslužitelj.
-  \item Pošaljite isti zahtjev s istim tokenom.
-  \item Osvježite stranicu aplikacije i pogledajte gdje ste završili.
+  \item Pokrenite \texttt{bash scripts/backup.sh} i pogledajte nastalu datoteku u mapi \codefile{backups}.
+  \item U naredbi \texttt{pg\_dump} u \codefile{scripts/backup.sh} zamijenite ime baze \texttt{pl\_reg} s \texttt{pl\_reg\_nema} i pokrenite skriptu ponovno.
+  \item Pogledajte veličinu datoteke nastale u drugom koraku.
+  \item U prvom retku skripte \texttt{set -euo pipefail} zamijenite s \texttt{set -eu} i ponovite drugi korak.
+  \item Vratite skriptu naredbom \texttt{git restore scripts/backup.sh}.
 \end{enumerate}
 
 \vspace{0.8em}
-Koji ste \texttt{code} dobili u četvrtom koraku i koja je provjera u aplikaciji odvela korisnika na prijavu?
+Koji je redak zaustavio skriptu u drugom, a koji u četvrtom koraku, i što bi skripta javila da provjere vraćanja nema?
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Sažetak}
 \begin{itemize}
   \itemsep0.3em
-  \item Izgradnjom nastaje nekoliko datoteka s imenom izvedenim iz sadržaja.
-  \item Konfiguracija dolazi iz okoline, pa se kod pri postavljanju ne mijenja.
-  \item U klijentski dio ulaze samo varijable s predmetkom \texttt{VITE\_}, i sve su javne.
-  \item Tajna za potpis, lozinka baze i vanjski ključevi ostaju na poslužitelju.
-  \item Promjena tajne poništava sve izdane tokene.
-  \item Baza, poslužitelj i klijent postavljaju se zasebno, tim redom.
-  \item Migracije su korak postavljanja, prije prvih zahtjeva nove inačice.
-  \item Nepoznata adresa vraća se kao početna stranica, inače osvježavanje daje \texttt{404}.
-  \item Dopušteni izvor u produkciji je adresa aplikacije, nikad zvjezdica.
-  \item Odgovor ne nosi trag iznimke; on ide u dnevnik, bez tokena i lozinki.
+  \item Produkcijski oblik diže se jednom naredbom Composea.
+  \item Ime izgrađene datoteke slijedi iz njezina sadržaja.
+  \item Vrijednost u izgrađenom frontendu je javna.
+  \item Bez tajne ne kreće Compose, a s javnim ključem ne kreće backend.
+  \item Backend u kontejneru ne radi kao \texttt{root} i prije pokretanja izvodi migracije.
+  \item Baza je dostupna samo backendu, na unutarnjoj mreži.
+  \item Servis kreće tek kad je zdrav servis o kojem ovisi.
+  \item nginx za rutu aplikacije vraća \texttt{index.html}.
+  \item \texttt{index.html} se provjerava pri svakom učitavanju, a datoteke iz \codefile{/assets/} ostaju u predmemoriji.
+  \item CSP pregledniku kaže odakle smije izvoditi skripte.
+  \item Kopija baze provjerena je tek kad je vraćena.
 \end{itemize}
 \end{frame}
 
