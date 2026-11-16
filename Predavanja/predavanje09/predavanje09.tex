@@ -19,7 +19,7 @@
 \end{enumerate}
 
 \vspace{0.6em}
-Zahtjevi odlaze i odgovori stižu. Ovo predavanje uređuje gdje odgovor stoji dok je aplikacija otvorena i što korisnik vidi dok ga nema.
+Klijentski dio šalje zahtjeve i prima odgovore. Ovo predavanje uređuje gdje odgovor stoji dok je aplikacija otvorena, što korisnik vidi dok odgovora nema i gdje stoji poruka kad poslužitelj zahtjev odbije.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -27,171 +27,309 @@ Zahtjevi odlaze i odgovori stižu. Ovo predavanje uređuje gdje odgovor stoji do
 Nakon ovog predavanja student može:
 
 \begin{itemize}
-  \item odlučiti pripada li podatak jednoj komponenti ili pohrani koju dijele prikazi
-  \item napisati pohranu sa stanjem, izvedenim vrijednostima i radnjama
-  \item prikazati učitavanje, pogrešku i prazan skup rezultata
-  \item povezati obrazac s podatkom i poslati ga
-  \item prikazati odgovor \texttt{422} uz polje, a \texttt{400} i \texttt{409} iznad obrasca
-  \item izdvojiti dio prikaza ili logike koji se ponavlja
+  \itemsep0.3em
+  \item smjestiti podatak u komponentu ili u pohranu koju dijele prikazi i obrazložiti izbor
+  \item prikazati stanje dohvata i odbijenog zahtjeva tako da korisnik zna čeka li, je li zahtjev pao i što treba ispraviti
+  \item napisati pohranu koja uz podatke drži i stanje njihova dohvata
+  \item odbaciti odgovor koji je stigao za zahtjev koji više ne vrijedi
+  \item opisati tipom podatke koje obrazac šalje
+  \item prikazati pogrešku iz odgovora uz polje na koje se odnosi
+  \item izdvojiti polje obrasca u komponentu koja radi s \texttt{v-model}
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Domena primjera}
-Klub u aplikaciji vodi svoje natjecatelje i njihove prijave. Isti popis natjecatelja treba na nekoliko mjesta: u pregledu kluba, u obrascu za prijavu na natjecanje i u navigaciji, kao broj uz stavku.
+Klub u aplikaciji vodi popis svojih natjecatelja i prijavljuje ih na natjecanja. Isti popis natjecatelja treba na dvama mjestima: na stranici s natjecateljima kluba i u obrascu za prijavu na stranici natjecanja.
 
 \vspace{0.9em}
-Backend svaki od tih prikaza poslužuje istom rutom. Pitanje je koliko puta aplikacija tu rutu poziva i gdje odgovor čuva dok je otvorena.
+Svaki prikaz podatke dohvaća s poslužitelja. Odgovor može kasniti, može izostati i može biti prazan, jer novi klub još nema nijednog natjecatelja.
 
 \vspace{0.9em}
-Uz to, svaki obrazac koji klub pošalje poslužitelj može odbiti na tri načina, a svaki od njih traži drukčiji prikaz.
+Klub upisuje natjecatelja obrascem: ime, prezime, datum rođenja i spol. Poslužitelj obrazac može odbiti zbog jednog polja ili zbog pravila natjecanja, primjerice kad je rok za prijave istekao.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Podatak koji treba dvama prikazima (I)}
-Natjecatelje dohvaća prikaz koji ih nabraja:
+Stranica s natjecateljima dohvaća popis kad se otvori:
 
 \begin{lstlisting}[language=typescript]
 const lifters = ref<Lifter[]>([])
 onMounted(async () => {
-  lifters.value = await getLifters(clubId)
+  lifters.value = await fetchLifters(clubId)
 })
 \end{lstlisting}
 
-\vspace{0.5em}
-Obrascu za prijavu na natjecanje treba isti popis, da ponudi izbor natjecatelja. Napisan na isti način, on isti zahtjev šalje još jednom.
+\vspace{0.3em}
+Obrazac za prijavu treba isti popis, da ponudi izbor natjecatelja, pa ga dohvaća na isti način. Klub prelazi s natjecatelja na natjecanje i natrag, a kartica Mreža bilježi:
 
-\vspace{0.5em}
-Natjecatelj dodan u jednom prikazu u drugome se ne pojavljuje dok se taj prikaz ponovno ne otvori.
+\begin{lstlisting}
+GET /api/clubs/1/lifters/   200
+GET /api/clubs/1/lifters/   200
+GET /api/clubs/1/lifters/   200
+\end{lstlisting}
+
+\vspace{0.3em}
+Svaki prikaz drži svoju kopiju istog podatka. Bez zadržavanja kopije zahtjev se ponavlja, a uz zadržavanje kopije se razilaze.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Podatak koji treba dvama prikazima (II)}
-Prvi odgovor je proslijediti popis kroz svojstva komponenata. On vrijedi dok su prikazi u istom stablu i dok ih je malo.
+Prvi odgovor je popis dohvatiti jednom, u zajedničkom roditelju, i predati ga prikazima kroz svojstva komponente (engl. \emph{props}). To vrijedi dok prikazi imaju bliskog zajedničkog roditelja.
 
 \vspace{0.9em}
-Popis koji treba navigaciji, pregledu kluba i obrascu nije u istom stablu ni na istoj razini. Prosljeđivanje bi tada išlo kroz komponente koje taj popis ne prikazuju, samo da bi ga predale dalje.
+Stranica s natjecateljima i stranica natjecanja su dvije rute. Zajednički im je samo korijen aplikacije, \codefile{App.vue}, koji bi tada dohvaćao natjecatelje iako ih ne prikazuje, a svaka komponenta između korijena i obrasca prenosila bi popis dalje.
 
 \vspace{0.9em}
-Drugi je odgovor podatak izdvojiti iz stabla komponenata: držati ga na jednom mjestu izvan njih, odakle ga svaki prikaz čita izravno.
+Drugi je odgovor podatak izdvojiti iz stabla komponenata. Drži se na jednom mjestu izvan njih, a svaki ga prikaz čita izravno. To mjesto zovemo \textbf{pohranom} (engl. \emph{store}).
 \end{frame}
 
 % ============================================================
-\sekcija{Pohrana koju dijele prikazi}{Što pohrana drži, kako se piše, zamka pri rastavljanju i granica prema lokalnim vrijednostima.}
+\sekcija{Pohrana koju dijele prikazi}{Podatak izvan stabla komponenata, pohrana natjecatelja i stanje dohvata u njoj, rastavljanje pohrane, mjesto svakog podatka u projektu i pohrana nakon odjave.}
 
 % ------------------------------------------------------------
-\begin{frame}{Što pohrana drži}
-Pohrana (engl. \emph{store}) je objekt koji postoji dok je aplikacija otvorena i ne pripada nijednoj komponenti. Ima tri vrste sadržaja:
+\begin{frame}{Sadržaj pohrane}
+Pohrana postoji dok je aplikacija otvorena i ne pripada nijednoj komponenti. Košarica web-trgovine je takav podatak: prikazuju je stranica proizvoda, zaglavlje s brojem artikala i stranica naplate, a nijedna od njih nije njezin vlasnik.
+
+\vspace{0.7em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{3.4cm}L{2.6cm}L{4.4cm}@{}}
+  \toprule
+  \textbf{Sadržaj} & \textbf{Zapisano kao} & \textbf{U košarici} \\
+  \midrule
+  stanje & \texttt{ref()} & artikli i količine \\
+  izvedena vrijednost & \texttt{computed()} & ukupna cijena \\
+  radnja & funkcija & dodavanje, uklanjanje \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Projekt pohrane gradi knjižnicom Pinia. Pohrana nestaje pri osvježavanju stranice, kao i sve ostalo što aplikacija drži u memoriji.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pohrana natjecatelja (I)}
+\begin{lstlisting}[language=typescript]
+// src/stores/lifters.ts
+export const useLiftersStore = defineStore('lifters', () => {
+  const items = ref<Lifter[]>([])
+  const loaded = ref(false)
+  const pending = ref(false)
+  const failed = ref(false)
+
+  const byId = computed(
+    () => new Map(items.value.map((l) => [l.id, l])),
+  )
+  // ... load, ensureLoaded, upsert
+  return {
+    items, loaded, pending, failed, byId, load, ensureLoaded, upsert,
+  }
+})
+\end{lstlisting}
+
+\vspace{0.2em}
+Funkcija \texttt{useLiftersStore} svakom pozivatelju vraća istu pohranu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pohrana natjecatelja (II)}
+\vspace{-0.3em}
+\begin{lstlisting}[language=typescript]
+// src/stores/lifters.ts
+async function load() {
+  const clubId = useAuthStore().clubId
+  if (clubId === null) return
+  pending.value = true
+  failed.value = false
+  try {
+    items.value = await fetchLifters(clubId)
+    loaded.value = true
+  } catch (error) {
+    failed.value = true
+    throw error
+  } finally {
+    pending.value = false
+  }
+}
+\end{lstlisting}
+
+\vspace{0.1em}
+Stari popis ostaje na zaslonu dok novi ne stigne, i kad dohvat ne uspije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Stanje dohvata u pohrani}
+Uz popis pohrana drži i stanje njegova dohvata:
 
 \vspace{0.6em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
 \renewcommand{\arraystretch}{1.35}
-\begin{tabular}{@{}L{2.9cm}L{3.5cm}L{4.7cm}@{}}
+\begin{tabular}{@{}L{2.2cm}L{8.4cm}@{}}
   \toprule
-  \textbf{Sadržaj} & \textbf{Zapisano kao} & \textbf{Odgovara sloju} \\
+  \textbf{Vrijednost} & \textbf{Značenje} \\
   \midrule
-  stanje & \texttt{ref()} & podatci u bazi \\
-  izvedene vrijednosti & \texttt{computed()} & izračun nad podatcima \\
-  radnje & obične funkcije & \codefile{services} \\
+  \texttt{pending} & dohvat traje \\
+  \texttt{failed} & zadnji dohvat nije uspio \\
+  \texttt{loaded} & popis je barem jednom stigao \\
+  \texttt{byId} & natjecatelj po oznaci, izveden iz popisa \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Podjela je ista kao na poslužitelju: ono što jest, ono što se iz toga računa i ono što to mijenja. Razlika je u tome što pohrana nestaje pri osvježavanju stranice.
+Bez \texttt{loaded} prikaz ne razlikuje popis koji još nije stigao od praznog popisa koji je vratio poslužitelj: u obama je slučajima popis prazan.
+
+\vspace{0.5em}
+\texttt{load} neuspjeh bilježi i iznimku prosljeđuje pozivatelju, jer pohrana ne zna hoće li ga prikaz pokazati sam.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Pohrana za natjecatelje}
-\vspace{-0.4em}
+\begin{frame}[fragile]{Zajednički popis natjecatelja (I)}
+Obrazac za prijavu popis ne dohvaća svaki put, nego samo ako ga dotad nitko nije dohvatio:
+
 \begin{lstlisting}[language=typescript]
-// stores/lifters.ts
-export const useLifterStore = defineStore('lifters', () => {
-  const lifters = ref<Lifter[]>([])
-  const ucitavanje = ref(false)
-  const greska = ref<string | null>(null)
-  async function dohvati(clubId: number) {
-    ucitavanje.value = true
-    greska.value = null
-    try {
-      lifters.value = await getLifters(clubId)
-    } catch {
-      greska.value = 'Popis natjecatelja nije dohvacen'
-    }
-    ucitavanje.value = false
-  }
-  return { lifters, ucitavanje, greska, dohvati }
-})
+// src/stores/lifters.ts
+async function ensureLoaded() {
+  if (!loaded.value && !pending.value) await load()
+}
+\end{lstlisting}
+
+\vspace{-0.2em}
+\begin{lstlisting}[language=typescript]
+// src/components/RegistrationForm.vue
+const lifters = useLiftersStore()
+onMounted(() => lifters.ensureLoaded().catch(() => {}))
+\end{lstlisting}
+
+\vspace{0.3em}
+Stranica s natjecateljima zove \texttt{load}, jer na njoj korisnik očekuje najnoviji popis. Obrascu je dovoljan popis koji je već u pohrani.
+
+\vspace{0.3em}
+Ako dohvat ne uspije, izbornik natjecatelja ostaje prazan, a poslužitelj svaku prijavu provjerava sam.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zajednički popis natjecatelja (II)}
+Spremljeni natjecatelj ulazi u pohranu kakvog ga je vratio poslužitelj:
+
+\begin{lstlisting}[language=typescript]
+// src/stores/lifters.ts
+function upsert(lifter: Lifter) {
+  const index = items.value.findIndex((l) => l.id === lifter.id)
+  if (index === -1) items.value.push(lifter)
+  else items.value[index] = lifter
+}
+\end{lstlisting}
+
+\vspace{-0.2em}
+\begin{lstlisting}[language=typescript]
+// src/views/LifterFormView.vue
+async function submit() {
+  // ...
+    lifters.upsert(saved)
+  // ...
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Novi natjecatelj u pohranu ulazi s oznakom koju mu je dodijelila baza. Obrazac za prijavu čita isti popis, pa ga nudi bez ijednog novog zahtjeva.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Rastavljanje pohrane}
+Pohrana je praćen objekt. Ako se rastavi u varijable, one dobiju vrijednosti iz trenutka rastavljanja:
+
+\begin{lstlisting}[language=typescript]
+const lifters = useLiftersStore()
+const { items, pending } = lifters
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{pending} tada ostaje \texttt{false} i kad dohvat počne, a \texttt{items} pokazuje na popis koji je \texttt{load} u međuvremenu zamijenio novim. Prikaz se prestane osvježavati, bez ikakve poruke.
+
+\vspace{0.3em}
+\texttt{storeToRefs} umjesto vrijednosti vraća praćene reference. Funkcije se smiju uzeti izravno:
+
+\begin{lstlisting}[language=typescript]
+const { items, pending } = storeToRefs(lifters)
+const { load } = lifters
 \end{lstlisting}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Pohrana u komponenti}
-\begin{lstlisting}[language=typescript]
-const store = useLifterStore()
-const { lifters } = store            <@\kom{prikaz se vise ne osvjezava}@>
-
-import { storeToRefs } from 'pinia'
-const { lifters, ucitavanje } = storeToRefs(store)
-const { dohvati } = store            <@\kom{funkcije smiju izravno}@>
-\end{lstlisting}
-
-\vspace{0.5em}
-Rastavljanje objekta kopira trenutnu vrijednost. Kopija nije praćena, pa se prikaz koji je čita prestane osvježavati kad se pohrana promijeni, i to bez ikakve poruke.
-
-\vspace{0.5em}
-\texttt{storeToRefs} umjesto vrijednosti vraća praćene reference. Funkcije se smiju uzeti izravno, jer one nisu praćene vrijednosti.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Pohrana ili lokalna vrijednost}
+\begin{frame}{Mjesto stanja u projektu}
 \vspace{0.3em}
 \begin{center}
 {\small
-\setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{2.9cm}L{4.0cm}L{4.2cm}@{}}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{3.3cm}L{3.3cm}L{5.4cm}@{}}
   \toprule
-   & \textbf{Lokalna vrijednost} & \textbf{Pohrana} \\
+  \textbf{Podatak} & \textbf{Mjesto} & \textbf{Razlog} \\
   \midrule
-  Dopire do & jedne komponente & svakog prikaza \\
-  Traje & dok je komponenta na zaslonu & dok je aplikacija otvorena \\
-  Primjer & upisani tekst, otvoren izbornik & prijavljeni korisnik, popis natjecatelja \\
+  prijavljeni korisnik & pohrana prijave & čita ga gotovo svaki prikaz \\
+  natjecatelji kluba & pohrana natjecatelja & čitaju ga dva prikaza \\
+  natjecanja, prijave & komponenta & treba ih jedan prikaz \\
+  vrijednosti obrasca & komponenta & postoje dok je obrazac otvoren \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
-\vspace{0.6em}
-Podatak koji trebaju dva prikaza ide u pohranu. Podatak koji postoji samo dok je jedan obrazac otvoren ostaje u komponenti.
-
-\vspace{0.4em}
-Sve u pohranu nije rješenje. Pohrana koja drži i privremene vrijednosti jednog obrasca zadržava ih i nakon što korisnik ode s te stranice.
+\vspace{0.7em}
+\begin{konvencija}
+Projekt podatak premješta u pohranu tek kad ga čita drugi prikaz. Vrijednosti obrasca ostaju u komponenti: u pohrani bi ih obrazac zatekao i pri sljedećem otvaranju.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: isti podatak u dvama prikazima}
-Prijavljeni ste kao klub \texttt{behemot@plreg.hr} i imate prikaz koji nabraja natjecatelje.
+\begin{frame}[fragile]{Pohrana nakon odjave}
+Pohrana traje dok je aplikacija otvorena. Klub Behemot se odjavi, a u istoj kartici preglednika prijavi se klub Sokol.
+
+\pause
+\vspace{0.7em}
+U pohrani natjecatelja i dalje je popis Behemota, s oznakom \texttt{loaded}. Obrazac za prijavu poziva \texttt{ensureLoaded}, koji zatečeni popis ne dohvaća ponovno, pa Sokolu nudi tuđe natjecatelje. Poslužitelj bi prijavu tuđeg natjecatelja odbio, ali popis je već prikazan.
+
+\vspace{0.5em}
+\begin{lstlisting}[language=typescript]
+// src/components/AppNav.vue
+function logout() {
+  auth.forget()
+  window.location.assign('/prijava')
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Odjava zato aplikaciju učitava ispočetka. Uz \emph{tokene} nestaje i sve što je prethodni korisnik dohvatio.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: popis u dvama prikazima}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}. Backend i razvojni poslužitelj rade, a u alatima za razvoj otvorena je kartica Mreža.
 
 \vspace{0.8em}
 \begin{enumerate}
   \itemsep0.4em
-  \item Dodajte drugi prikaz koji ispisuje samo broj natjecatelja i dohvaća ih na isti način.
-  \item Otvorite karticu Mreža i prijeđite s jednog prikaza na drugi i natrag.
-  \item Prenesite popis u pohranu i neka oba prikaza čitaju nju, a dohvat pokreće samo prvi.
-  \item Ponovite drugi korak.
-  \item Rastavite pohranu bez \texttt{storeToRefs} i dodajte natjecatelja.
+  \item Otvorite stranicu Natjecatelji, pa Natjecanja i \emph{Zimski kup}, i izbrojite zahtjeve na adresu koja završava s \texttt{/lifters/}.
+  \item Na stranici Natjecatelji dodajte natjecatelja Luku Babića, rođenog 05.05.2000., muškog spola.
+  \item Otvorite \emph{Zimski kup} i u izborniku Natjecatelj potražite Luku Babića.
+  \item U \codefile{src/components/RegistrationForm.vue} zamijenite \texttt{ensureLoaded()} s \texttt{load()} i ponovite prvi korak.
 \end{enumerate}
 
 \vspace{0.8em}
-Koliko je zahtjeva poslano prije, a koliko poslije trećeg koraka, i što se dogodilo u petom?
+Koliko je zahtjeva za natjecatelje poslano u prvom i u četvrtom koraku i kako je obrazac u trećem koraku doznao za novog natjecatelja?
 \end{frame}
 
 % ============================================================
-\sekcija{Stanja jednog prikaza}{Prikaz dok odgovora nema, prazan skup rezultata, pogreška i kada ponovni pokušaj ima smisla.}
+\sekcija{Stanja jednog prikaza}{Učitavanje, neuspjeh i prazan popis, ponovni pokušaj, dohvat izdvojen u funkciju, odgovor koji stigne prekasno i promjena parametra rute.}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Prikaz koji pokazuje samo podatke}
@@ -199,386 +337,829 @@ Prikaz napisan tako da ispisuje popis i ništa drugo:
 
 \begin{lstlisting}[language=html]
 <table>
-  <tr v-for="l in store.lifters" :key="l.id">
+  <tr v-for="l in lifters.items" :key="l.id">
     <td>{{ l.last_name }}, {{ l.first_name }}</td>
   </tr>
 </table>
 \end{lstlisting}
 
 \vspace{0.5em}
-Dok odgovor putuje, tablica je prazna. Ako zahtjev ne prođe, tablica je prazna. Ako klub nema nijednog natjecatelja, tablica je prazna.
+Dok odgovor putuje, tablica je prazna. Ako dohvat ne uspije, tablica je prazna. Ako klub nema nijednog natjecatelja, tablica je prazna.
 
 \vspace{0.5em}
-Tri različita stanja izgledaju isto, pa korisnik ne zna čeka li, je li zahtjev odbijen ili doista nema podataka.
+Tri različita stanja izgledaju isto. Korisnik ne zna čeka li, je li zahtjev pao ili podataka nema.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Tri stanja svakog prikaza}
+\begin{frame}{Stanja dohvata}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}L{3.4cm}L{3.7cm}L{4.9cm}@{}}
+  \toprule
+  \textbf{Stanje} & \textbf{Uvjet u pohrani} & \textbf{Prikaz} \\
+  \midrule
+  prvi dohvat traje & nije \texttt{loaded}, \texttt{pending} & poruka da se čeka \\
+  prvi dohvat nije uspio & nije \texttt{loaded}, \texttt{failed} & poruka i ponovni pokušaj \\
+  prazan popis & \texttt{loaded}, bez zapisa & rečenica i poveznica na upis \\
+  popis & \texttt{loaded}, sa zapisima & popis; uz \texttt{failed} i napomena \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Prva dva uvjeta traže da popis još nije stigao. Ponovni dohvat zato ne skriva popis koji je već na zaslonu, nego ga zamjenjuje kad novi stigne. Napomena uz popis kaže da se popis nije mogao osvježiti, pa možda nije najnoviji.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Stanja dohvata u predlošku}
+\vspace{-0.3em}
+\begin{lstlisting}[language=html]
+<!-- src/views/LiftersView.vue -->
+<p v-if="!lifters.loaded && lifters.pending" class="state"
+   aria-busy="true">
+  <@Učitavanje natjecatelja…@>
+</p>
+<div v-else-if="!lifters.loaded && lifters.failed" class="state"
+     role="alert">
+  <p>Natjecatelji se trenutno ne <@mogu učitati.@></p>
+  <button class="btn btn-secondary" type="button"
+          @click="load"><@Pokušaj@> ponovno</button>
+</div>
+<p v-else-if="lifters.items.length === 0" class="state">
+  Klub <@još@> nema natjecatelja.
+  <RouterLink :to="{ name: 'lifter-new' }">Dodajte prvoga.</RouterLink>
+</p>
+<template v-else> ... </template>
+\end{lstlisting}
+
+\vspace{0.1em}
+Niz \texttt{v-if} i \texttt{v-else-if} jamči da je vidljivo točno jedno stanje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Stanja dohvata i čitač zaslona}
+Poruka o stanju na zaslonu je tekst, a ne samo ikona ili boja, pa je čita i čitač zaslona. Dva atributa kažu mu kada:
+
+\vspace{0.6em}
+\begin{itemize}
+  \itemsep0.6em
+  \item \texttt{aria-busy="true"} označava dio stranice koji se tek puni, pa čitač zaslona izmjene u njemu smije najaviti tek kad se napuni.
+  \item \texttt{role="alert"} traži da se poruka pročita čim se pojavi, bez pomicanja fokusa. Korisnik koji ne gleda zaslon tako doznaje da dohvat nije uspio.
+\end{itemize}
+
+\vspace{0.6em}
+Napomena da se popis nije mogao osvježiti nosi isti \texttt{role="alert"}: popis ispod nje je stari, a to se iz samog popisa ne vidi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Redoslijed provjera}
+Prva provjera u predlošku traži i \texttt{!lifters.loaded}, a ne samo \texttt{lifters.pending}. Prazan popis provjerava se tek treći.
+
+\pause
+\vspace{0.9em}
+Uz samo \texttt{pending} stranica bi pri svakom povratku na popis sakrila zatečeni popis, pokazala poruku o učitavanju i zatim popis vratila. Popis bi treptao pri svakom dohvatu.
+
+\vspace{0.9em}
+Provjera praznog popisa prije provjere učitavanja pokazala bi rečenicu \enquote{Klub još nema natjecatelja} dok prvi odgovor još putuje, i to klubu koji natjecatelje ima.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Ponovni pokušaj i uzrok pogreške (I)}
+Gumb za ponovni pokušaj obećava da isti zahtjev drugi put može uspjeti. To ovisi o uzroku pogreške:
+
+\vspace{0.6em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{3.9cm}L{3.0cm}L{3.3cm}@{}}
+  \toprule
+  \textbf{Uzrok} & \textbf{Statusni kod} & \textbf{Ponovni pokušaj} \\
+  \midrule
+  veza ne postoji & bez odgovora & ima smisla \\
+  poslužitelj ne odgovara & \texttt{502}, \texttt{503}, \texttt{504} & ima smisla \\
+  pogreška u obradi & \texttt{500} & ovisi o uzroku \\
+  zapis ne postoji & \texttt{404} & nema smisla \\
+  neispravan zahtjev & \texttt{400}, \texttt{422} & nema smisla \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Zahtjev odbijen zbog svojeg sadržaja bit će odbijen i drugi put. Odgovore \texttt{401} i \texttt{403} prikaz ne obrađuje: oni znače isto u svakom prikazu, pa ih aplikacija obrađuje na jednom mjestu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ponovni pokušaj i uzrok pogreške (II)}
+Stranica natjecanja razlikuje nepostojeće natjecanje od nedostupnog:
+
+\begin{lstlisting}[language=html]
+<!-- src/views/CompetitionView.vue -->
+<div v-else-if="!competition && competitionError" class="state"
+     role="alert">
+  <p v-if="competitionError.status === 404">
+    Natjecanje nije <@pronađeno.@>
+  </p>
+  <template v-else>
+    <p>Natjecanje se trenutno ne <@može učitati.@></p>
+    <button class="btn btn-secondary" type="button"
+            @click="loadCompetition()"><@Pokušaj@> ponovno</button>
+  </template>
+</div>
+\end{lstlisting}
+
+\vspace{0.3em}
+Uz \texttt{404} nema gumba: natjecanje koje ne postoji neće se pojaviti ni nakon drugog pokušaja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dohvat izdvojen u funkciju (I)}
+Popis natjecanja, jedno natjecanje i prijave na njega dohvaćaju se svaki u svojem prikazu, i svakome treba isto: podatci, oznaka dohvata u tijeku i pogreška. Taj se dio piše jednom:
+
+\begin{lstlisting}[language=typescript]
+// src/composables/useRequest.ts
+export function useRequest<T>(fetcher: () => Promise<T>) {
+  const data = shallowRef<T | null>(null) as Ref<T | null>
+  const pending = ref(false)
+  const error = ref<ApiError | null>(null)
+  // ... run()
+  return { data, pending, error, run }
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{shallowRef} prati samo zamjenu cijele vrijednosti, a ne svako polje unutar nje. Odgovor se uvijek zamjenjuje cijeli, pa dublje praćenje ne bi donijelo ništa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dohvat izdvojen u funkciju (II)}
+\begin{lstlisting}[language=typescript]
+// src/views/CompetitionsView.vue
+const { data: competitions, pending, error, run: load } =
+  useRequest(fetchCompetitions)
+onMounted(load)
+\end{lstlisting}
+
+\vspace{0.3em}
+Funkcija čije ime počinje s \texttt{use} i vraća praćene vrijednosti zove se \emph{composable}. Svaki njezin poziv daje vlastite vrijednosti.
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{2.6cm}L{3.9cm}L{4.4cm}@{}}
+  \toprule
+   & \textbf{Pohrana} & \textbf{Composable} \\
+  \midrule
+  Primjeraka & jedan za aplikaciju & jedan po pozivu \\
+  Dijeli & stanje & kod \\
+  Granica & podatak ostaje i kad ga nitko ne prikazuje & svaki prikaz dohvaća iznova \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zakašnjeli odgovor (I)}
+Prikaz pokrene dohvat, a prije nego odgovor stigne pokrene ga ponovno, s drugim ulazom: adresa se promijenila s natjecanja 1 na natjecanje 2. Prvi zahtjev traje dulje od drugoga.
+
+\vspace{0.6em}
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  zah/.style={draw=lineclr,fill=tint,rounded corners=2pt,minimum height=6mm,inner sep=3pt,anchor=west},
+  str/.style={-{Stealth[length=2mm]},draw=ink2,thick},
+  ozn/.style={font=\scriptsize,color=mutedclr,align=center}
+]
+  \draw[str] (0,0) -- (11.2,0) node[above left,ozn]{vrijeme};
+  \node[zah,minimum width=8.2cm] at (0.4,1.6) {dohvat natjecanja 1};
+  \node[zah,minimum width=3.0cm] at (2.4,0.8) {dohvat natjecanja 2};
+  \draw[ink2] (0.4,0.1) -- (0.4,-0.1) node[below,ozn]{otvoreno\\natjecanje 1};
+  \draw[ink2] (2.4,0.1) -- (2.4,-0.1) node[below,ozn]{otvoreno\\natjecanje 2};
+  \draw[ink2] (5.4,0.1) -- (5.4,-0.1) node[below,ozn]{na zaslonu\\natjecanje 2};
+  \draw[ink,thick] (8.6,0.15) -- (8.6,-0.15) node[below,font=\scriptsize,color=ink,align=center]{na zaslonu\\natjecanje 1};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.5em}
+Adresa pokazuje natjecanje 2, a zaslon nakon sporijeg odgovora natjecanje 1. Zadnji upisani odgovor nije odgovor na zadnji zahtjev.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zakašnjeli odgovor (II)}
+\vspace{-0.3em}
+\begin{lstlisting}[language=typescript]
+// src/composables/useRequest.ts
+let latest = 0
+
+async function run() {
+  const call = ++latest
+  <@\komts{... pending i error na početne vrijednosti}@>
+  try {
+    const result = await fetcher()
+    if (call === latest) data.value = result
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e
+    if (call === latest) error.value = e
+  } finally {
+    if (call === latest) pending.value = false
+  }
+}
+\end{lstlisting}
+
+\vspace{0.1em}
+Odgovor se upisuje samo ako u međuvremenu nije pokrenut noviji dohvat.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Promjena parametra rute}
+Vue Router pri promjeni samo parametra u adresi zadržava istu instancu komponente. \texttt{onMounted} se tada ne poziva ponovno, pa bi stranica pod adresom natjecanja 2 i dalje prikazivala natjecanje 1.
+
+\begin{lstlisting}[language=typescript]
+// src/views/CompetitionView.vue
+const compId = computed(() => Number(route.params.compId))
+watch(
+  compId,
+  () => {
+    loadCompetition()
+    loadRegistrations()
+  },
+  { immediate: true },
+)
+\end{lstlisting}
+
+\vspace{0.2em}
+Promatrač dohvaća pri svakoj promjeni parametra, a uz \texttt{immediate} i odmah, pa pokriva i prvo otvaranje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: stanja popisa natjecatelja}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}, na stranici Natjecanja. Stranicu Natjecatelji od prijave još niste otvorili.
+
+\vspace{0.8em}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Zaustavite backend s \kbd{Ctrl+C} u njegovu terminalu i kliknite Natjecatelji.
+  \item Pokrenite backend i pritisnite \emph{Pokušaj ponovno}.
+  \item Ponovno zaustavite backend, prijeđite na Natjecanja i vratite se na Natjecatelji.
+  \item Pokrenite backend, u kartici Mreža odaberite usporenu vezu i osvježite stranicu.
+  \item U \codefile{src/views/LiftersView.vue} iz prvog uvjeta uklonite \texttt{!lifters.loaded \&\&} i prijeđite na Natjecanja i natrag.
+\end{enumerate}
+
+\vspace{0.8em}
+Po kojoj se vrijednosti u pohrani razlikuju stanja iz prvog i trećeg koraka i što se u petom koraku vidi pri povratku na stranicu?
+\end{frame}
+
+% ============================================================
+\sekcija{Obrasci i odbijeni zahtjevi}{Opis podataka obrasca, provjera prije slanja, pogreška uz polje, poruka iznad obrasca i ponovljeni prijelaz stanja.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odbijeni obrazac (I)}
+Obrazac bez vlastite provjere šalje natjecatelja s datumom rođenja u budućnosti. Statusni kod \texttt{422} znači da tijelo ne odgovara shemi, a odgovor uz kod i poruku nosi popis polja:
+
+\begin{lstlisting}[language=json]
+{"code": "validation_error",
+ "message": "Neispravni podatci u zahtjevu",
+ "errors": [{"field": "birth_date",
+             "message": "Datum <@rođenja@> mora biti u <@prošlosti@>"}]}
+\end{lstlisting}
+
+\vspace{0.4em}
+Aplikacija pogrešku koju obrazac ne obradi sam prikazuje kao obavijest na dnu zaslona, s tekstom iz polja \texttt{message}:
+
+\vspace{0.4em}
+\begin{center}
+\fbox{\small Neispravni podatci u zahtjevu}
+\end{center}
+
+\vspace{0.4em}
+Poruka je točna, ali ne kaže koje polje treba ispraviti, a nakon nekoliko sekundi nestane.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Odbijeni obrazac (II)}
+Prvi odgovor je poruku prikazati iznad obrasca, da ne nestane. Ona i dalje ne imenuje polje, a uz više neispravnih polja ostaje ista.
+
+\vspace{0.9em}
+Odgovor već nosi ime polja, u popisu \texttt{errors}. Poruka zato može stajati uz polje na koje se odnosi, ondje gdje korisnik ispravlja.
+
+\vspace{0.9em}
+Većina takvih pogrešaka ne treba ni zahtjev: prazno ime ili datum u budućnosti obrazac može prepoznati sam. Sredstva su \textbf{provjera prije slanja} i \textbf{poruka uz polje}, ista za pogrešku iz obaju izvora.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Opis natjecatelja}
+Oblik natjecatelja opisan je jednom, u \codefile{src/api/types.ts}, od kad projekt ima klijentski dio. Vraćamo se na taj opis jer obrazac iz njega izvodi svoj tip:
+
+\begin{lstlisting}[language=typescript]
+// src/api/types.ts
+export type Gender = 'M' | 'F'
+export interface Lifter {
+  id: number
+  first_name: string
+  last_name: string
+  birth_date: string // "GGGG-MM-DD"
+  gender: Gender
+  club_id: number
+}
+export type LifterInput = Omit<Lifter, 'id' | 'club_id'>
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{LifterInput} je izveden: \texttt{Omit} uklanja polja koja dodjeljuje poslužitelj, pa novo polje natjecatelja ulazi i u tip obrasca.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Obrazac i podatak}
+Polja obrasca vezana su uz jedan objekt istog oblika kao tijelo zahtjeva:
+
+\begin{lstlisting}[language=typescript]
+// src/views/LifterFormView.vue
+const emptyForm = (): LifterInput =>
+  ({ first_name: '', last_name: '', birth_date: '', gender: 'M' })
+const form = reactive<LifterInput>(emptyForm())
+let original: LifterInput = emptyForm()
+
+const errors = ref<FieldErrors>({})
+const pending = ref(false)
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{reactive} prati objekt polje po polje, pa se u predlošku piše \texttt{v-model="form.first\_name"}, bez \texttt{.value}. Vrijednosti se ne čitaju iz stabla elemenata nego iz objekta.
+
+\vspace{0.3em}
+\texttt{original} pamti zapis kakav je stigao: izmjena šalje samo polja koja se od njega razlikuju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Datum rođenja u shemi}
+Shema na poslužitelju odbija datum rođenja koji nije u prošlosti:
+
+\begin{lstlisting}[language=python]
+# app/schemas/lifter.py
+def _must_be_past(value: date | None) -> date | None:
+    if value is not None and value >= date.today():
+        raise ValueError(<@"Datum rođenja mora biti u prošlosti"@>)
+    return value
+\end{lstlisting}
+
+\vspace{0.4em}
+Granica je današnji dan: tko je rođen danas, nije rođen u prošlosti. Usporedba \texttt{>=} to kaže izrijekom.
+
+\vspace{0.4em}
+Zahtjev s takvim datumom dobiva \texttt{422}, a poruka iz \texttt{ValueError} stiže u popisu \texttt{errors}, uz ime polja \texttt{birth\_date}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Datum rođenja u pregledniku}
+Obrazac isto pravilo provjerava prije slanja, s istom granicom:
+
+\begin{lstlisting}[language=typescript]
+// src/lib/validation.ts
+export function validateLifter(
+  input: LifterInput, today: string,
+): FieldErrors {
+  // ... ime i prezime
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.birth_date)) {
+    // ... datum nije upisan
+  } else if (input.birth_date >= today) {
+    errors.birth_date = 'Datum <@rođenja@> mora biti u <@prošlosti.@>'
+  }
+  // ... spol
+  return errors
+}
+\end{lstlisting}
+
+\vspace{0.2em}
+Današnji dan zadaje pozivatelj (\texttt{today}), pa funkcija ne ovisi o satu računala na kojem se izvodi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Provjera u pregledniku i shema}
+Pravilo o datumu rođenja sada stoji na dvama mjestima. Provjera u pregledniku postoji radi korisnika: poruku daje odmah, bez zahtjeva. Zahtjev poslan mimo obrasca ne prolazi kroz nju, pa podatke i dalje štiti samo shema na poslužitelju.
+
+\vspace{0.9em}
+Kad se granica promijeni na jednoj strani, a na drugoj ne, obrazac propušta ono što poslužitelj odbija ili odbija ono što bi poslužitelj primio. Zato uz obje provjere stoji napomena da se mijenjaju zajedno.
+
+\vspace{0.9em}
+\begin{konvencija}[Izbor, ne pravilo]
+Projekt u pregledniku ponavlja pravila koja ne traže bazu: popunjena polja, duljinu imena i datum u prošlosti. Pravila koja traže zapis iz baze, kao kategoriju prema spolu natjecatelja ili rok prijave, provjerava samo poslužitelj.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ugrađena i vlastita provjera}
 \vspace{0.3em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
 \renewcommand{\arraystretch}{1.35}
-\begin{tabular}{@{}L{2.6cm}L{3.4cm}L{5.1cm}@{}}
+\begin{tabular}{@{}L{2.0cm}L{4.4cm}L{4.6cm}@{}}
   \toprule
-  \textbf{Stanje} & \textbf{Uvjet} & \textbf{Što se prikazuje} \\
+   & \textbf{Ugrađena provjera} & \textbf{Vlastita provjera} \\
   \midrule
-  učitavanje & odgovor još nije stigao & znak da se čeka \\
-  pogreška & zahtjev nije prošao & poruka i, kad ima smisla, ponovni pokušaj \\
-  prazno & odgovor je prazan popis & rečenica i put do prvog upisa \\
+  Pravila & \texttt{required}, \texttt{type}, \texttt{min}, \texttt{max} & pravila sheme koja ne traže bazu \\
+  Poruka & jezik preglednika, oblačić koji nestane & hrvatski, ispod polja, dok se ne ispravi \\
+  Granica & ne zna za pravila domene & piše se i usklađuje sa shemom \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
-\vspace{0.6em}
-Provjere se nižu tim redom: prvo učitavanje, pa pogreška, pa prazno, pa podatci. Obrnut redoslijed pokaže prazan popis dok odgovor još putuje.
-
 \vspace{0.4em}
-Prazan skup rezultata svaki novi korisnik vidi prvi, pa je to mjesto na kojem mu se kaže što dalje.
+\begin{lstlisting}[language=html]
+<!-- src/views/LifterFormView.vue -->
+<form v-else class="card form" novalidate @submit.prevent="submit">
+\end{lstlisting}
+
+\vspace{0.2em}
+\texttt{novalidate} isključuje ugrađenu provjeru. \texttt{required} ostaje na polju, pa ga čitač zaslona najavljuje kao polje koje se mora ispuniti.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Ista četiri slučaja u prikazu}
+\begin{frame}[fragile]{Polje i njegova poruka}
 \begin{lstlisting}[language=html]
-<div v-if="ucitavanje">Ucitavanje...</div>
-
-<div v-else-if="greska" class="error">
-  {{ greska }}
-  <button @click="dohvati(clubId)">Pokusaj ponovno</button>
-</div>
-
-<p v-else-if="lifters.length === 0">
-  Nemate upisanih natjecatelja.
-  <RouterLink to="/lifters/new">Upisite prvoga.</RouterLink>
-</p>
-
-<table v-else> ... </table>
+<!-- src/components/FormField.vue -->
+<input
+  :id="id"
+  v-model="model"
+  :aria-invalid="error ? 'true' : undefined"
+  :aria-describedby="error ? errorId : undefined"
+/>
+<p v-if="error" :id="errorId" class="field-error">{{ error }}</p>
 \end{lstlisting}
 
 \vspace{0.4em}
-Niz \texttt{v-if} i \texttt{v-else-if} jamči da je u svakom trenutku prikazano točno jedno od toga.
+\texttt{aria-invalid} označava polje kao neispravno, a \texttt{aria-describedby} veže poruku uz polje, pa je čitač zaslona čita kad korisnik dođe na polje.
+
+\vspace{0.4em}
+Crveni obrub to ne kaže nikome tko ga ne vidi.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Kada ponovni pokušaj ima smisla}
+\begin{frame}[fragile]{Fokus na prvu pogrešku}
+Korisnik koji obrazac šalje tipkom \kbd{Enter} ne vidi gdje je pogreška ako je polje iznad vidljivog dijela stranice. Fokus zato odlazi na prvo neispravno polje:
+
+\begin{lstlisting}[language=typescript]
+// src/views/LifterFormView.vue
+function focusFirstError() {
+  nextTick(() =>
+    document
+      .querySelector<HTMLElement>('[aria-invalid="true"]')
+      ?.focus(),
+  )
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Selektor traži isti atribut koji čita čitač zaslona, pa fokus i oznaka neispravnog polja ne mogu otići na različita mjesta.
+
+\vspace{0.3em}
+\texttt{nextTick} čeka da Vue nove atribute upiše u stablo elemenata.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Oblici odbijanja}
 \vspace{0.3em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{3.2cm}L{4.0cm}L{3.9cm}@{}}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{1.2cm}L{5.6cm}L{3.0cm}@{}}
   \toprule
-  \textbf{Uzrok} & \textbf{Primjer} & \textbf{Ponovni pokušaj} \\
+  \textbf{Kod} & \textbf{Uzrok} & \textbf{Mjesto poruke} \\
   \midrule
-  mreža & veza je prekinuta & ima smisla \\
-  poslužitelj, \texttt{5xx} & pogreška u obradi & ima smisla \\
-  zahtjev, \texttt{4xx} & podatci ne prolaze provjeru & nema smisla \\
+  \texttt{422} & tijelo ne odgovara shemi & uz polje \\
+  \texttt{400} & rok je istekao, kategorija ne odgovara spolu & iznad obrasca \\
+  \texttt{409} & natjecatelj je već prijavljen & iznad obrasca \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Isti zahtjev koji je odbijen zbog svojeg sadržaja bit će odbijen i drugi put. Gumb za ponovni pokušaj uz takvu poruku obećava nešto što se neće dogoditi.
+Samo \texttt{422} nosi ime polja. Rok i jedinstvenost odnose se na cijeli zahtjev, pa njihova poruka stoji iznad gumba za slanje.
 
 \vspace{0.4em}
-Odgovore \texttt{401} i \texttt{403} prikaz uopće ne vidi: njih obrađuje presretač.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vježba: tri stanja}
-Radite nad prikazom koji nabraja natjecatelje.
-
-\vspace{0.8em}
-\begin{enumerate}
-  \itemsep0.4em
-  \item Dodajte sva tri stanja i poredajte provjere kako je opisano.
-  \item Zaustavite backend i otvorite prikaz.
-  \item Pokrenite backend, prijavite se kao klub \texttt{sokol@plreg.hr} i otvorite isti prikaz.
-  \item U alatima za razvoj usporite mrežu i ponovno otvorite prikaz.
-  \item Zamijenite redoslijed tako da se prazan popis provjerava prvi i ponovite četvrti korak.
-\end{enumerate}
-
-\vspace{0.8em}
-Koje ste stanje vidjeli u svakom od koraka 2, 3 i 4, a što se promijenilo u petom?
-\end{frame}
-
-% ============================================================
-\sekcija{Obrasci i odbijeni zahtjevi}{Obrazac vezan uz podatak, provjera prije slanja, tri oblika odbijanja i mjesto na kojem se poruka prikazuje.}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Obrazac i podatak}
-Obrazac se ne čita iz stabla elemenata. Polja su vezana uz jedan objekt, a on je ono što se šalje:
-
-\begin{lstlisting}[language=html]
-<script setup lang="ts">
-const obrazac = ref({
-  first_name: '', last_name: '', birth_date: '', gender: 'M',
-})
-</script>
-
-<template>
-  <input v-model="obrazac.first_name" required>
-  <input v-model="obrazac.birth_date" type="date" required>
-</template>
-\end{lstlisting}
-
-\vspace{0.4em}
-Polja odgovaraju shemi unosa na poslužitelju, jedno po jedno. Oznaku kluba obrazac ne nosi, jer ona stoji u adresi rute.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Provjera prije slanja}
-Preglednik sam odbija prazno polje označeno s \texttt{required} i vrijednost koja ne odgovara tipu polja. To se dogodi bez zahtjeva, pa je odgovor trenutačan.
-
-\vspace{0.9em}
-Ta provjera postoji radi korisnika. Zahtjev poslan mimo obrasca je ne vidi, pa ista pravila stoje i u shemi na poslužitelju.
-
-\vspace{0.9em}
-Zato provjera u pregledniku ne mora biti potpuna. Ima smisla ondje gdje štedi zahtjev i gdje je poruka brža: prazna polja, očit oblik datuma, najmanja i najveća duljina.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Tri oblika odbijanja}
-Isti obrazac poslužitelj odbija na tri načina, a oblik odgovora je uvijek isti:
-
-\begin{lstlisting}[language=json]
-{"code": "validation_error", "message": "Neispravni podatci u zahtjevu",
- "errors": [{"field": "birth_date",
-             "message": "Datum rodenja mora biti u proslosti"}]}
-\end{lstlisting}
-
-\vspace{0.4em}
-\begin{center}
-{\small
-\setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{1.4cm}L{4.6cm}L{5.1cm}@{}}
-  \toprule
-  \textbf{Kod} & \textbf{Uzrok} & \textbf{Gdje se prikazuje} \\
-  \midrule
-  \texttt{422} & polje ne odgovara shemi & uz to polje \\
-  \texttt{409} & zapis bi prekršio jedinstvenost & iznad obrasca \\
-  \texttt{400} & poslovno pravilo ne dopušta & iznad obrasca \\
-  \bottomrule
-\end{tabular}
-}
-\end{center}
+\begin{konvencija}
+U ovom projektu \texttt{409} nosi jedino sukob s postojećim zapisom, \texttt{422} jedino pogrešku u obliku podataka, a ostala odbijanja su \texttt{400}.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Poruka uz polje}
-Samo odgovor \texttt{422} nosi polje \texttt{errors}, a u njemu ime polja na koje se poruka odnosi:
+Popis \texttt{errors} pretvara se u objekt koji za ime polja daje poruku, istog oblika kao rezultat vlastite provjere:
 
 \begin{lstlisting}[language=typescript]
-// utils/greske.ts
-export function poPolju(data: ApiError): Record<string, string> {
-  const izlaz: Record<string, string> = {}
-  for (const g of data.errors ?? []) izlaz[g.field] = g.message
-  return izlaz
+// src/lib/errors.ts
+export function toFieldErrors(errors: FieldError[]): FieldErrors {
+  const result: FieldErrors = {}
+  for (const error of errors) {
+    if (!(error.field in result)) result[error.field] = error.message
+  }
+  return result
 }
 \end{lstlisting}
 
-\vspace{0.4em}
-Rezultat je objekt koji za svako ime polja daje poruku, pa ga predložak čita izravno:
+\vspace{0.3em}
+Obje provjere pišu u isti objekt \texttt{errors}, a polje poruku čita iz njega, bez obzira na to odakle je došla:
 
 \begin{lstlisting}[language=html]
-<span v-if="greske.birth_date" class="error">
-  {{ greske.birth_date }}
-</span>
+<FormField id="birth-date" v-model="form.birth_date"
+           ... :error="errors.birth_date" />
 \end{lstlisting}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Slanje obrasca}
+\vspace{-0.3em}
 \begin{lstlisting}[language=typescript]
-async function posalji() {
-  greske.value = {}
-  poruka.value = ''
+// src/views/LifterFormView.vue
+async function submit() {
+  // ... vlastita provjera, pending.value = true
   try {
-    await api.post(`/clubs/${clubId}/lifters`, obrazac.value)
-    router.push('/lifters')
+    // ... dodavanje ili izmjena, upis u pohranu, povratak na popis
   } catch (e) {
-    const odgovor = (e as AxiosError<ApiError>).response
-    if (odgovor?.status === 422) greske.value = poPolju(odgovor.data)
-    else poruka.value = odgovor?.data.message ?? 'Zahtjev nije prosao'
+    if (e instanceof ApiError && e.code === 'validation_error') {
+      errors.value = toFieldErrors(e.fieldErrors)
+      focusFirstError()
+      return
+    }
+    throw e
+  } finally {
+    pending.value = false
   }
 }
 \end{lstlisting}
 
-\vspace{0.4em}
-Polje \texttt{message} namijenjeno je čovjeku, pa se prikazuje onakvo kakvo je. Grananje ide po \texttt{code}, ne po tekstu poruke.
+\vspace{0.1em}
+Ostale pogreške idu dalje (\texttt{throw e}), do obavijesti koju prikazuje aplikacija.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Obrazac za izmjenu}
-Obrazac za izmjenu počinje popunjen, pa prvo dohvaća zapis:
-
+\begin{frame}[fragile]{Poruka iznad obrasca}
+\vspace{-0.3em}
 \begin{lstlisting}[language=typescript]
-async function ucitaj(id: number) {
-  const { data } = await api.get<Lifter>(
-    `/clubs/${clubId}/lifters/${id}`)
-  obrazac.value = { ...data }
+// src/components/RegistrationForm.vue
+async function submit() {
+  // ... vlastita provjera, pending.value = true
+  try {
+    // ... slanje, emit('created', registration), novi obrazac
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e
+    if (e.code === 'validation_error')
+      errors.value = toFieldErrors(e.fieldErrors)
+    else if (e.status === 400 || e.status === 409)
+      formError.value = e.message
+    else throw e
+  } finally {
+    pending.value = false
+  }
 }
-
-onMounted(() => ucitaj(Number(route.params.lifterId)))
-watch(() => route.params.lifterId, (id) => ucitaj(Number(id)))
 \end{lstlisting}
 
-\vspace{0.4em}
-\texttt{onMounted} pokriva prvi dolazak na rutu. Promatrač pokriva prijelaz s jednog natjecatelja na drugoga: adresa se promijeni, a komponenta ostaje ista, pa bi bez njega obrazac zadržao prethodni zapis.
+\vspace{0.1em}
+Poruka stoji iznad gumba (\texttt{role="alert"}), a obrazac ostaje popunjen.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: tri odbijena obrasca}
-Prijavljeni ste kao klub \texttt{behemot@plreg.hr}, a \emph{Zimski kup} je u prvom razdoblju.
+\begin{frame}{Ponovljeni prijelaz stanja (I)}
+Klub dvaput klikne na odjavu prijave ili je odjavi i u drugoj kartici. Drugi zahtjev stiže nad prijavom koja je već odjavljena.
+
+\vspace{0.9em}
+Poslužitelj ponovljenu odjavu odbija kodom \texttt{already\_withdrawn}, jer je radnja već provedena, a ponovljeni povratak kodom \texttt{already\_active}. Statusni kod je \texttt{400}.
+
+\vspace{0.9em}
+Za korisnika to nije pogreška: radnja koju je tražio provedena je. Pogreška je jedino to što prikazani popis nije najnoviji.
+
+\vspace{0.9em}
+\begin{konvencija}
+Korisničko sučelje ponovljeni prijelaz prikazuje kao obavijest o provedenoj radnji, a ne kao pogrešku, i osvježava popis.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ponovljeni prijelaz stanja (II)}
+\begin{lstlisting}[language=typescript]
+// src/views/CompetitionView.vue
+async function changeStatus(registration: Registration) {
+  // ...
+  try {
+    // ... odjava ili povratak, zamjena retka, obavijest
+  } catch (e) {
+    if (e instanceof ApiError &&
+        (e.code === 'already_withdrawn' ||
+         e.code === 'already_active')) {
+      notifications.success(e.message)
+      loadRegistrations()
+      return
+    }
+    throw e
+  }
+}
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: provjera prije slanja}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}, na stranici za dodavanje natjecatelja.
 
 \vspace{0.8em}
 \begin{enumerate}
   \itemsep0.4em
-  \item U obrascu za novog natjecatelja upišite datum rođenja u budućnosti i pošaljite.
-  \item Prijavite natjecatelja na natjecanje, pa istoga natjecatelja prijavite još jednom.
-  \item U obrascu za prijavu upišite kategoriju koja ne odgovara spolu natjecatelja.
-  \item Kao organizator \texttt{admin@plreg.hr} pomaknite preliminarni rok u prošlost, pa se vratite kao klub i ponovite drugi korak s drugim natjecateljem.
+  \item Upišite Petru Kovač, rođenu 01.01.2030., ženskog spola, i pritisnite \kbd{Enter}.
+  \item Obrišite prezime i ponovno pritisnite \kbd{Enter}.
+  \item U \codefile{src/views/LifterFormView.vue} zakomentirajte redak s pozivom \texttt{validateLifter} i ponovite prvi korak.
+  \item Vratite zakomentirani redak.
 \end{enumerate}
 
-\vspace{0.6em}
-Koji ste \texttt{code} dobili u svakom koraku i gdje bi u obrascu svaka od tih poruka trebala stajati?
+\vspace{0.8em}
+Na koje je polje u drugom koraku otišao fokus i po čemu se poruke iz prvog i trećeg koraka razlikuju?
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: odbijeni zahtjevi}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}, a \emph{Zimski kup} je u razdoblju \texttt{open}. Rok u drugom koraku pomiče organizator \texttt{admin@plreg.hr} u Swaggeru, s oznakom natjecanja iz \texttt{GET /competitions/}:
+
+\begin{lstlisting}
+PATCH /competitions/{id}
+{"prelim_deadline": "2026-11-01T23:59:00+01:00"}
+\end{lstlisting}
+
+\vspace{-0.1em}
+\begin{enumerate}
+  \itemsep0.2em
+  \item Otvorite \emph{Zimski kup} u dvjema karticama i u objema prijavite Ivana Perića u kategoriji 83 kg, bez osvježavanja.
+  \item Pošaljite zahtjev iz isječka, pa u kartici kluba, bez osvježavanja, prijavite Anu Horvat u kategoriji 63 kg.
+  \item Odjavite prijavu Ivana Perića u prvoj kartici, pa u drugoj.
+  \item Vratite rok na \texttt{2027-02-14T23:59:00+01:00}.
+\end{enumerate}
+
+\vspace{0.2em}
+Gdje se u prvim trima koracima pojavila poruka i zašto se poruka trećeg koraka razlikuje od ostalih?
 \end{frame}
 
 % ============================================================
-\sekcija{Ono što se ponavlja}{Isti dio prikaza na više mjesta, komponenta s vlastitim sučeljem, ista logika u više komponenata.}
+\sekcija{Ono što se ponavlja}{Polje obrasca kao komponenta s v-model, oznaka stanja prijave i obrazac koji roditelju javlja događaj.}
 
 % ------------------------------------------------------------
-\begin{frame}{Isti dio prikaza na više mjesta}
-Obrazac za natjecatelja ima četiri polja. Svako od njih je oznaka, polje za unos i mjesto za poruku o pogrešci, dakle isti raspored četiri puta.
+\begin{frame}[fragile]{Isti dio prikaza na više mjesta}
+Polje za spol u obrascu natjecatelja napisano je izravno:
 
-\vspace{0.9em}
-Obrazac za prijavu na natjecanje ima iste takve dijelove. Isto vrijedi za svaki sljedeći obrazac.
+\begin{lstlisting}[language=html]
+<!-- src/views/LifterFormView.vue -->
+<div class="field">
+  <label for="gender">Spol</label>
+  <select
+    id="gender"
+    v-model="form.gender"
+    :aria-invalid="errors.gender ? 'true' : undefined"
+    :aria-describedby="errors.gender ? 'gender-error' : undefined"
+  > ... </select>
+  <p v-if="errors.gender" id="gender-error" class="field-error">
+    {{ errors.gender }}
+  </p>
+</div>
+\end{lstlisting}
 
-\vspace{0.9em}
-Kad se raspored prepiše, mijenja se na svakom mjestu posebno. Ako se na jednom od njih poruka o pogrešci zaboravi, obrazac radi, a korisnik ne vidi zašto zahtjev ne prolazi.
+\vspace{0.2em}
+Oznaka \texttt{gender-error} stoji dvaput. Pogreška u pisanju na jednom od tih mjesta ne ruši ništa: obrazac radi, a čitač zaslona poruku ne pročita.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Polje obrasca kao komponenta}
-\begin{lstlisting}[language=html]
-<!-- components/PoljeObrasca.vue -->
-<script setup lang="ts">
-defineProps<{ oznaka: string; greska?: string;
-              modelValue: string }>()
-defineEmits<{ 'update:modelValue': [vrijednost: string] }>()
-</script>
-<template>
-  <label>{{ oznaka }}</label>
-  <input :value="modelValue"
-    @input="$emit('update:modelValue',
-                  ($event.target as HTMLInputElement).value)">
-  <span v-if="greska" class="error">{{ greska }}</span>
-</template>
+\begin{lstlisting}[language=typescript]
+// src/components/FormField.vue
+const model = defineModel<string>({ required: true })
+
+const props = defineProps<{
+  id: string
+  label: string
+  error?: string
+  type?: 'text' | 'date' | 'number' | 'password'
+  autocomplete?: string
+  required?: boolean
+}>()
+const errorId = computed(() => `${props.id}-error`)
 \end{lstlisting}
 
-\vspace{0.4em}
-Par \texttt{modelValue} i \texttt{update:modelValue} dogovoreno je ime koje \texttt{v-model} prepoznaje, pa se komponenta koristi kao obično polje: \texttt{<PoljeObrasca v-model="obrazac.first\_name" />}.
+\vspace{0.2em}
+Oznaku poruke komponenta izvodi iz \texttt{id}, na jednom mjestu.
+
+\vspace{0.2em}
+\texttt{defineModel} daje vrijednost iz \texttt{v-model} roditelja. Upis u nju roditelju šalje događaj \texttt{update:modelValue}, pa vrijednost mijenja samo roditelj.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Uporaba polja obrasca}
+\begin{lstlisting}[language=html]
+<!-- src/views/LifterFormView.vue -->
+<FormField
+  id="birth-date"
+  v-model="form.birth_date"
+  label="Datum <@rođenja@>"
+  type="date"
+  required
+  :error="errors.birth_date"
+/>
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{v-model} na komponenti kratica je za par \texttt{:modelValue} i \texttt{@update:modelValue}, pa se komponenta koristi kao obično polje.
+
+\vspace{0.3em}
+Polje za spol nije \texttt{FormField}, jer komponenta crta samo \texttt{<input>}. Izbornik uz to treba popis mogućnosti, pa bi ga pokrila zasebna komponenta, a ne dodatno svojstvo ove. Dok takve nema, izbornici u projektu stoje napisani izravno.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Oznaka stanja prijave}
-Prijava ima stanje \texttt{active} ili \texttt{withdrawn}, a popis ga prikazuje na svakom retku:
+Stanje prijave ima dvije vrijednosti, i tip to kaže:
 
+\begin{lstlisting}[language=typescript]
+// src/api/types.ts
+export type RegistrationStatus = 'active' | 'withdrawn'
+\end{lstlisting}
+
+\vspace{-0.2em}
 \begin{lstlisting}[language=html]
-<!-- components/OznakaStanja.vue -->
+<!-- src/components/StatusBadge.vue -->
 <script setup lang="ts">
-const props = defineProps<{ stanje: string }>()
-const razred = computed(() =>
-  props.stanje === 'active' ? 'badge-green' : 'badge-grey')
+defineProps<{ status: RegistrationStatus }>()
 </script>
 
 <template>
-  <span :class="razred">{{ stanje }}</span>
+  <span class="badge" :class="status">{{ STATUS_LABELS[status] }}</span>
 </template>
 \end{lstlisting}
 
-\vspace{0.4em}
-Komponenta ne odlučuje što se s prijavom smije: gumb za odjavu stoji u popisu, uz uvjet koji ovisi o stanju prijave i razdoblju natjecanja.
+\vspace{0.2em}
+Boja razlikuje aktivnu prijavu od odjavljene samo onome tko je vidi. Stanje zato nosi tekst, \enquote{aktivna} ili \enquote{odjavljena}, a boja ga samo prati.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Kada izdvojiti, a kada ne}
-Izdvaja se ono što se ponavlja i ima jasnu granicu: polje obrasca, poruka o pogrešci s ponovnim pokušajem, oznaka stanja, zaglavlje tablice.
-
-\vspace{0.9em}
-Ne izdvaja se ono što postoji na jednom mjestu. Komponenta koja se koristi jednom dodaje datoteku, a ne uklanja ponavljanje.
-
-\vspace{0.9em}
-Komponenta s desetak svojstava znak je da radi previše. Takva se rastavlja ili joj se dio sadržaja predaje kao umetak, čime roditelj odlučuje što se prikazuje, a komponenta gdje.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Ista logika u više komponenata}
-Ponavlja se i ono što nije prikaz. Odgoda slanja pri tipkanju treba svakom polju za pretragu:
-
+\begin{frame}[fragile]{Obrazac koji javlja događaj}
+\vspace{-0.3em}
 \begin{lstlisting}[language=typescript]
-// composables/useOdgoda.ts
-export function useOdgoda(kasnjenje = 300) {
-  const unos = ref('')
-  const odgodeni = ref('')
-  let mjerac: ReturnType<typeof setTimeout>
-  watch(unos, (v) => {
-    clearTimeout(mjerac)
-    mjerac = setTimeout(() => { odgodeni.value = v }, kasnjenje)
-  })
-  return { unos, odgodeni }
-}
+// src/components/RegistrationForm.vue
+const props = defineProps<{
+  compId: number
+  registeredLifterIds: number[]
+}>()
+const emit = defineEmits<{ created: [registration: Registration] }>()
 \end{lstlisting}
 
-\vspace{0.4em}
-Bez odgode pretraga po prezimenu šalje zahtjev na svaki pritisnut znak. Uz nju se šalje jedan, kad korisnik prestane tipkati.
+\vspace{-0.2em}
+\begin{lstlisting}[language=html]
+<!-- src/views/CompetitionView.vue -->
+<RegistrationForm
+  v-if="!auth.isAdmin"
+  :comp-id="compId"
+  :registered-lifter-ids="registeredLifterIds"
+  @created="onCreated"
+/>
+\end{lstlisting}
+
+\vspace{0.1em}
+Obrazac ne zna za popis ispod sebe. Roditelj prijavu dodaje u popis i javlja \enquote{Prijava je spremljena: Ana Horvat.}, bez pretpostavke o rodu.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Funkcija koja vraća praćene vrijednosti}
-Takva se funkcija po dogovoru imenuje s predmetkom \texttt{use} i vraća praćene vrijednosti umjesto običnih.
+\begin{frame}{Vježba: uputa uz polje obrasca}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}, na stranici za dodavanje natjecatelja.
 
-\vspace{0.9em}
-Razlika prema pohrani je u tome tko je vlasnik. Pohrana postoji jednom za cijelu aplikaciju, a ovakva funkcija svakom pozivatelju daje vlastiti skup vrijednosti.
-
-\vspace{0.9em}
-Zato prijavljeni korisnik stoji u pohrani, a odgoda unosa u ovakvoj funkciji: dva polja za pretragu na istoj stranici moraju imati odvojene mjerače.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vježba: izdvojena komponenta}
-Imate obrazac za natjecatelja s četiri polja i prikazom poruka iz odgovora \texttt{422}.
-
-\vspace{0.8em}
+\vspace{0.6em}
 \begin{enumerate}
-  \itemsep0.4em
-  \item Izdvojite polje obrasca u komponentu i upotrijebite je za sva četiri polja.
-  \item Pošaljite obrazac s praznim prezimenom i datumom rođenja u budućnosti.
-  \item Dodajte komponenti svojstvo kojim se polje označava kao obavezno i upotrijebite ga.
-  \item Upotrijebite istu komponentu u obrascu za prijavu na natjecanje.
+  \itemsep0.3em
+  \item Dodajte komponenti \texttt{FormField} svojstvo \texttt{hint}: uputu ispod polja, vezanu kroz \texttt{aria-describedby} uz poruku o pogrešci.
+  \item Polju za datum rođenja dajte uputu \enquote{Natjecatelj je rođen prije današnjeg dana.}
+  \item Pošaljite obrazac s datumom 01.01.2030. i u alatima za razvoj, na kartici za pristupačnost, pogledajte opis polja.
+  \item U \codefile{src/components/RegistrationForm.vue} zamijenite polje za prijavljeni zbroj komponentom \texttt{FormField}.
 \end{enumerate}
 
-\vspace{0.8em}
-Koliko ste mjesta morali promijeniti u trećem koraku, a koliko biste ih promijenili da polja nisu izdvojena?
+\vspace{0.6em}
+Koliko ste datoteka promijenili u prvim dvama koracima i što komponenti nedostaje u četvrtom?
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Sažetak}
 \begin{itemize}
-  \itemsep0.3em
-  \item Podatak koji trebaju dva prikaza stoji izvan stabla komponenata.
-  \item Pohrana ima stanje, izvedene vrijednosti i radnje, kao i sloj na poslužitelju.
-  \item Rastavljanje pohrane bez \texttt{storeToRefs} tiho prekida praćenje.
-  \item Privremene vrijednosti jednog obrasca ostaju u komponenti.
-  \item Prikaz bez triju stanja izgleda jednako u sva tri.
-  \item Redoslijed provjere je učitavanje, pogreška, prazno, podatci.
-  \item Ponovni pokušaj ima smisla samo za mrežu i \texttt{5xx}.
-  \item Provjera u pregledniku je radi brzine, shema na poslužitelju radi točnosti.
-  \item \texttt{422} se prikazuje uz polje, \texttt{409} i \texttt{400} iznad obrasca.
-  \item Pohrana je zajednička, a \texttt{use} funkcija daje svakom pozivatelju svoju.
+  \itemsep0.15em
+  \item Podatak koji čita više prikaza stoji u pohrani; ostalo ostaje u komponenti.
+  \item Pohrana drži i stanje dohvata, pa se popis koji nije stigao razlikuje od praznog.
+  \item Rastavljena pohrana daje vrijednosti iz trenutka rastavljanja.
+  \item Pohrana traje dok je aplikacija otvorena, pa odjava aplikaciju učitava ispočetka.
+  \item Prikaz razlikuje prvi dohvat, neuspjeh, prazan popis i popis.
+  \item Upisuje se samo odgovor na zadnji pokrenuti zahtjev.
+  \item Provjera u pregledniku je radi korisnika; podatke štiti shema na poslužitelju.
+  \item \texttt{422} se prikazuje uz polje, a \texttt{400} i \texttt{409} iznad obrasca.
+  \item Polje, poruka i njihova veza za čitač zaslona pišu se jednom, u komponenti.
 \end{itemize}
 \end{frame}
 
