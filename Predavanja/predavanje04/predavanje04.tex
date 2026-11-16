@@ -14,8 +14,10 @@
 \begin{enumerate}
   \item Što autorizacija odlučuje
   \item Provjera uloge
+  \item Slojevi aplikacije
   \item Vlasništvo nad zapisom
   \item Odgovori i njihove posljedice
+  \item Testiranje prava pristupa
 \end{enumerate}
 
 \vspace{0.6em}
@@ -29,18 +31,58 @@ Nakon ovog predavanja student može:
 \begin{itemize}
   \item razgraničiti provjeru uloge od provjere vlasništva i reći koju vrstu zaobilaženja svaka sprječava
   \item napisati ovisnost koja propušta samo određene uloge
+  \item imenovati odgovornost svakoga sloja i reći koji od njih može odlučiti o pravu pristupa
   \item provesti provjeru vlasništva u sloju poslovnih pravila i obrazložiti zašto ne stoji u ruti
   \item razlikovati odbijanje zahtjeva od sužavanja odgovora
   \item obrazložiti izbor između odgovora \texttt{403} i \texttt{404}
+  \item napisati test koji zahtjev nad tuđim zapisom odbija i prepoznati što padanje testa govori
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Domena primjera}
-Sustav prijava klubova na powerlifting natjecanje. Račun ima ulogu \texttt{admin} ili \texttt{club}. Svaki klub ima jedan račun koji pripada samo njemu; organizator ne pripada nijednom.
+Sustav prijava klubova na powerlifting natjecanje. Račun ima ulogu \texttt{admin} ili \texttt{club}. Račun kluba nosi oznaku svojega kluba, a organizator ne nosi nijednu.
 
 \vspace{0.4em}
 Iz prethodnog predavanja svaki zahtjev nosi token, a ovisnost \texttt{get\_current\_user} iz njega dobiva zapis o korisniku iz baze. Danas se odlučuje što taj korisnik smije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dva zahtjeva koja izgledaju ispravno (I)}
+Klub 12 prijavljen je u aplikaciju. Iz razvojne konzole preglednika šalje dva zahtjeva. Prvim pokušava stvoriti novi klub:
+
+\begin{lstlisting}
+POST /clubs
+Authorization: Bearer <token kluba 12>
+
+{"name": "Novi klub", "city": "Zadar", ...}
+\end{lstlisting}
+
+\vspace{0.4em}
+Drugim traži podatke kluba 13:
+
+\begin{lstlisting}
+GET /clubs/13
+Authorization: Bearer <token kluba 12>
+\end{lstlisting}
+
+\vspace{0.4em}
+Token je valjan i nije istekao, obje adrese postoje, a tijelo je ispravnog oblika.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Dva zahtjeva koja izgledaju ispravno (II)}
+Ovi zahtjevi ne smiju proći jer:
+
+\vspace{0.9em}
+\begin{itemize}
+  \itemsep0.6em
+  \item Prvi traži radnju koju smije samo organizator. Da bismo ga odbili, dovoljno je znati \textbf{tko} ga šalje.
+  \item Drugi traži radnju koju klub smije, ali nad tuđim zapisom. Da bismo ga odbili, moramo pročitati \textbf{zapis} i usporediti ga s pošiljateljem.
+\end{itemize}
+
+\vspace{1.1em}
+Prvo pitanje zovemo uloga, drugo vlasništvo. Ostatak predavanja odgovara na to gdje u aplikaciji stoji odluka o svakome od njih.
 \end{frame}
 
 % ============================================================
@@ -91,7 +133,55 @@ Iz te razlike slijedi i mjesto provjere: uloga se može provjeriti prije nego bu
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Modeli autorizacije}
+\begin{frame}{Popis prava uz zapis (ACL)}
+Uz svaki zapis stoji popis onih koji na njega imaju pravo i što smiju (engl. \emph{access control list}).
+
+\vspace{1.1em}
+Primjer je datoteka u operacijskom sustavu: vlasnik čita i piše, skupina samo čita, ostali ništa. Isto radi i dijeljeni dokument, gdje se pravo dodjeljuje po dokumentu, osobi po osobi.
+
+\pause
+\vspace{1.1em}
+\begin{itemize}
+  \itemsep0.6em
+  \item \textbf{Prednost.} Pravo se dodjeljuje pojedinačno, bez izmjene koda.
+  \item \textbf{Nedostatak.} Popis raste sa svakim zapisom i svakim korisnikom, a na pitanje što jedan korisnik sve smije odgovara se tek pretragom svih popisa.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Prava vezana uz ulogu (RBAC)}
+Korisnik ima ulogu, a pravo je vezano uz ulogu, ne uz osobu (engl. \emph{role-based access control}).
+
+\vspace{1.1em}
+Primjer je uredništvo portala: uloga urednika smije objaviti članak, uloga novinara smije ga samo napisati i predati. Pravilo stoji na jednom mjestu i vrijedi za svakoga tko tu ulogu ima.
+
+\pause
+\vspace{1.1em}
+\begin{itemize}
+  \itemsep0.6em
+  \item \textbf{Prednost.} Malo pravila pokriva mnogo korisnika, a uz rutu se vidi koja ih uloga smije pozvati.
+  \item \textbf{Nedostatak.} Pravilo je isto za sve u ulozi, pa iznimka za jednoga traži novu ulogu. Vlasništvo uloga ne izražava: dva novinara imaju istu ulogu, a tuđi nacrt ne bi smjeli uređivati.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Prava izračunata iz svojstava (ABAC)}
+Odluka se računa iz svojstava korisnika, zapisa i okolnosti u kojima zahtjev stiže (engl. \emph{attribute-based access control}).
+
+\vspace{1.1em}
+Primjer je pristup dokumentu u ustanovi: čitanje prolazi samo ako je razina provjere zaposlenika dovoljna za oznaku povjerljivosti dokumenta i ako zahtjev dolazi iz uredske mreže. Isti zaposlenik i isti dokument, a ishod ovisi o tome odakle pita.
+
+\pause
+\vspace{1.1em}
+\begin{itemize}
+  \itemsep0.6em
+  \item \textbf{Prednost.} Obuhvaća pravila koja uloga ne može izraziti, a drže li se izvan koda, mijenjaju se bez nove inačice aplikacije.
+  \item \textbf{Nedostatak.} Teže je odgovoriti tko što smije, jer odgovor ovisi o trenutku u kojem se pita.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Usporedba modela}
 \begin{center}
 {\small
 \setlength{\tabcolsep}{8pt}
@@ -101,18 +191,15 @@ Iz te razlike slijedi i mjesto provjere: uloga se može provjeriti prije nego bu
   \textbf{Model} & \textbf{Odluka se donosi prema} & \textbf{Primjer} \\
   \midrule
   ACL  & popisu uz svaki zapis        & prava nad datotekom \\
-  RBAC & ulozi korisnika              & organizator i klub \\
-  ABAC & svojstvima korisnika, zapisa i okolnosti & pravo koje ovisi o dobu dana \\
+  RBAC & ulozi korisnika              & urednik i novinar \\
+  ABAC & svojstvima korisnika, zapisa i okolnosti & pravo koje ovisi o mreži \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
-\vspace{0.5em}
-Redom: popis prava uz svaki zapis (engl. \emph{access control list}), prava vezana uz ulogu (engl. \emph{role-based access control}), prava izračunata iz svojstava (engl. \emph{attribute-based access control}).
-
-\vspace{0.5em}
-Ovdje se koristi RBAC uz provjeru vlasništva, jer su uloge dvije i pravila se ne mijenjaju bez izmjene koda. ABAC dolazi u obzir kad pravila ovise o okolnostima ili ih treba mijenjati bez nove inačice aplikacije; ACL kad se prava dodjeljuju pojedinačno, po zapisu.
+\vspace{0.9em}
+U ovom se projektu koristi RBAC uz provjeru vlasništva: uloge su dvije, a pravila nije moguće promijeniti bez izmjene koda.
 \end{frame}
 
 % ============================================================
@@ -129,15 +216,17 @@ Uloga mora biti poznata pri svakom zahtjevu, a doći može s dvaju mjesta:
 \renewcommand{\arraystretch}{1.4}
 \begin{tabular}{@{}lll@{}}
   \toprule
-  \textbf{Izvor} & \textbf{Kada promjena vrijedi} & \textbf{Cijena} \\
+  \textbf{Izvor} & \textbf{Cijena} & \textbf{Dobitak} \\
   \midrule
-  iz tokena & tek kad token istekne & nema upita \\
-  iz baze   & odmah                 & upit po zahtjevu \\
+  iz tokena & promjena kasni do isteka tokena & nijedan upit \\
+  iz baze   & upit pri svakom zahtjevu        & promjena vrijedi odmah \\
   \bottomrule
 \end{tabular}
 }
 \end{center}
 
+\vspace{0.9em}
+Oba su izvora u redu dok se uloga ne mijenja. Razlika se vidi tek kad se pravo oduzme.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -173,6 +262,13 @@ Unutar sebe \texttt{checker} navodi \texttt{get\_current\_user} kao svoju ovisno
 \begin{frame}[fragile]{Uporaba u ruti}
 \begin{lstlisting}[language=python]
 # app/routers/clubs.py
+@router.get("/", response_model=list[ClubResponse])
+async def list_clubs(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin", "club")),
+):
+    ...
+
 @router.post("/", response_model=ClubResponse, status_code=201)
 async def create_club(
     body: ClubCreate,
@@ -180,16 +276,255 @@ async def create_club(
     admin: User = Depends(require_role("admin")),
 ):
     ...
-@router.get("/", response_model=list[ClubResponse])
-async def list_clubs(
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role("admin", "club")),
-):
-    ...
 \end{lstlisting}
 
 \vspace{0.2em}
-Iz potpisa rute vidi se tko je smije pozvati: stvaranje kluba samo organizator, popis klubova i organizator i klub.
+Tko rutu smije pozvati čita se iz njezina potpisa.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: odbijena uloga u Swaggeru}
+Najbrži način da se vidi odbijen zahtjev jest poslati ga.
+
+\vspace{1.1em}
+\begin{enumerate}
+  \itemsep0.6em
+  \item Prijavite se kao račun nekoga kluba, dakle s ulogom \texttt{club}:
+\end{enumerate}
+
+\begin{lstlisting}
+POST /auth/login
+{"username": "...", "password": "..."}
+\end{lstlisting}
+
+\begin{enumerate}
+  \setcounter{enumi}{1}
+  \itemsep0.6em
+  \item Iz odgovora uzmite \texttt{access\_token} i unesite ga u \texttt{/docs}, gumbom \emph{Authorize}.
+  \item Pošaljite \texttt{POST /clubs} s ispravnim tijelom i pogledajte odgovor.
+\end{enumerate}
+
+\vspace{0.8em}
+Tijelo je ispravno, token je valjan, a zahtjev ne prolazi. Koji je kod odgovora i koja ga je točno ovisnost odbila?
+\end{frame}
+
+% ============================================================
+\sekcija{Slojevi aplikacije}{Četiri sloja i njihove odgovornosti, zašto posao ne stoji u ruti, kako slojevi surađuju.}
+
+% ------------------------------------------------------------
+\begin{frame}{Koraci koje ponavlja svaka ruta}
+Svaka ruta koja dira iste podatke prolazi kroz iste korake:
+
+\vspace{0.9em}
+\begin{itemize}
+  \itemsep0.6em
+  \item utvrditi tko šalje zahtjev
+  \item provjeriti oblik poslanih podataka
+  \item primijeniti pravilo
+  \item pročitati ili upisati zapis
+  \item sastaviti odgovor
+\end{itemize}
+
+\vspace{1.1em}
+Kad bi svaka ruta sve to radila sama, isti bi kod stajao na više mjesta, a svaka bi se izmjena morala napraviti na svakom od njih.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Podjela posla po slojevima}
+Posao se zato dijeli na slojeve. Svaki sloj obavlja jednu vrstu posla za sve rute koje ga trebaju i stoji u svojoj mapi:
+
+\vspace{0.9em}
+\begin{itemize}
+  \itemsep0.6em
+  \item \codefile{routers}: prima zahtjev i vraća odgovor
+  \item \codefile{schemas}: opisuje oblik i tipove poslanih podataka
+  \item \codefile{services}: provodi prava pristupa i poslovna pravila
+  \item \codefile{repositories}: čita iz baze i upisuje u nju
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Sloj ruta: \codefile{routers}}
+\begin{lstlisting}[language=python]
+# app/routers/clubs.py
+@router.get("/{club_id}", response_model=ClubResponse)
+async def get_club(
+    club_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin", "club")),
+):
+    return await club_service.get_club(db, club_id, user)
+\end{lstlisting}
+
+\vspace{0.4em}
+Dobro napisana ruta je kratka. Iz putanje uzima oznaku kluba, iz ovisnosti sesiju nad bazom i pošiljatelja, pa sve to predaje sloju \codefile{services}.
+
+\vspace{1.1em}
+Pravilo ne provodi sama, zapis ne čita sama i upit ne gradi sama. Njezin je posao prevesti zahtjev u poziv funkcije i odgovor te funkcije u HTTP odgovor.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Isti posao u tri rute}
+Dohvat kluba s pogreškom \texttt{404} potreban je trima rutama: čitanju, izmjeni i postavljanju nove lozinke. Bez sloja ispod sebe svaka bi ga radila sama:
+
+\begin{lstlisting}[language=python]
+# app/routers/clubs.py
+async def get_club(club_id: int, ...):
+    club = await club_repo.get_by_id(db, club_id)
+    if not club:  # primjerak 1
+        raise HTTPException(404)
+async def update_club(club_id: int, ...):
+    club = await club_repo.get_by_id(db, club_id)
+    if not club:  # primjerak 2
+        raise HTTPException(404)
+async def reset_password(club_id: int, ...):
+    club = await club_repo.get_by_id(db, club_id)
+    if not club:  # primjerak 3
+        raise HTTPException(404)
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Sloj pravila: \codefile{services}}
+Ispod ruta stoji sloj koji taj posao preuzima. Ovdje je odluka smije li se tražena radnja izvesti i što ona znači nad podatcima; u ovom projektu svakoj ruti odgovara jedna takva funkcija.
+
+\vspace{0.9em}
+\begin{itemize}
+  \itemsep0.5em
+  \item provodi poslovna pravila, među njima i provjeru vlasništva
+  \item spaja više zapisa u jednu radnju: stvaranje kluba upisuje i u \texttt{clubs} i u \texttt{users}
+  \item odbija zahtjev iznimkom \texttt{AppError}, koja nosi kod, poruku i statusni kod
+\end{itemize}
+
+\vspace{0.9em}
+Sam odgovor ne sastavlja. \texttt{AppError} hvata zajednički rukovatelj i pretvara je u JSON, pa poruka o pogrešci ima isti oblik iz svake rute.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Jedan dohvat, tri pozivatelja}
+\begin{lstlisting}[language=python]
+# app/services/club_service.py
+async def _get_or_404(db: AsyncSession, club_id: int) -> Club:
+    club = await club_repo.get_by_id(db, club_id)
+    if not club:
+        raise AppError("not_found", <@"Klub nije pronađen"@>, 404)
+    return club
+
+async def get_club(db, club_id, current_user):
+    club = await _get_or_404(db, club_id)        # pozivatelj 1
+async def update_club(db, club_id, body):
+    club = await _get_or_404(db, club_id)        # pozivatelj 2
+async def reset_password(db, club_id, new_password):
+    await _get_or_404(db, club_id)               # pozivatelj 3
+\end{lstlisting}
+
+\vspace{0.2em}
+Tri primjerka s prethodnog slajda postala su jedna funkcija i tri poziva. Poruka i kod pogreške isti su svuda, a izmjena se radi na jednom mjestu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pravilo pomiješano s upitom}
+Stvaranje kluba odbija se ako je naziv zauzet. Napiše li servis i sam upit, pravilo i dohvat stoje izmiješani:
+
+\begin{lstlisting}[language=python]
+result = await db.execute(select(Club).where(Club.name == body.name))
+if result.scalar_one_or_none():
+    raise AppError("duplicate", "Naziv kluba je zauzet", 409)
+\end{lstlisting}
+
+\vspace{0.8em}
+S funkcijom koja dohvat obavlja umjesto njega, ostaje samo pravilo:
+
+\begin{lstlisting}[language=python]
+if await club_repo.get_by_name(db, body.name):
+    raise AppError("duplicate", "Naziv kluba je zauzet", 409)
+\end{lstlisting}
+
+\vspace{0.8em}
+Drugi se oblik čita kao rečenica: postoji li klub s tim nazivom, odbij zahtjev. Prvi kaže isto, ali tek nakon dvaju redaka o tome kako se do zapisa dolazi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Sloj pristupa bazi: \codefile{repositories}}
+\begin{lstlisting}[language=python]
+# app/repositories/club_repo.py
+async def get_by_name(db: AsyncSession, name: str) -> Club | None:
+    result = await db.execute(select(Club).where(Club.name == name))
+    return result.scalar_one_or_none()
+
+async def create(db: AsyncSession, club: Club) -> Club:
+    db.add(club)
+    <@\kom{flush, ne commit: transakciju potvrđuje get\_db kad zahtjev prođe}@>
+    await db.flush()
+    return club
+\end{lstlisting}
+
+\vspace{0.2em}
+Sloj sadrži samo upite, ni jedno pravilo. Ne zna koja je uloga pošiljatelja ni čiji je zapis, pa ne može ni odlučiti smije li se izmjena izvesti.
+
+\vspace{0.6em}
+Zauzvrat se pravila čitaju bez poznavanja baze, a promjena pohrane ostaje na jednom mjestu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kako slojevi surađuju}
+Primjer: organizator stvara novi klub.
+
+\vspace{0.2em}
+\begin{center}
+\begin{tikzpicture}[
+  node distance=7mm,
+  box/.style={draw=ink, thick, rounded corners, fill=white, align=center,
+              minimum height=9mm, minimum width=40mm, font=\footnotesize, text=textclr},
+  vanj/.style={draw=lineclr, thick, dashed, rounded corners, fill=bgclr, align=center,
+              minimum height=6.5mm, minimum width=18mm, font=\footnotesize, text=mutedclr},
+  dolje/.style={-{Latex}, ink, thick},
+  gore/.style={-{Latex}, ink2, thick},
+  rub/.style={-{Latex}, ink2, thick, dashed},
+  lbl/.style={font=\scriptsize\ttfamily, text=textclr, inner sep=2pt}
+]
+  \node[box] (r) {{\ttfamily routers}\\[1pt]{\scriptsize uloga \texttt{admin}, oblik tijela}};
+  \node[box, below=of r] (s) {{\ttfamily services}\\[1pt]{\scriptsize naziv slobodan? hashiranje lozinke}};
+  \node[box, below=of s] (p) {{\ttfamily repositories}\\[1pt]{\scriptsize dohvat i upis zapisa}};
+  \node[vanj, below=of p] (d) {baza};
+  \node[vanj, left=21mm of r] (q) {zahtjev};
+  \node[vanj, right=21mm of r] (o) {odgovor};
+
+  \draw[dolje] (q) -- (r) node[lbl, midway, above, yshift=2mm] {POST /clubs};
+  \draw[gore] (r) -- (o) node[lbl, midway, above, yshift=2mm] {201 Created};
+
+  \draw[dolje] ([xshift=-9mm]r.south) -- ([xshift=-9mm]s.north)
+    node[lbl, midway, left, xshift=-1.5mm] {create\_club(db, body)};
+  \draw[dolje] ([xshift=-9mm]s.south) -- ([xshift=-9mm]p.north)
+    node[lbl, midway, left, xshift=-1.5mm] {create(db, Club(...))};
+  \draw[rub] ([xshift=-9mm]p.south) -- ([xshift=-9mm]d.north)
+    node[lbl, midway, left, xshift=-1.5mm] {INSERT INTO clubs};
+
+  \draw[rub] ([xshift=9mm]d.north) -- ([xshift=9mm]p.south)
+    node[lbl, midway, right, xshift=1.5mm] {dodijeljen id};
+  \draw[gore] ([xshift=9mm]p.north) -- ([xshift=9mm]s.south)
+    node[lbl, midway, right, xshift=1.5mm] {Club(id=7)};
+  \draw[gore] ([xshift=9mm]s.north) -- ([xshift=9mm]r.south)
+    node[lbl, midway, right, xshift=1.5mm] {Club(id=7)};
+\end{tikzpicture}
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Pravila suradnje}
+\begin{itemize}
+  \itemsep0.6em
+  \item \textbf{Svaki sloj poziva samo onaj ispod sebe.} \codefile{services} ne zna da postoji \codefile{routers}, a \codefile{repositories} ne zna da postoje pravila.
+  \item \textbf{Ruta pravilo navodi, ne provodi.} Uloga stoji u njezinu potpisu kao ovisnost, a izvodi je \texttt{require\_role}.
+  \item \textbf{Sloj pravila ne gradi upite.} Poziva \texttt{club\_repo.get\_by\_name()} i ne zna kako je zapis pohranjen.
+  \item \textbf{Sloj pristupa bazi ne zna tko šalje zahtjev.} Do njega ne dopiru ni uloga ni vlasništvo.
+\end{itemize}
+
+\vspace{0.9em}
+Zato se svaki sloj može pozvati i bez onih iznad njega, \codefile{services} i bez pokrenutog poslužitelja.
+
+\vspace{0.5em}
+Cijena podjele je veći broj datoteka i jedan poziv više po zahtjevu. Isplati se čim isti posao pripada većem broju ruta.
 \end{frame}
 
 % ============================================================
@@ -200,8 +535,8 @@ Iz potpisa rute vidi se tko je smije pozvati: stvaranje kluba samo organizator, 
 Provjera uloge gleda samo korisnika, pa se može izvesti prije nego zahtjev dođe do podataka. Provjera vlasništva to ne može, iz dvaju razloga:
 
 \begin{itemize}
-  \item \textbf{Zapis mora biti dohvaćen.} Da bi se usporedilo pripada li klub korisniku, klub treba pročitati iz baze. Ruta to ne radi.
-  \item \textbf{Pravilo nije isto za svaku radnju.} Klub smije vidjeti svoje podatke, ali ih ne smije mijenjati; organizator smije oboje. To nije svojstvo putanje nego operacije.
+  \item \textbf{Zapis mora biti pročitan.} Ruta ga ne čita, pa ne može razlučiti zapis koji ne postoji od zapisa koji postoji, ali nije pošiljateljev.
+  \item \textbf{Ruta vidi samo pošiljatelja.} Koja ga uloga smije pozvati stoji u njezinu potpisu. Čiji je zapis ne piše nigdje osim u zapisu samom.
 \end{itemize}
 
 \vspace{0.5em}
@@ -212,30 +547,31 @@ Vlasništvo je time poslovno pravilo, a ne svojstvo HTTP zahtjeva, pa stoji u sl
 \begin{frame}[fragile]{Provjera u servisu}
 \begin{lstlisting}[language=python]
 # app/services/club_service.py
-async def _get_or_404(db, club_id: int) -> Club:
-    club = await club_repo.get_by_id(db, club_id)
-    if not club:
-        raise AppError("not_found", "Klub nije pronaden", 404)
-    return club
-
-async def get_club(db, club_id: int, current_user: User) -> Club:
-    club = await _get_or_404(db, club_id)
+def ensure_club_access(current_user: User, club_id: int) -> None:
     if current_user.role == "club" and current_user.club_id != club_id:
-        raise AppError("forbidden", "...", 403)
+        raise AppError(
+            "forbidden", "Nemate pristup podatcima drugoga kluba", 403
+        )
+
+async def get_club(
+    db: AsyncSession, club_id: int, current_user: User
+) -> Club:
+    club = await _get_or_404(db, club_id)
+    ensure_club_access(current_user, club_id)
     return club
 \end{lstlisting}
 
-\vspace{0.2em}
-Redoslijed nije slučajan: prvo se utvrdi postoji li zapis, pa tek onda smije li ga pošiljatelj vidjeti. Uvjet se odnosi samo na ulogu \texttt{club}, jer organizator smije vidjeti svaki klub, pa se za njega ne provjerava ništa.
+\vspace{0.4em}
+\texttt{ensure\_club\_access} uspoređuje klub iz tokena s klubom iz putanje. Uvjet gleda samo ulogu \texttt{club}, jer organizator smije vidjeti svaki klub.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Sužavanje popisa}
-Zahtjev za popisom ne imenuje nijedan zapis, pa nema zapisa za koji bi se moglo reći da je tuđi. Umjesto odbijanja, odgovor se sužava:
+Dosadašnji zahtjevi imenovali su jedan zapis, pa se nad njim moglo pitati je li pošiljateljev. Zahtjev \texttt{GET /clubs} ne imenuje nijedan, pa nema što odbiti. Umjesto toga se bira što u odgovor ulazi:
 
 \begin{lstlisting}[language=python]
 # app/services/club_service.py
-async def list_clubs(db, current_user: User) -> list[Club]:
+async def list_clubs(db: AsyncSession, current_user: User) -> list[Club]:
     if current_user.role == "admin":
         return await club_repo.get_all(db)
     club = await club_repo.get_by_id(db, current_user.club_id)
@@ -246,30 +582,25 @@ async def list_clubs(db, current_user: User) -> list[Club]:
 Ista ruta, isti statusni kod, različit sadržaj. Klub ne dobiva \texttt{403} nego popis od jednog zapisa.
 
 \vspace{0.3em}
-To je i razlog zašto popis nikada ne smije dohvatiti sve pa filtrirati u odgovoru: podatci koji ne pripadaju korisniku ne izlaze iz sloja koji ih čita.
+To je i razlog zašto popis nikada ne smije dohvatiti sve pa filtrirati u odgovoru: \textbf{podatci koji ne pripadaju korisniku ne izlaze iz sloja koji ih čita}.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Izmjena oznake u adresi}
-Klub 12 otvori popis svojih natjecatelja. Preglednik pošalje:
+Vratimo se drugom zahtjevu s početka predavanja:
 
 \begin{lstlisting}
-GET /clubs/12/lifters
+GET /clubs/13
 Authorization: Bearer <token kluba 12>
 \end{lstlisting}
 
-\vspace{0.3em}
-Isti zahtjev može se poslati i izvan sučelja, s jednom promijenjenom znamenkom:
+\vspace{0.4em}
+Sučelje tu adresu nikada ne otvori. Nastala je tako što je u postojećoj, \texttt{/clubs/12}, promijenjena jedna znamenka.
 
-\begin{lstlisting}
-GET /clubs/13/lifters
-Authorization: Bearer <token kluba 12>
-\end{lstlisting}
+\vspace{1.1em}
+Token je valjan, nije istekao i uloga je \texttt{club}, kakvu ruta i traži, pa provjera uloge prolazi. Bez usporedbe kluba iz tokena s klubom iz putanje, odgovor sadrži podatke kluba 13.
 
-\vspace{0.3em}
-Token je valjan, nije istekao i uloga je \texttt{club}, kakvu ruta i traži. Provjera uloge dakle prolazi. Bez usporedbe kluba iz tokena s klubom iz putanje, odgovor sadrži natjecatelje kluba 13.
-
-\vspace{0.3em}
+\vspace{1.1em}
 Takav se propust naziva nesigurno izravno pozivanje na zapis (engl. \emph{insecure direct object reference}, IDOR).
 \end{frame}
 
@@ -278,11 +609,35 @@ Takav se propust naziva nesigurno izravno pozivanje na zapis (engl. \emph{insecu
 \begin{itemize}
   \item \textbf{Sučelje koje tu adresu ne nudi.} Zahtjev ne mora doći iz sučelja. Alat naredbenog retka ili razvojna konzola preglednika šalju ga jednako dobro, s istim tokenom.
   \item \textbf{Oznaka koju je teško pogoditi.} Dovoljno ju je jednom vidjeti, a redni brojevi se ionako pogađaju redom. Nasumična oznaka usporava pretragu, ali ne mijenja ishod kad je oznaka poznata.
-  \item \textbf{Provjera samo u putanji.} Oznaka kluba može stići i u tijelu zahtjeva, primjerice pri stvaranju natjecatelja. Provjeri li se samo putanja, tijelo ostaje nepokriveno.
+  \item \textbf{Provjera samo u putanji.} Oznaka zapisa ne mora stići samo adresom. Stigne li i u tijelu zahtjeva, provjera koja gleda samo putanju ostavlja tijelo nepokrivenim.
 \end{itemize}
 
 \vspace{0.5em}
 Sprječava ga jedino usporedba pošiljatelja sa zapisom na koji se zahtjev odnosi, pri svakom zahtjevu i nad svakom oznakom koju je zahtjev donio.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: redak koji sprječava IDOR}
+Prijavite se kao jedan klub pa zatražite podatke drugoga:
+
+\begin{lstlisting}
+GET /clubs/<oznaka drugoga kluba>
+Authorization: Bearer <token prvoga kluba>
+\end{lstlisting}
+
+\vspace{0.5em}
+Odgovor je \texttt{403}. Odbio ga je jedan jedini redak koda. Nađite ga:
+
+\vspace{0.6em}
+\begin{enumerate}
+  \itemsep0.5em
+  \item Ubacite ispis prije i poslije poziva koje sumnjičite, ponovite zahtjev i u konzoli poslužitelja pogledajte dokle je izvođenje stiglo.
+  \item Zakomentirajte redak koji ste našli i pošaljite isti zahtjev. Sada vraća \texttt{200} i podatke tuđega kluba.
+  \item Vratite redak na mjesto i potvrdite da zahtjev opet dobiva \texttt{403}.
+\end{enumerate}
+
+\vspace{0.7em}
+Ruta, token i uloga u sva su tri koraka bili isti.
 \end{frame}
 
 % ============================================================
@@ -306,7 +661,7 @@ Sprječava ga jedino usporedba pošiljatelja sa zapisom na koji se zahtjev odnos
 \end{center}
 
 \vspace{0.6em}
-Razlika nije formalna nego mijenja ponašanje klijenta. Na \texttt{401} klijent posegne za refresh tokenom i ponovi zahtjev. Vrati li poslužitelj \texttt{401} ondje gdje je zapravo riječ o nedostatku prava, klijent obnovi token, ponovi zahtjev, dobije isto, i korisnik ostane bez objašnjenja.
+Razlika mijenja ponašanje klijenta. Na \texttt{401} klijent posegne za refresh tokenom i ponovi zahtjev. Vrati li poslužitelj \texttt{401} ondje gdje je riječ o nedostatku prava, klijent obnovi token, ponovi zahtjev, dobije isto, i korisnik ostane bez objašnjenja.
 
 \vspace{0.3em}
 U kodu je razlika vidljiva po tome tko podiže pogrešku: \texttt{get\_current\_user} vraća \texttt{401}, a \texttt{require\_role} i provjera vlasništva \texttt{403}.
@@ -373,27 +728,224 @@ Zato za svaku rutu moramo testirati:
 Treći je slučaj najlakše previdjeti, jer je zahtjev u svemu ispravan osim u jednom broju. Taj je propust ujedno i najčešći.
 \end{frame}
 
+% ============================================================
+\sekcija{Testiranje prava pristupa}{Granica ručne provjere, oblik testa i priprema podataka, što znači kad test padne.}
+
+% ------------------------------------------------------------
+\begin{frame}{Granica ručne provjere}
+Tri slučaja s prethodnog slajda vrijede za svaku rutu, a proći ih treba iznova nakon svake izmjene koda, ne samo kad pravilo pišemo.
+
+\vspace{1.1em}
+Provjera treba i onda kad pravilo ostaje isto. Izgubiti se može izmjenom koja s njim nema veze: poziv koji se premjesti, uvjet koji se proširi, funkcija koja dobije novoga pozivatelja. Nitko pravilo nije dirao, a više ne stoji.
+
+\vspace{1.1em}
+Nad klubovima je to pet ruta i tri računa: organizator, klub i drugi klub. Svaki prolaz traži dvije prijave i petnaestak zahtjeva. \textbf{Ručno to nije održivo.}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Krug jednoga testa}
+Zato se zahtjev ne šalje rukom nego se zapisuje kao kod: program koji ga pošalje i provjeri odgovor. Takav se komad koda zove \textbf{test}.
+
+\vspace{0.6em}
+\begin{center}
+\begin{tikzpicture}[
+  node distance=6mm,
+  box/.style={draw=ink, thick, rounded corners, fill=white, align=center,
+              minimum height=8mm, minimum width=26mm, font=\footnotesize, text=textclr},
+  str/.style={-{Latex}, ink, thick},
+  povrat/.style={-{Latex}, ink2, thick, dashed},
+  lbl/.style={font=\scriptsize, text=mutedclr, inner sep=2pt}
+]
+  \node[box] (a) {prazne tablice};
+  \node[box, right=of a] (b) {pripremljeni zapisi};
+  \node[box, right=of b] (c) {jedan zahtjev};
+  \node[box, right=of c] (d) {tvrdnja o odgovoru};
+
+  \draw[str] (a) -- (b);
+  \draw[str] (b) -- (c);
+  \draw[str] (c) -- (d);
+
+  \draw[povrat] (d.south) -- ++(0,-7mm) -| (a.south);
+  \node[lbl, below=9mm of b] {sljedeći test};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.9em}
+Svaki test prolazi isti krug. Prva dva koraka priprema \texttt{pytest}, alat koji testove pokreće; preostala dva čine sadržaj samoga testa.
+
+\vspace{0.9em}
+Krug je zatvoren: svaki test počinje od praznih tablica, pa ni jedan ne ovisi o onome što je ostavio prethodni. Redoslijed testova time ne utječe na ishod.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Oblik testa}
+\begin{lstlisting}[language=python]
+# api/tests/test_clubs.py
+async def test_club_cannot_get_other_club(
+    client, club_and_user, club_b_and_user
+):
+    club_b, _ = club_b_and_user
+    headers = await auth_header(client, "testclub", "klub123")
+    <@\kom{IDOR: valjan token, ispravna uloga, tuđa oznaka u adresi}@>
+    resp = await client.get(f"/clubs/{club_b.id}", headers=headers)
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "forbidden"
+\end{lstlisting}
+
+\vspace{0.4em}
+Test je jedan zahtjev i tvrdnja o odgovoru. Ovdje tvrdi dvoje: da je odgovor \texttt{403} i da u tijelu stoji \texttt{forbidden}, dakle da je zahtjev odbijen i zašto.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odakle dolaze podatci}
+Test u zaglavlju navodi tri parametra, a nijedan mu nitko ne predaje. Ista ta imena nose funkcije u \texttt{conftest.py}:
+
+\begin{lstlisting}[language=python]
+# api/tests/conftest.py
+@pytest.fixture
+async def club_b_and_user(db: AsyncSession) -> tuple[Club, User]:
+    ...
+
+# api/tests/test_clubs.py
+async def test_club_cannot_get_other_club(
+    client, club_and_user, club_b_and_user
+):
+\end{lstlisting}
+
+\vspace{0.4em}
+Za svako ime pytest potraži funkciju označenu s \texttt{@pytest.fixture}, pozove je i rezultat preda testu. Takvu funkciju zovemo \emph{fixture}.
+
+\vspace{0.8em}
+\texttt{client} šalje zahtjeve aplikaciji bez pokrenutog poslužitelja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Fixture koji stvara klub}
+\begin{lstlisting}[language=python]
+# api/tests/conftest.py
+@pytest.fixture
+async def club_and_user(db: AsyncSession) -> tuple[Club, User]:
+    club = Club(name="TestClub", city="Zadar")
+    db.add(club)
+    await db.flush()
+    user = User(username="testclub", password_hash=fast_hash("klub123"),
+                role="club", club_id=club.id)
+    db.add(user)
+    await db.commit()
+    return club, user
+\end{lstlisting}
+
+\vspace{0.2em}
+I sam fixture navodi parametar \texttt{db}, pa ga pytest popunjava na isti način.
+
+\vspace{0.6em}
+Test ovaj fixture navodi u zaglavlju, ali njegov rezultat ne upotrebljava. Treba mu samo ono što fixture ostavi u bazi: račun \texttt{testclub}, kojim se poslije prijavljuje pozivom \texttt{auth\_header}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Priprema u \codefile{conftest.py}}
+Datoteku \texttt{conftest.py} pytest učitava sam. Fixturei iz nje dostupni su svim testovima u mapi, bez ijednog uvoza.
+
+\begin{lstlisting}[language=python]
+# api/tests/conftest.py
+@pytest.fixture(scope="session", autouse=True)
+def test_database():
+    asyncio.run(_prepare_database())    # baza i tablice iz modela
+
+@pytest.fixture(autouse=True)
+async def clean_tables():
+    tables = ", ".join(t.name for t in Base.metadata.sorted_tables)
+    async with engine.begin() as conn:
+        sql = f"TRUNCATE {tables} RESTART IDENTITY CASCADE"
+        await conn.execute(text(sql))
+\end{lstlisting}
+
+\vspace{0.3em}
+Nijedan ih test ne navodi u zaglavlju, a oba se izvedu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Dvije oznake uz fixture}
+\begin{itemize}
+  \itemsep0.7em
+  \item \texttt{autouse=True}: fixture se izvodi i kad ga nijedan test ne navede. Priprema koja vrijedi za sve ne mora stajati u svakom potpisu.
+  \item \texttt{scope="session"}: izvodi se jednom za cijelo pokretanje. Bez te oznake fixture se izvodi prije svakoga testa, što je zadano ponašanje.
+\end{itemize}
+
+\vspace{1.1em}
+Stvaranje baze i tablica dovoljno je jednom, pa \texttt{test\_database} nosi obje oznake. Pražnjenje tablica mora se dogoditi prije svakoga testa, pa \texttt{clean\_tables} nosi samo \texttt{autouse}.
+
+\vspace{0.9em}
+Redoslijed je time određen: jednom priprema baze, pa prazne tablice prije svakoga testa, pa fixturei koje test sam navede.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pokretanje testova}
+Testovi rade nad bazom, pa se baza prvo podiže. Testna baza \texttt{pl\_reg\_test} odvojena je od razvojne i stvara se sama.
+
+\begin{lstlisting}[language=bash]
+docker compose up -d db     # u korijenu projekta
+cd api
+pytest                      # svi testovi
+\end{lstlisting}
+
+\vspace{0.6em}
+Uz \texttt{-v} pytest imenuje svaki test i njegov ishod:
+
+\begin{lstlisting}[language=bash]
+pytest -v
+tests/test_clubs.py::test_admin_creates_club_with_working_login PASSED
+tests/test_clubs.py::test_create_club_without_token_is_401 PASSED
+...
+\end{lstlisting}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odabir testova}
+Dok se piše jedno pravilo, cijeli skup nije potreban:
+
+\begin{lstlisting}[language=bash]
+pytest tests/test_clubs.py::test_club_cannot_get_other_club
+pytest -k cannot            # izbor po imenu testa
+pytest -x                   # stani na prvom padu
+pytest -s                   # pusti ispis iz testova na zaslon
+\end{lstlisting}
+
+\vspace{0.9em}
+Ono što test ispiše pytest inače zadržava i pokaže tek ako test padne, da prolaz ostane čitljiv. Opcija \texttt{-s} taj ispis pušta odmah, što pomaže dok se traži uzrok.
+
+\vspace{0.9em}
+Opcije se slažu: \texttt{pytest -vsx -k cannot} pokreće samo odabrane testove, imenuje ih, pušta njihov ispis i staje na prvom padu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: što padanje testa kaže}
+Testovi nad klubovima podijeljeni su u datoteci na dvije skupine, na dvije cjeline ovog predavanja: ulogu i vlasništvo. Ponovite zahvat s prethodne vježbe, ovaj put bez preglednika.
+
+\vspace{0.9em}
+\begin{enumerate}
+  \itemsep0.5em
+  \item Pokrenite \texttt{pytest} i provjerite da je sve zeleno.
+  \item Zakomentirajte poziv \texttt{ensure\_club\_access} u \texttt{get\_club}. Prije nego pokrenete \texttt{pytest}, zapišite koliko testova očekujete da padne i kojih.
+  \item Pokrenite \texttt{pytest -v} i usporedite s onim što ste zapisali. Zašto testovi uloge ostaju zeleni?
+  \item Vratite poziv.
+\end{enumerate}
+
+\vspace{0.9em}
+Na kraju: dodate li sutra rutu koja prima oznaku kluba, a zaboravite provjeru vlasništva, hoće li ijedan postojeći test pasti?
+\end{frame}
+
 % ------------------------------------------------------------
 \begin{frame}{Sažetak}
 \begin{itemize}
   \item Autorizacija odgovara na dva pitanja: smije li korisnik ovakvu radnju i smije li je nad ovim zapisom.
-  \item Uloga se provjerava prije dohvata podataka, u ovisnosti uz rutu; vlasništvo tek nakon što je zapis pročitan, u sloju poslovnih pravila.
+  \item Uloga se provjerava prije dohvata, u ovisnosti uz rutu; vlasništvo tek nakon što je zapis pročitan, u sloju pravila.
   \item Uloga koja ulazi u odluku dolazi iz baze, a ne iz tokena, pa promjena prava vrijedi odmah.
+  \item Posao je podijeljen na slojeve, a o pravu pristupa odlučuje \codefile{services}, jedini sloj koji vidi i pošiljatelja i zapis.
+  \item Zeleni testovi dokazuju da su pravila vrijedila za poslane zahtjeve, ne da stoje na svakoj ruti.
   \item Za popise nema što odbiti, pa se odgovor sužava: ista ruta, isti kod, različit sadržaj.
   \item \texttt{401} znači da se treba prijaviti, \texttt{403} da prijava neće pomoći; izbor između \texttt{403} i \texttt{404} odlučuje odaje li se postojanje zapisa.
 \end{itemize}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Što slijedi}
-\begin{itemize}
-  \item \textbf{05.11.2026.} Predavanje 5, oblikovanje API-ja: preostali entiteti, sheme za unos i izlaz, validacija i straničenje.
-  \item \textbf{12.11.2026.} Predavanje 6, poslovna pravila i faze natjecanja.
-  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
-\end{itemize}
-
-\vspace{0.5em}
-Do sljedećega predavanja: prijaviti se računom kluba i pokušati dohvatiti podatke drugoga kluba, pa usporediti odgovor s onim koji dobije organizator.
 \end{frame}
 
 \end{document}

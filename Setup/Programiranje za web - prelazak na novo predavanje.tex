@@ -1,0 +1,656 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage[croatian]{babel}
+\usepackage[a4paper,margin=2.2cm,top=2.4cm,bottom=2.4cm]{geometry}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{array,tabularx,booktabs,colortbl}
+\usepackage{enumitem}
+\usepackage{fancyvrb}
+\usepackage[most]{tcolorbox}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{needspace}
+\usepackage[hidelinks]{hyperref}
+
+\setmainfont{IBMPlexSans}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setsansfont{IBMPlexSans}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setmonofont{IBMPlexMono}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic, Scale=0.9]
+
+\definecolor{ink}{HTML}{0C4685}
+\definecolor{ink2}{HTML}{6E7BAA}
+\definecolor{tint}{HTML}{EAEEF6}
+\definecolor{tekst}{HTML}{1A222E}
+\definecolor{muted}{HTML}{6B7484}
+\definecolor{pozadina}{HTML}{F6F7F9}
+\definecolor{linije}{HTML}{D9DEE7}
+
+\color{tekst}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\linespread{1.12}
+\hypersetup{colorlinks=true,urlcolor=ink,linkcolor=ink}
+
+\titleformat{\section}{\Large\bfseries\color{ink}}{}{0pt}{}
+\titleformat{\subsection}{\large\bfseries\color{ink}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.4em}
+\titlespacing*{\subsection}{0pt}{1.1em}{0.3em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyhead[L]{\footnotesize\color{muted}Programiranje za web - prelazak na novo predavanje}
+\fancyfoot[R]{\footnotesize\color{muted}Stranica \thepage\ od \pageref*{LastPage}}
+
+\newcommand{\code}[1]{{\ttfamily\small #1}}
+\newcommand{\provjera}{\textbf{\color{ink}Provjera.}~}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\renewcommand{\arraystretch}{1.35}
+
+\newenvironment{kod}
+  {\VerbatimEnvironment
+   \begin{tcolorbox}[colback=pozadina,colframe=linije,boxrule=0.4pt,arc=2pt,
+     left=6pt,right=6pt,top=3pt,bottom=3pt]
+   \begin{Verbatim}[fontsize=\small]}
+  {\end{Verbatim}\end{tcolorbox}}
+
+\newenvironment{ispis}
+  {\VerbatimEnvironment
+   \begin{tcolorbox}[colback=pozadina,colframe=linije,boxrule=0.4pt,arc=2pt,
+     left=6pt,right=6pt,top=3pt,bottom=3pt]
+   \begin{Verbatim}[fontsize=\footnotesize]}
+  {\end{Verbatim}\end{tcolorbox}}
+
+% Ispis širi od stranice: spremi s SaveVerbatim, pa \siroko{naziv}
+\newcommand{\siroko}[1]{%
+  \begin{tcolorbox}[colback=pozadina,colframe=linije,boxrule=0.4pt,arc=2pt,
+    left=6pt,right=6pt,top=3pt,bottom=3pt]
+  \resizebox{\linewidth}{!}{\BUseVerbatim{#1}}
+  \end{tcolorbox}}
+
+% Snimka zaslona iz mape slike/; dok je nema, okvir s nazivom datoteke
+\newcommand{\slika}[3][0.85]{%
+  \begin{center}\begin{minipage}{\linewidth}\centering
+  \IfFileExists{slike/#2}%
+    {\fcolorbox{linije}{white}{\includegraphics[width=#1\linewidth]{slike/#2}}}%
+    {\fcolorbox{linije}{pozadina}{\parbox[c][3.2cm][c]{0.8\linewidth}{\centering
+      \color{muted}\small snimka zaslona: \code{slike/#2}}}}%
+  \par\vspace{0.2em}{\small\color{muted}#3}
+  \end{minipage}\end{center}}
+
+\newcommand{\zaglavlje}{\rowcolor{tint}}
+
+\begin{document}
+
+{\raggedright\hyphenpenalty=10000\color{ink}\fontsize{22}{26}\selectfont\bfseries Programiranje za web - prelazak na novo predavanje\par}
+\vspace{0.3em}
+{\color{muted}18. listopada 2026. \textperiodcentered{} doc. dr. sc. Tomislav Petković\par}
+\vspace{0.4em}
+
+\section{Uvod}
+
+Svako predavanje ima svoj tag u repozitoriju projekta: \code{predavanje-01},
+\code{predavanje-02} i tako dalje. Kod se između dva taga mijenja, a s njim i shema baze,
+popis paketa i konfiguracija. Zbog toga okruženje iz prethodnog predavanja može biti
+nedostatno za rad na trenutnom predavanju.
+
+Ova vježba prolazi cijeli prelazak s jednog predavanja na drugo, korak po korak. Iza
+svakog koraka stoji \textbf{provjera}: naredba i ispis koji morate vidjeti prije nego
+krenete dalje. Ako ispis nije isti, ne nastavljajte; pogledajte odjeljak
+\hyperref[sec:problemi]{\emph{Česti problemi}} na kraju.
+
+Primjeri ispisa u nastavku su za prelazak na \code{predavanje-03}. Za svako sljedeće
+predavanje postupak je isti, a razlikuju se broj migracija, sadržaj baze i rute koje je
+potrebno provjeriti.
+
+\subsection{Dva terminala}
+
+U VS Code-u otvorite mapu repozitorija (\emph{File → Open Folder}) i u njoj dva terminala
+(gumb \textbf{+} u panelu terminala):
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{2.2cm}P{3.6cm}L}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Terminal} & \textbf{Mapa} & \textbf{Za što}\\
+\midrule
+prvi & korijen repozitorija & \code{git}, \code{docker compose}\\
+drugi & \code{api} & virtualno okruženje, \code{alembic}, \code{python -m app.seed}, \code{uvicorn}\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Naredbe \code{docker compose} traže datoteku \code{docker-compose.yml}, koja stoji
+u korijenu. Pokrenute iz mape \code{api} javljaju
+\code{no configuration file provided: not found}.
+
+\section{0. Kraj prethodnog predavanja}
+
+Ako ste prošli put završili prema koraku 3 ove vježbe, baza je već obrisana i ovaj korak
+preskočite. Inače, u prvom terminalu:
+
+\begin{kod}
+docker compose down -v
+\end{kod}
+
+Zašto se baza briše opisuje korak 2b.
+
+\section{1. Kod novog predavanja}
+
+\subsection{1a. Čisto radno stablo}
+
+\begin{kod}
+git status
+\end{kod}
+
+\provjera Ispis završava retkom:
+
+\begin{ispis}
+nothing to commit, working tree clean
+\end{ispis}
+
+Ako \code{git status} navodi izmijenjene datoteke (\code{modified:}) ili nove datoteke
+(\code{Untracked files:}), radno stablo nije čisto. Izmjene obrišite:
+
+\begin{kod}
+git restore .       # izmijenjene datoteke
+git clean -fd       # nove datoteke
+\end{kod}
+
+Ponovite \code{git status} dok ne dobijete \code{working tree clean}. Tko izmjene želi
+sačuvati, može ih prije brisanja spremiti na svoju granu.
+
+\subsection{1b. Prelazak na tag}
+
+\begin{kod}
+git checkout predavanje-03
+git status
+\end{kod}
+
+\provjera Ispis zadnje naredbe:
+
+\begin{ispis}
+HEAD detached at predavanje-03
+nothing to commit, working tree clean
+\end{ispis}
+
+\emph{Detached HEAD} znači da niste ni na jednoj grani, nego na točno određenom
+\emph{commitu}. Za praćenje predavanja to je ispravno stanje.
+
+\subsection{1c. Što checkout ne mijenja}
+
+Neke datoteke git namjerno ne prati. One ostaju na disku kakve jesu, bez obzira na tag:
+
+\begin{kod}
+git status --ignored --short
+\end{kod}
+
+\begin{ispis}
+!! .env
+!! api/.venv/
+!! api/app/__pycache__/
+...
+\end{ispis}
+
+To su upravo \code{.env} s konfiguracijom i \code{api/.venv} s instaliranim paketima. Kod
+je novi, a one su iz prošlog tjedna. Zbog toga je potrebno provjeriti korake 2a i 2c.
+
+\section{2. Pokretanje prema README-u}
+
+Otvorite \code{README.md} novog predavanja i pronađite odjeljak \emph{Pokretanje}. Koraci
+u nastavku slijede ga redom, uz provjeru iza svakoga.
+
+\subsection{2a. Konfiguracija}
+
+Predložak \code{.env.example} mijenja se između predavanja, pa se \code{.env} pri svakom
+prelasku kopira iznova. U prvom terminalu:
+
+\begin{kod}
+cp .env.example .env        # PowerShell: Copy-Item .env.example .env
+\end{kod}
+
+Naredba prepisuje staru \code{.env}. Ako kopiranje javi pogrešku, obrišite staru
+\code{.env} i ponovite naredbu.
+
+\subsection{2b. Baza}
+
+\textbf{Prvo provjerite da nijedna baza ne postoji.} Pokrenite Docker Desktop i pričekajte
+\emph{Engine running}. U prvom terminalu:
+
+\begin{kod}
+docker ps -a
+docker volume ls
+\end{kod}
+
+\code{docker ps -a} prikazuje sve kontejnere na računalu: one koji rade, one koji su
+ugašeni i one iz drugih projekata.
+
+\provjera Obje naredbe smiju ispisati samo zaglavlje:
+
+\begin{ispis}
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+DRIVER    VOLUME NAME
+\end{ispis}
+
+Primjer ispisa kad još radi baza iz uputa za pripremu okruženja (\code{pzw-provjera}),
+a postoji i baza ovog projekta:
+
+\begin{SaveVerbatim}{dockerps}
+CONTAINER ID   IMAGE         COMMAND                  CREATED         STATUS        PORTS                                         NAMES
+bb50f3845718   postgres:16   "docker-entrypoint.s…"   1 second ago    Created                                                     situnizd-pzw-projekt-db-1
+4df8d4a6dce7   postgres:17   "docker-entrypoint.s…"   2 seconds ago   Up 1 second   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp   pzw-provjera-db-1
+
+DRIVER    VOLUME NAME
+local     613f4956b73f98316fc6b44486aef6a4d393870a8c030b16a6087fc59953a570
+local     situnizd-pzw-projekt_pgdata
+\end{SaveVerbatim}
+\siroko{dockerps}
+
+Oba kontejnera traže isti port 5432. Dok \code{pzw-provjera-db-1} radi, baza ovog projekta
+ne može se pokrenuti i ostaje u stanju \code{Created}, a \code{docker compose up} javlja
+\code{Bind for 0.0.0.0:5432 failed: port is already allocated}.
+
+\textbf{Obrišite svaki kontejner} po imenu iz stupca \code{NAMES}:
+
+\begin{kod}
+docker rm -f -v pzw-provjera-db-1
+docker rm -f -v situnizd-pzw-projekt-db-1
+\end{kod}
+
+Zastavica \code{-f} kontejner koji radi prvo zaustavi, pa ga obriše. Zastavica \code{-v} uz
+kontejner obriše i njegov volumen bez imena; takav je volumen s nazivom od dugog niza
+znakova u gornjem ispisu, koji je stvorio \code{pzw-provjera}. Volumen s imenom ostaje, pa
+ga \textbf{obrišite} po imenu iz stupca \code{VOLUME NAME}:
+
+\begin{kod}
+docker volume rm situnizd-pzw-projekt_pgdata
+\end{kod}
+
+Volumen se ne može obrisati dok postoji kontejner koji ga koristi, pa se kontejneri brišu
+prvi. Ako Docker koristite i za druge kolegije, brišite samo kontejnere i volumene ovog
+kolegija.
+
+Ponovite \code{docker ps -a} i \code{docker volume ls} dok obje ne ispišu samo zaglavlje.
+
+Baza se briše zato što pamti stanje starog koda: tablice, stupce i broj zadnje migracije.
+Novo predavanje može tablicu preimenovati ili joj dodati stupac, a stari podatci tada ne
+odgovaraju novom kodu. Najmanje problema stvara prazna baza koju gradi kod novog predavanja.
+
+\textbf{Pokretanje baze:}
+
+\begin{kod}
+docker compose up -d db
+docker compose ps
+\end{kod}
+
+\provjera U ispisu \code{up} mora pisati da je volumen stvoren (\code{Created}), a ne
+zatečen:
+
+\begin{ispis}
+ Volume situnizd-pzw-projekt_pgdata Created
+ Network situnizd-pzw-projekt_default Created
+ Container situnizd-pzw-projekt-db-1 Started
+\end{ispis}
+
+Druga naredba prikazuje red s \code{Up} i \code{0.0.0.0:5432->5432/tcp}:
+
+\begin{SaveVerbatim}{psispis}
+NAME                        IMAGE         COMMAND                  SERVICE   CREATED         STATUS         PORTS
+situnizd-pzw-projekt-db-1   postgres:16   "docker-entrypoint.s…"   db        5 seconds ago   Up 4 seconds   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+\end{SaveVerbatim}
+\siroko{psispis}
+
+\textbf{Provjera da je baza prazna, naredbom.} Klijent \code{psql} već postoji
+u kontejneru s bazom:
+
+\begin{kod}
+docker compose exec db psql -U pl_user -d pl_reg -c "\dt"
+\end{kod}
+
+\begin{ispis}
+Did not find any relations.
+\end{ispis}
+
+Baza \code{pl\_reg} postoji, ali u njoj nema nijedne tablice.
+
+\textbf{Provjera da je baza prazna, ekstenzijom Database.} Na lijevoj traci VS Code-a
+otvorite \emph{Database} i dodajte novu vezu tipa PostgreSQL:
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{4cm}L}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Podatak} & \textbf{Vrijednost}\\
+\midrule
+Host & \code{127.0.0.1}\\
+Port & \code{5432}\\
+Username & \code{pl\_user}\\
+Password & \code{pl\_pass}\\
+Database & \code{pl\_reg}\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Vrijednosti su iste kao u datoteci \code{docker-compose.yml} i u varijabli
+\code{DATABASE\_URL} u \code{.env}. Veza ostaje zapamćena, pa je sljedeći tjedan ne treba
+ponovno upisivati.
+
+Nakon spajanja raširite \code{127.0.0.1@5432 → pl\_reg → public → Tables}. Ondje piše
+\emph{No tables found.}
+
+\slika[0.42]{baza-prazna.png}{Database: prazna baza}
+
+\subsection{2c. Virtualno okruženje i paketi}
+
+U drugom terminalu, u mapi \code{api}:
+
+\begin{kod}
+cd api
+\end{kod}
+
+Ako mapa \code{.venv} ne postoji, napravite je s \code{uv venv}. Ako postoji, ne pokrećite
+\code{uv venv} ponovno, jer javlja \code{A virtual environment already exists at: .venv}.
+
+Aktivacija:
+
+\begin{kod}
+.venv\Scripts\Activate.ps1      # Windows (PowerShell)
+source .venv/bin/activate       # macOS / Linux
+\end{kod}
+
+\provjera Ispred prompta mora pisati \code{(api)} ili \code{(.venv)}. Sigurnija provjera
+je pitati Python gdje je:
+
+\begin{kod}
+python -c "import sys; print(sys.prefix)"
+\end{kod}
+
+\begin{ispis}
+...\situnizd-pzw-projekt\api\.venv
+\end{ispis}
+
+Ako ispis ne završava s \code{api\textbackslash.venv} (na macOS-u i Linuxu
+\code{api/.venv}), paketi bi se instalirali u sistemski Python. Aktivirajte okruženje
+i ponovite provjeru.
+
+\textbf{Instalacija paketa.} Popis u \code{requirements.txt} mijenja se između predavanja,
+pa se ova naredba pokreće pri \textbf{svakom} prelasku, i kad \code{.venv} već postoji:
+
+\begin{kod}
+uv pip install -r requirements.txt
+\end{kod}
+
+\provjera Paketi koji su već instalirani se preskaču, a novi se dodaju. Primjer pri
+prelasku s predavanja 2 na predavanje 3:
+
+\begin{ispis}
+Resolved 39 packages in 1.49s
+Installed 11 packages in 466ms
+ + httpx==0.28.1
+ + pyjwt==2.15.1
+ + pytest==9.1.1
+ ...
+\end{ispis}
+
+Bez ovoga koraka aplikacija pada pri pokretanju s
+\code{ModuleNotFoundError: No module named 'jwt'}.
+
+\subsection{2d. Migracije i početni podatci}
+
+U drugom terminalu, s aktivnim virtualnim okruženjem:
+
+\begin{kod}
+alembic upgrade head
+\end{kod}
+
+\begin{SaveVerbatim}{alembicispis}
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 001, init clubs and users
+INFO  [alembic.runtime.migration] Running upgrade 001 -> 002, rename user email to username, add is_active
+\end{SaveVerbatim}
+\siroko{alembicispis}
+
+Svaki redak \code{Running upgrade} je jedna migracija iz mape \code{api/alembic/versions}.
+U praznoj bazi primjenjuju se sve, od prve. Na kojoj je migraciji baza sada:
+
+\begin{kod}
+alembic current
+\end{kod}
+
+\begin{ispis}
+002 (head)
+\end{ispis}
+
+\code{(head)} znači da je baza na zadnjoj migraciji koju kod poznaje.
+
+Početni podatci:
+
+\begin{kod}
+python -m app.seed
+\end{kod}
+
+\begin{ispis}
+Seed gotov.
+  organizator: admin@plreg.hr / admin123
+  klub:        behemot@plreg.hr / behemot123
+\end{ispis}
+
+\textbf{Provjera sadržaja baze, naredbom.} U prvom terminalu:
+
+\begin{kod}
+docker compose exec db psql -U pl_user -d pl_reg -c "\dt"
+\end{kod}
+
+\begin{ispis}
+             List of relations
+ Schema |      Name       | Type  |  Owner
+--------+-----------------+-------+---------
+ public | alembic_version | table | pl_user
+ public | clubs           | table | pl_user
+ public | users           | table | pl_user
+(3 rows)
+\end{ispis}
+
+Tablicu \code{alembic\_version} stvara Alembic i u njoj pamti broj zadnje primijenjene
+migracije. Ostale tablice odgovaraju modelima u \code{api/app/models}.
+
+\begin{SaveVerbatim}{selectkod}
+docker compose exec db psql -U pl_user -d pl_reg -c "SELECT id, username, role, club_id, is_active FROM users;"
+\end{SaveVerbatim}
+\siroko{selectkod}
+
+\begin{ispis}
+ id |     username     | role  | club_id | is_active
+----+------------------+-------+---------+-----------
+  1 | admin@plreg.hr   | admin |         | t
+  2 | behemot@plreg.hr | club  |       1 | t
+(2 rows)
+\end{ispis}
+
+Stupac \code{password\_hash} je namjerno izostavljen iz upita; lozinke su u bazi spremljene
+kao \emph{hash}, ne kao tekst.
+
+\textbf{Provjera sadržaja baze, ekstenzijom Database.} Osvježite popis tablica (ikona
+osvježavanja pokraj \emph{Tables}). Pod \emph{Tables} su sada \code{alembic\_version},
+\code{clubs} i \code{users}. Klik na tablicu otvara njezine retke; na slici je tablica
+\code{clubs} s jednim klubom.
+
+\slika[0.95]{baza-seed.png}{Database: tablice nakon migracija i retci tablice \code{clubs}}
+
+Za predavanje 3 sadržaj baze je:
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{3.6cm}P{1.8cm}L}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Tablica} & \textbf{Redaka} & \textbf{Sadržaj}\\
+\midrule
+\code{alembic\_version} & 1 & \code{002}\\
+\code{clubs} & 1 & PLK Behemot, Zadar\\
+\code{users} & 2 & organizator \code{admin@plreg.hr}, račun kluba \code{behemot@plreg.hr}\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{2e. Pokretanje aplikacije}
+
+U drugom terminalu:
+
+\begin{kod}
+uvicorn app.main:app --reload
+\end{kod}
+
+\provjera Ispis završava retkom:
+
+\begin{ispis}
+INFO:     Application startup complete.
+\end{ispis}
+
+Terminal ostavite otvoren dok aplikacija radi. U pregledniku otvorite:
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{6cm}L}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Adresa} & \textbf{Očekivano}\\
+\midrule
+\url{http://127.0.0.1:8000/health} & \code{\{"status":"ok"\}}\\
+\url{http://127.0.0.1:8000/docs} & Swagger UI s popisom ruta\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+U Swaggeru otvorite rutu \code{GET /health/}, pritisnite \emph{Try it out}, zatim
+\emph{Execute}. Ispod se prikazuju statusni kod \code{200} i tijelo odgovora
+\code{\{"status": "ok"\}}.
+
+\slika[0.8]{swagger-health.png}{Swagger: odgovor na \code{GET /health}}
+
+U terminalu s aplikacijom svaki zahtjev ostavlja redak sa statusnim kodom:
+
+\begin{ispis}
+INFO:     127.0.0.1:50852 - "GET /health/ HTTP/1.1" 200 OK
+\end{ispis}
+
+\section{3. Gašenje i provjera da je sve prazno}
+
+Zaustavite aplikaciju s \textbf{Ctrl+C} u drugom terminalu i izađite iz virtualnog
+okruženja:
+
+\begin{kod}
+deactivate
+\end{kod}
+
+U prvom terminalu ugasite bazu i obrišite njezin volumen:
+
+\begin{kod}
+docker compose down -v
+\end{kod}
+
+\begin{ispis}
+ Container situnizd-pzw-projekt-db-1 Removed
+ Volume situnizd-pzw-projekt_pgdata Removed
+ Network situnizd-pzw-projekt_default Removed
+\end{ispis}
+
+Zastavica \code{-v} briše i volumen. Bez nje bi \code{down} uklonio kontejner, a podatci bi
+ostali i sljedeći tjedan dočekali kod novog predavanja. Sve što ste unijeli kroz Swagger
+time nestaje; početne podatke vraća \code{python -m app.seed}.
+
+\textbf{Provjera naredbama:}
+
+\begin{kod}
+docker ps -a
+docker volume ls
+git status
+\end{kod}
+
+Prve dvije ispisuju samo zaglavlje, kao u koraku 2b. Treća ispisuje
+\code{working tree clean}: vježba nije mijenjala kod.
+
+\textbf{Provjera ekstenzijom Database.} Pokušaj spajanja na vezu sada javlja
+\emph{Can't connect to server on 127.0.0.1:5432} jer baza više ne radi.
+
+\slika[0.5]{baza-nema-baze.png}{Database: veza bez baze}
+
+Okruženje je spremno za sljedeće predavanje, koje počinje korakom 1.
+
+\needspace{16\baselineskip}
+\section{Sažetak naredbi}
+
+Prvi terminal, korijen repozitorija:
+
+\begin{kod}
+git status                                  # working tree clean
+git checkout predavanje-NN
+cp .env.example .env                        # PowerShell: Copy-Item
+docker ps -a                                # samo zaglavlje; inače docker rm -f -v
+docker volume ls                            # samo zaglavlje; inače docker volume rm
+docker compose up -d db
+docker compose exec db psql -U pl_user -d pl_reg -c "\dt"
+\end{kod}
+
+Drugi terminal, mapa \code{api}:
+
+\begin{kod}
+.venv\Scripts\Activate.ps1                  # macOS/Linux: source .venv/bin/activate
+python -c "import sys; print(sys.prefix)"   # ...\api\.venv
+uv pip install -r requirements.txt
+alembic upgrade head
+alembic current                             # NNN (head)
+python -m app.seed
+uvicorn app.main:app --reload
+\end{kod}
+
+Na kraju: Ctrl+C, \code{deactivate}, pa u prvom terminalu \code{docker compose down -v}.
+
+\section{Česti problemi}\label{sec:problemi}
+
+Problemi s instalacijom alata opisani su u uputama \emph{Programiranje za web - priprema
+razvojnog okruženja}. Ovdje su oni koji nastaju pri prelasku između predavanja.
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{4.6cm}P{3.8cm}L}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Simptom} & \textbf{Uzrok} & \textbf{Rješenje}\\
+\midrule
+\code{ModuleNotFoundError: No module named '...'} pri pokretanju \code{uvicorn} ili \code{alembic} &
+  Novo predavanje traži paket koji nije instaliran &
+  Korak 2c: aktivirajte okruženje i pokrenite \code{uv pip install -r requirements.txt}\\
+\code{A virtual environment already exists at: .venv} &
+  \code{uv venv} pokrenut u mapi koja već ima okruženje &
+  Preskočite \code{uv venv}; za potpuno novo okruženje \code{uv venv --clear}, pa ponovno
+  instalirajte pakete\\
+\code{Can't locate revision identified by '...'} pri \code{alembic upgrade head} &
+  Baza je na migraciji iz drugog predavanja, koju ovaj kod ne poznaje &
+  \code{docker compose down -v}, pa korak 2b i 2d ispočetka\\
+\code{alembic upgrade head} ne ispisuje nijedan \code{Running upgrade}, a \code{\textbackslash dt} prikazuje tablice &
+  Baza iz prošlog predavanja nije obrisana & Isto kao redak iznad\\
+\code{no configuration file provided: not found} &
+  \code{docker compose} pokrenut iz mape \code{api} &
+  Naredbu pokrenite u prvom terminalu, u korijenu repozitorija\\
+\code{Bind for 0.0.0.0:5432 failed: port is already allocated} &
+  Port 5432 drži drugi kontejner, npr. iz uputa za pripremu okruženja, ili lokalno
+  instaliran PostgreSQL &
+  Korak 2b: \code{docker ps -a}, pa \code{docker rm -f -v} za svaki kontejner; ako kontejnera
+  nema, ugasite lokalni PostgreSQL\\
+\code{Field required} za \code{DATABASE\_URL} ili drugu varijablu pri pokretanju &
+  \code{.env} ne postoji ili u njoj nedostaje varijabla & Korak 2a\\
+\code{error: pathspec 'predavanje-NN' did not match any file(s) known to git} &
+  Lokalni repozitorij ne zna za novi tag & \code{git fetch --tags}, pa ponovite \code{git checkout}\\
+\code{Your local changes ... would be overwritten by checkout} &
+  Radno stablo nije čisto & Korak 1a\\
+\code{ConnectionRefusedError} ili \code{Connection refused} pri \code{alembic} ili \code{python -m app.seed} &
+  Baza nije pokrenuta &
+  \code{docker compose ps}; ako nema reda s \code{Up}, \code{docker compose up -d db}\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{document}

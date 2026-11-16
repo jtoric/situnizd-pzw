@@ -1,0 +1,114 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage[croatian]{babel}
+\usepackage[a4paper,margin=1.7cm,top=1.4cm,bottom=1.4cm]{geometry}
+\usepackage{xcolor}
+\usepackage{array,tabularx,booktabs,colortbl}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage{titlesec}
+\usepackage[hidelinks]{hyperref}
+
+\setmainfont{IBMPlexSans}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setsansfont{IBMPlexSans}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setmonofont{IBMPlexMono}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic, Scale=0.9]
+
+\definecolor{ink}{HTML}{0C4685}
+\definecolor{tint}{HTML}{EAEEF6}
+\definecolor{tekst}{HTML}{1A222E}
+\definecolor{muted}{HTML}{6B7484}
+\definecolor{linije}{HTML}{D9DEE7}
+
+\color{tekst}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+\linespread{1.05}
+\pagestyle{empty}
+
+\titleformat{\section}{\normalsize\bfseries\color{ink}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{0.7em}{0.15em}
+
+\setlist{leftmargin=1.1em,itemsep=0.05em,topsep=0.1em,parsep=0pt}
+\setlength{\columnsep}{1.2em}
+
+\newcommand{\code}[1]{{\ttfamily #1}}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcommand{\zaglavlje}{\rowcolor{tint}}
+
+\begin{document}
+
+{\color{ink}\fontsize{18}{22}\selectfont\bfseries Programiranje za web - predaja studentskog projekta\par}
+\vspace{0.2em}
+{\color{muted}8. listopada 2026. \textperiodcentered{} doc. dr. sc. Tomislav Petković, mag.ing. Josip Torić\par}
+
+\vspace{0.6em}
+Svaki student samostalno izrađuje web aplikaciju po uzoru na referentnu aplikaciju s predavanja, ali u drugoj domeni i usporedive složenosti. Tema mora imati najmanje dvije uloge s različitim ovlastima, podatke koji pripadaju pojedinom korisniku i najmanje jedno pravilo koje ovisi o roku, statusu ili kapacitetu. Ako student nije siguran je li tema dovoljna, provjerava je s nastavnikom prije početka rada.
+
+Projekt je jedan git repozitorij: \emph{backend} u mapi \code{api/}, \emph{frontend} u mapi \code{web/}. Preporučuje se skup tehnologija s predavanja, a dopušteni su i drugi. Uporaba AI alata i vanjskih izvora dopuštena je. Bodove donosi samo kod koji student na obrani može objasniti.
+
+\section{Rokovi i bodovi}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{Lllrr}
+\arrayrulecolor{linije}\toprule
+\zaglavlje \textbf{Dio} & \textbf{Rok predaje} & \textbf{Obrana} & \textbf{Bodovi} & \textbf{Prag}\\
+\midrule
+1. dio: backend & 17.11.2026. u 23:59 & 19.11.2026. & 40 & 15\\
+2. dio: cjelovita aplikacija u radu & 19.01.2027. u 23:59 & 21.01.2027. & 40 & 15\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Rok predaje je u 23:59 dva dana prije obrane. Predaje se zip datoteka sa stanjem glavne grane repozitorija u trenutku predaje i kratak izvještaj o funkcionalnosti projekta. Izvještaj sadrži poveznicu na javno dostupan git repozitorij. Satnica obrane bit će objavljena naknadno na stranici predmeta.
+
+\begin{multicols}{2}\raggedright
+\section{Zahtjevi za 1. dio: backend}
+
+\begin{itemize}
+  \item Moderne tehnologije poput FastAPI-ja, Pydantica, SQLAlchemyja 2.0, Alembica, PostgreSQL-a i pytesta.
+  \item Kod je smisleno organiziran.
+  \item Najmanje tri tablice, barem jedna veza 1:N. Ograničenja \code{NOT NULL}, \code{UNIQUE} i \code{FOREIGN KEY} u bazi.
+  \item Sve promjene sheme kroz migracije (npr. Alembic) s ispravnim vraćanjem unatrag; idempotentna skripta za početne podatke.
+  \item Lozinke spremljene kao \emph{hash} (npr. bcrypt). Pristupni i \emph{refresh token} (JWT); krajnje točke (engl. \emph{endpoint}) \code{/auth/login}, \code{/auth/refresh}, \code{/auth/me}.
+  \item Kriva lozinka i nepostojeće korisničko ime vraćaju isti odgovor \code{401}. Tajni ključ dolazi iz varijable okoline.
+  \item Najmanje dvije uloge. Vlasništvo nad zapisom provjerava backend: korisnik ne vidi i ne mijenja tuđe zapise.
+  \item Najmanje jedno poslovno pravilo koje nije CRUD (rok, prijelaz statusa, kapacitet, jedinstvenost u kontekstu). Pravilo provodi backend i vraća pogrešku s kodom.
+  \item Najmanje deset krajnjih točaka; popisi imaju straničenje (\code{limit}, \code{offset}); statusni kodovi odgovaraju ishodu.
+  \item Zasebne sheme za unos, izmjenu i odgovor; \emph{hash} lozinke nikad ne izlazi iz API-ja. Pogreške u jedinstvenom formatu s poljima \code{code} i \code{message}.
+  \item Testovi za prijavu, uloge, vlasništvo i poslovna pravila; vremenski ovisna pravila testirana uz zamrznuto vrijeme (npr. \code{freezegun}).
+\end{itemize}
+
+\columnbreak
+\section{Zahtjevi za 2. dio: cjelovita aplikacija}
+
+\begin{itemize}
+  \item Moderne tehnologije poput Vuea 3, TypeScripta, Vitea i Pinie.
+  \item Najmanje pet stranica; zajednički raspored s navigacijom ovisnom o ulozi i odjavom.
+  \item \emph{Token} se šalje uz svaki zahtjev; na \code{401} aplikacija sama obnavlja \emph{token}, a kad obnova ne uspije, odjavljuje korisnika. Prijava ostaje nakon osvježavanja stranice.
+  \item Neprijavljeni korisnik i korisnik bez ovlasti ne dolaze do zaštićenih stranica. Sučelje skriva ili onemogućuje akcije koje uloga ili poslovno pravilo ne dopuštaju; backend ih i dalje zabranjuje.
+  \item Svaki prikaz koji dohvaća podatke ima stanje učitavanja, pogreške i praznog skupa rezultata.
+  \item Forme provjeravaju unos prije slanja; pogreška \code{422} prikazuje se uz polje, \code{400} i \code{409} iznad forme.
+  \item Provjera tipova bez pogrešaka (npr. \code{vue-tsc}).
+  \item Jedinični testovi za pomoćnu funkciju, \emph{store} i komponentu (npr. Vitest); test prijave kroz preglednik (npr. Playwright).
+  \item Aplikacija je postavljena na javni URL (Railway, Render ili slično), CORS ograničen na domenu frontenda, migracije se izvode pri postavljanju.
+\end{itemize}
+
+\section{Uvjeti predaje}
+
+\begin{itemize}
+  \item Projekt se pokreće na svježem klonu repozitorija prema uputama u \code{README.md}: baza, migracije, početni podaci, poslužitelj, testovi.
+  \item Svi testovi prolaze; za 2. dio i produkcijska izgradnja (npr. \code{npm run build}).
+  \item Datoteka \code{.env} nije u repozitoriju; u njemu je \code{.env.example}.
+  \item Povijest \emph{commitova} pokazuje rad kroz semestar, s porukama koje opisuju promjenu.
+  \item Za 2. dio \code{README.md} sadrži poveznicu na postavljenu aplikaciju; obrana se izvodi na njoj.
+\end{itemize}
+\end{multicols}
+
+\end{document}

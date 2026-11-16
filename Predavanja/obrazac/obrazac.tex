@@ -1,0 +1,363 @@
+% !TeX program = lualatex
+% !TeX root = obrazac.tex
+%
+% ============================================================
+% OBRAZAC PREDAVANJA
+%
+% Ovaj dokument nije predavanje. To je katalog oblika slajdova
+% koji se u ovom kolegiju ponavljaju, s primjerom svakoga.
+%
+% Pravila su u STIL-PREDAVANJA.md u korijenu repozitorija.
+% Ovdje je svaki oblik pokazan na sadržaju koji nije ni u jednom
+% predavanju (uvjetni zahtjev i oznaka inačice odgovora), pa se
+% primjeri smiju prepisivati bez opasnosti da se gradivo ponovi.
+%
+% Iznad svakog okvira stoji komentar s imenom oblika i uputom
+% kada se koristi. Komentar u izvoru, ne na slajdu.
+% ============================================================
+
+\input{../common/preamble.tex}
+
+\title[Obrazac predavanja]{Programiranje za web \\ Obrazac predavanja: oblici slajdova}
+\date{studeni 2026.}
+
+\begin{document}
+
+% ------------------------------------------------------------
+% OBLIK: naslovnica
+% Uvijek \frame{\titlepage}. Naslov u \title[kratko]{dugo}:
+% kratki oblik ide u podnožje, duži na naslovnicu. Duži naslov
+% od otprilike šezdeset znakova prelije naslovnu stranicu i
+% zakloni podnaslov loga, a prijevod to ne prijavi.
+% ------------------------------------------------------------
+\frame{\titlepage}
+
+% ------------------------------------------------------------
+% OBLIK: uputa o dokumentu
+% Postoji samo u ovom dokumentu. Predavanje takav slajd ne nosi.
+% ------------------------------------------------------------
+\begin{frame}{Što je ovaj dokument}
+Ovo je katalog oblika slajdova, ne predavanje. Svaka cjelina imenuje jedan oblik, a njezin razdjelnik kaže kada se taj oblik koristi. Slajdovi iza razdjelnika su primjeri napisani tako da se mogu prepisati.
+
+\vspace{0.9em}
+Sadržaj primjera je uvjetni zahtjev i oznaka inačice odgovora. Ta tema nije ni u jednom predavanju kolegija, pa se primjeri smiju preuzimati kao oblik, bez opasnosti da se gradivo ponovi.
+
+\vspace{0.9em}
+Pravila stoje u datoteci \codefile{STIL-PREDAVANJA.md} u korijenu repozitorija. Izvor ovog dokumenta uz svaki okvir ima komentar s imenom oblika.
+\end{frame}
+
+% ============================================================
+\sekcija{Okvir predavanja}{Plan, ishodi i domena primjera: tri slajda kojima svako predavanje počinje, i sažetak kojim završava.}
+
+% ------------------------------------------------------------
+% OBLIK: Plan predavanja
+% Numerirano nabrajanje cjelina, istim riječima kao razdjelnici.
+% Iza nabrajanja jedna do dvije rečenice koje kažu što predavanje
+% rješava. Ne „danas ćemo", ne najava sljedećeg predavanja.
+% ------------------------------------------------------------
+\begin{frame}{Plan predavanja}
+\begin{enumerate}
+  \item Odgovor koji se ponavlja
+  \item Oznaka inačice sadržaja
+  \item Uvjetni zahtjev
+  \item Granice ubrzanja
+\end{enumerate}
+
+\vspace{0.6em}
+Klijent isti popis dohvaća više puta, a popis se rijetko mijenja. Ovo predavanje uvodi način da poslužitelj potvrdi da se sadržaj nije promijenio, bez da ga ponovno pošalje.
+\end{frame}
+
+% ------------------------------------------------------------
+% OBLIK: Ishodi učenja
+% Glagol u infinitivu, provjerljiva radnja. Jedan do dva ishoda
+% nose predavanje, ostali su njihovi koraci. Nikad „razumjeti",
+% „upoznati se", „steći uvid".
+% ------------------------------------------------------------
+\begin{frame}{Ishodi učenja}
+Nakon ovog predavanja student može:
+
+\begin{itemize}
+  \item objasniti po čemu poslužitelj zna da se odgovor nije promijenio
+  \item izračunati oznaku inačice iz sadržaja odgovora
+  \item dodati zaglavlje \texttt{ETag} u odgovor rute
+  \item poslati uvjetni zahtjev i prepoznati odgovor \texttt{304}
+  \item reći što uvjetni zahtjev ne rješava
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+% OBLIK: Domena primjera
+% Postavlja ulogu i podatke na kojima će se cijelo predavanje
+% raditi, riječima, bez ruta i bez naziva polja. Student koji je
+% propustio prošli tjedan odavde mora moći nastaviti.
+% ------------------------------------------------------------
+\begin{frame}{Domena primjera}
+Aplikacija prikazuje popis natjecanja. Popis je dugačak, jer nosi i natjecanja iz prošlih sezona, a mijenja se nekoliko puta u sezoni, kad organizator objavi novo natjecanje ili zatvori prijave.
+
+\vspace{0.9em}
+Svaki korisnik taj popis otvara više puta u istom poslijepodnevu. Aplikacija ga svaki put dohvaća ispočetka, jer drugog načina zasad nema.
+
+\vspace{0.9em}
+Poslužitelj pri svakom dohvatu čita bazu, slaže odgovor i šalje ga cijelog, iako je gotovo svaki put jednak prethodnom.
+\end{frame}
+
+% ============================================================
+\sekcija{Problem pa rješenje}{Problem na jednom slajdu, odgovor na sljedećem. Isti naslov nosi oznake (I) i (II), a između njih predavač pita razred.}
+
+% ------------------------------------------------------------
+% OBLIK: problem, prvi slajd
+% Problem mora biti vidljiv: ispis, poruka, dva broja koja se
+% razlikuju. Slajd ne nudi rješenje i ne imenuje sredstvo koje
+% slijedi. Zadnja rečenica imenuje kvar.
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odgovor koji se ponavlja (I)}
+Tri dohvata popisa natjecanja u minuti, iz dnevnika poslužitelja:
+
+\begin{lstlisting}
+GET /competitions  200  412 kB  1.9 s
+GET /competitions  200  412 kB  1.8 s
+GET /competitions  200  412 kB  2.0 s
+\end{lstlisting}
+
+\vspace{0.5em}
+Između prvog i trećeg zahtjeva nitko nije objavio ni zatvorio natjecanje. Tijela triju odgovora jednaka su do zadnjeg bajta.
+
+\vspace{0.5em}
+Mreža je prenijela isti sadržaj tri puta, a baza ga tri puta pročitala.
+\end{frame}
+
+% ------------------------------------------------------------
+% OBLIK: problem, drugi slajd
+% Prvo odgovor koji se sam nameće i njegova granica, pa tek onda
+% sredstvo koje predavanje uvodi. Sredstvo se imenuje na kraju.
+% ------------------------------------------------------------
+\begin{frame}{Odgovor koji se ponavlja (II)}
+Prvi odgovor je da klijent odgovor zadrži i ne pita ponovno. On vrijedi dok je poznato koliko je sadržaj svjež, dakle gotovo nikad: popis se mijenja kad organizator objavi natjecanje, a to se iz klijenta ne vidi.
+
+\vspace{0.9em}
+Drugi je odgovor pitanje razdvojiti na dva. Klijent ne pita više za sadržaj nego za to je li se sadržaj promijenio. Uz pitanje navodi koju inačicu drži.
+
+\vspace{0.9em}
+Poslužitelj tada ima dva moguća odgovora: isti sadržaj kao prije, ili potvrdu da se nije promijenio. Druga potvrda nosi prazno tijelo.
+\end{frame}
+
+% ============================================================
+\sekcija{Uvođenje pojma}{Opći pojam dobiva primjer izvan domene kolegija. Tablica ili zaključna rečenica kažu što projekt od toga koristi.}
+
+% ------------------------------------------------------------
+% OBLIK: uvođenje pojma
+% Pojam struke prvo na primjeru koji nije iz referentne
+% aplikacije, pa onda tablica koja usporedi sredstva, pa tek
+% zaključna rečenica o projektu. Tablica ima stupac s cijenom
+% ili granicom, inače samo nabraja.
+% ------------------------------------------------------------
+\begin{frame}{Oznaka inačice sadržaja}
+Čitatelj koji drži treće izdanje knjige ne traži od knjižnice novo izdanje nego pita je li njegovo još zadnje. Dovoljno mu je navesti oznaku izdanja; cijelu knjigu nitko ne prelistava.
+
+\vspace{0.7em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{3.1cm}L{3.9cm}L{4.3cm}@{}}
+  \toprule
+  \textbf{Oznaka} & \textbf{Nastaje iz} & \textbf{Promjena koju ne primijeti} \\
+  \midrule
+  vrijeme izmjene & sata datotečnog sustava & dvije izmjene u istoj sekundi \\
+  brojač inačice & stupca u bazi & izmjena koja brojač ne poveća \\
+  sažetak sadržaja & bajtova odgovora & nijedna \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Projekt računa sažetak sadržaja, jer odgovor sastavlja iz više tablica i nijedan pojedini stupac ne govori je li se cijeli popis promijenio.
+\end{frame}
+
+% ============================================================
+\sekcija{Činjenica, konvencija, izbor}{Što propisuje standard stoji u tekstu slajda. Dogovor struke i odluka projekta idu u zasebno označen okvir.}
+
+% ------------------------------------------------------------
+% OBLIK: okvir za konvenciju
+% Okolina konvencija, naslov po prilici: „Konvencija",
+% „Izbor, ne pravilo", „Razlikuje se od projekta do projekta".
+% U tekstu slajda ostaje samo ono što vrijedi uvijek.
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Oblik oznake}
+Standard propisuje da oznaka putuje u zaglavlju \texttt{ETag}, da stoji u dvostrukim navodnicima i da je za klijenta neprozirna: klijent je samo vraća, nikada ne tumači ni uspoređuje po dijelovima.
+
+\begin{lstlisting}
+ETag: "8f14e45fceea167a"
+\end{lstlisting}
+
+\begin{konvencija}[Izbor, ne pravilo]
+Standard ne kaže iz čega se oznaka računa. Projekt koristi \texttt{sha256} nad tijelom odgovora, skraćen na šesnaest znakova. Jednako je ispravan brojač inačice iz baze ili vrijeme posljednje izmjene, a izbor mijenja samo to koje promjene oznaka primijeti.
+\end{konvencija}
+\end{frame}
+
+% ============================================================
+\sekcija{Kod na slajdu}{Isječak od potpisa funkcije, s putanjom u prvom retku. Kad je tema odnos dviju datoteka, vide se obje, svaka u svojem okviru.}
+
+% ------------------------------------------------------------
+% OBLIK: isječak s putanjom
+% Prvi redak isječka je putanja, kao komentar. Isječak počinje
+% od potpisa funkcije. Ono što se izostavlja zamjenjuje se
+% komentarom i trotočjem, nikad prešućivanjem. Okvir je fragile.
+% Dijakritici u isječku prolaze samo kroz izlaz <@ ... @>.
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Oznaka u odgovoru}
+\vspace{-0.3em}
+\begin{lstlisting}[language=python]
+# app/routers/competitions.py
+@router.get("/competitions")
+async def list_competitions(
+    response: Response,
+    if_none_match: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    items = await competition_repo.list_all(db)
+    oznaka = etag_za(items)        <@\kom{sažetak tijela odgovora}@>
+    if if_none_match == oznaka:
+        return Response(status_code=304)
+    response.headers["ETag"] = oznaka
+    return items
+\end{lstlisting}
+
+\vspace{0.2em}
+Ruta i dalje čita bazu, jer bez sadržaja ne može izračunati oznaku. Ušteda je na prijenosu, ne na upitu.
+\end{frame}
+
+% ------------------------------------------------------------
+% OBLIK: dvije datoteke, dva okvira
+% Kad slajd govori o dogovoru između dviju strana, obje stoje na
+% slajdu, svaka s putanjom. Zaključna rečenica imenuje dogovor.
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dvije strane istog dogovora}
+\vspace{-0.3em}
+\begin{lstlisting}[language=python]
+# app/routers/competitions.py
+response.headers["ETag"] = oznaka
+\end{lstlisting}
+
+\vspace{-0.2em}
+\begin{lstlisting}[language=typescript]
+// api/competitions.ts
+const odgovor = await api.get('/competitions', {
+  headers: oznaka ? { 'If-None-Match': oznaka } : {},
+  validateStatus: (s) => s === 200 || s === 304,
+})
+if (odgovor.status === 304) return null   // sadrzaj nepromijenjen
+oznaka = odgovor.headers['etag'] ?? null
+\end{lstlisting}
+
+\vspace{0.2em}
+Poslužitelj oznaku izdaje u zaglavlju \texttt{ETag}, klijent je vraća u zaglavlju \texttt{If-None-Match}. Ime zaglavlja je različito u dvama smjerovima, a vrijednost je ista.
+\end{frame}
+
+% ============================================================
+\sekcija{Slika koja pokazuje pojavu}{Raspored, redoslijed i pretvorba se crtaju. Kad slajd tvrdi da nešto ne radi, na slici se mora vidjeti kvar.}
+
+% ------------------------------------------------------------
+% OBLIK: dijagram
+% Crta se ono što bi inače bila rečenica s nabrajanjem položaja
+% ili redoslijeda. Sve oznake imenovane. Natuknica pod slikom ne
+% prepričava sliku nego dodaje tumačenje.
+% ------------------------------------------------------------
+\begin{frame}{Dva dohvata jedan uz drugi}
+\begin{center}
+\begin{tikzpicture}[
+  font=\small,
+  kut/.style={draw=lineclr,fill=tint,rounded corners=2pt,inner sep=5pt,minimum height=7mm},
+  str/.style={-{Stealth[length=2mm]},draw=ink2,thick}
+]
+  \node[kut] (k1) at (0,2.0) {klijent};
+  \node[kut] (p1) at (7.6,2.0) {poslužitelj};
+  \node[kut] (k2) at (0,0.0) {klijent};
+  \node[kut] (p2) at (7.6,0.0) {poslužitelj};
+
+  \draw[str] (k1.east) -- node[above,font=\scriptsize]{\texttt{GET /competitions}} (p1.west);
+  \draw[str] ([yshift=-4mm]p1.west) -- node[below,font=\scriptsize]{\texttt{200}, tijelo 412 kB} ([yshift=-4mm]k1.east);
+
+  \draw[str] (k2.east) -- node[above,font=\scriptsize]{\texttt{If-None-Match: "8f14..."}} (p2.west);
+  \draw[str] ([yshift=-4mm]p2.west) -- node[below,font=\scriptsize]{\texttt{304}, tijelo 0 B} ([yshift=-4mm]k2.east);
+
+  \node[font=\scriptsize,color=mutedclr] at (3.8,2.75) {prvi dohvat};
+  \node[font=\scriptsize,color=mutedclr] at (3.8,0.75) {svaki sljedeći, dok se popis ne promijeni};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.4em}
+Broj izmjena poruka je u obama slučajevima isti. Razlikuje se samo količina prenesenog sadržaja, pa uvjetni zahtjev ne skraćuje vrijeme uspostave veze.
+\end{frame}
+
+% ============================================================
+\sekcija{Prijelom za pitanje razredu}{Pitanje se ne ispisuje na slajd. Slajd nosi prijelom, predavač pita, a odgovor dolazi iza prijeloma.}
+
+% ------------------------------------------------------------
+% OBLIK: \pause
+% Prvi dio slajda postavlja stanje. Predavač usmeno pita što iz
+% toga slijedi. \pause, pa odgovor. Pitanje ostaje izvan slajda,
+% da student koji slajdove gleda kod kuće ne vidi odgovor uz
+% pitanje.
+% ------------------------------------------------------------
+\begin{frame}{Klijent koji oznaku ne pošalje}
+Zaglavlje \texttt{If-None-Match} šalje klijent. Ruta provjerava samo to što je u zahtjevu stiglo.
+
+\vspace{0.9em}
+Klijent koji zaglavlje ne pošalje dobiva cijeli odgovor i statusni kod \texttt{200}, kao da uvjetnog zahtjeva nema.
+
+\pause
+\vspace{0.9em}
+Uvjetni zahtjev zato ne smije biti pretpostavka na kojoj ispravnost stoji. Poslužitelj koji bi oslonio pravo pristupa ili poslovno pravilo na to da je klijent poslao oznaku pao bi pred prvim klijentom koji to zaglavlje ne podržava.
+\end{frame}
+
+% ============================================================
+\sekcija{Vježba}{Uloga i polazno stanje, tijelo zahtjeva, numerirani koraci, zaključna rečenica koja traži objašnjenje.}
+
+% ------------------------------------------------------------
+% OBLIK: vježba
+% Uvodna rečenica postavlja ulogu i polazno stanje, lozinka se
+% ne navodi. Koraci su radnje, ne opisi. Ishod se ne piše: ono
+% što student treba vidjeti sam ne smije stajati na slajdu.
+% Zaključna rečenica traži objašnjenje, ne potvrdu.
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Vježba: oznaka i uvjetni zahtjev}
+Poslužitelj je pokrenut i popis natjecanja nije prazan. Zahtjevi idu alatom \texttt{curl}, da zaglavlja budu vidljiva.
+
+\begin{lstlisting}[language=bash]
+curl -i http://localhost:8000/competitions
+\end{lstlisting}
+
+\begin{enumerate}
+  \itemsep0.4em
+  \item Pošaljite zahtjev iz isječka i prepišite vrijednost zaglavlja \texttt{ETag}.
+  \item Ponovite zahtjev s dodanim \texttt{-H 'If-None-Match: "\dots"'} i prepisanom vrijednošću.
+  \item Objavite novo natjecanje, pa ponovite zahtjev iz drugog koraka nepromijenjen.
+  \item Pošaljite zahtjev iz drugog koraka s vrijednošću kojoj je promijenjen jedan znak.
+\end{enumerate}
+
+\vspace{0.6em}
+Objasnite po čemu se razlikuju odgovori u trećem i četvrtom koraku.
+\end{frame}
+
+% ============================================================
+% OBLIK: Sažetak
+% Točno jedan, na kraju, bez naslova cjeline. Svaka natuknica je
+% cijela tvrdnja koja stoji i izvan konteksta slajda s kojega
+% dolazi. Nema završne misli i nema slajda „Pitanja?".
+% ============================================================
+\begin{frame}{Sažetak}
+\begin{itemize}
+  \itemsep0.3em
+  \item Odgovor koji se ne mijenja prenosi se više puta ako klijent ne može pitati je li se promijenio.
+  \item Oznaka inačice sadržaja dolazi iz vremena izmjene, brojača ili sažetka sadržaja, a izbor određuje koje promjene oznaka primijeti.
+  \item Standard propisuje oblik i neprozirnost oznake, a ne način na koji se računa.
+  \item Poslužitelj oznaku izdaje u zaglavlju \texttt{ETag}, a klijent je vraća u zaglavlju \texttt{If-None-Match}.
+  \item Potvrda \texttt{304} nosi prazno tijelo, pa klijent prikazuje sadržaj koji drži.
+  \item Oznaka se računa iz sadržaja, pa ruta i dalje čita bazu; ušteda je na prijenosu.
+  \item Klijent koji oznaku ne pošalje dobiva cijeli odgovor, zato ispravnost ne smije ovisiti o uvjetnom zahtjevu.
+\end{itemize}
+\end{frame}
+
+\end{document}

@@ -1,0 +1,101 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage[croatian]{babel}
+\usepackage[a4paper,margin=1.7cm,top=1.4cm,bottom=1.4cm]{geometry}
+\usepackage{xcolor}
+\usepackage{array,tabularx,booktabs,colortbl}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage{titlesec}
+\usepackage[hidelinks]{hyperref}
+
+\setmainfont{IBMPlexSans}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setsansfont{IBMPlexSans}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setmonofont{IBMPlexMono}[
+  Extension=.otf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic, Scale=0.9]
+
+\definecolor{ink}{HTML}{0C4685}
+\definecolor{tint}{HTML}{EAEEF6}
+\definecolor{tekst}{HTML}{1A222E}
+\definecolor{muted}{HTML}{6B7484}
+\definecolor{linije}{HTML}{D9DEE7}
+
+\color{tekst}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+\linespread{1.05}
+\pagestyle{empty}
+
+\titleformat{\section}{\normalsize\bfseries\color{ink}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{0.7em}{0.15em}
+
+\setlist{leftmargin=1.1em,itemsep=0.05em,topsep=0.1em,parsep=0pt}
+\setlength{\columnsep}{1.2em}
+
+\newcommand{\code}[1]{{\ttfamily #1}}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcommand{\zaglavlje}{\rowcolor{tint}}
+
+\begin{document}
+
+{\color{ink}\fontsize{18}{22}\selectfont\bfseries Prijave na powerlifting natjecanja\par}
+\vspace{0.2em}
+{\color{muted}Izvještaj o 1. dijelu projekta: backend \textperiodcentered{} doc. dr. sc. Tomislav Petković, mag.ing. Josip Torić \textperiodcentered{} 14. studenoga 2026.\par}
+
+\vspace{0.6em}
+Repozitorij: \url{https://github.com/jtoric/situnizd-pzw-projekt} (javno dostupan). Izvještaj opisuje stanje glavne grane u trenutku predaje.
+
+Aplikacija vodi prijave natjecatelja na powerlifting natjecanja. Svaki klub upisuje svoje natjecatelje i prijavljuje ih na natjecanje, a organizator treba popis prijava svih klubova na jednome mjestu. Natjecanje ima dva roka. Do preliminarnog roka klub slobodno prijavljuje nove natjecatelje i mijenja već upisane, između dvaju rokova smije ispravljati kategoriju i odjavljivati, a nakon konačnog roka popis stoji jer po njemu organizator slaže skupine i raspored nastupa. Smije li netko izvesti neku radnju ovisi, dakle, o ulozi, tome je li zapis njegov i trenutku u kojem zahtjev stigne. Sva tri uvjeta provodi backend, jer sučelje nije mjesto na kojem se pravilo može jamčiti.
+
+\begin{multicols}{2}\raggedright
+
+\section{Tehnologije i organizacija koda}
+
+FastAPI, Pydantic, SQLAlchemy 2.0 s asinkronom sesijom, Alembic, PostgreSQL, bcrypt i PyJWT, pytest s \code{pytest-asyncio} i \code{freezegun}, \code{ruff}. Backend je u mapi \code{api/}, a razdijeljen je na rute, sheme, servise, repozitorije i modele. Ruta prima zahtjev i vraća odgovor, poslovno pravilo stoji u servisu, a upit nad bazom samo u repozitoriju.
+
+\section{Podatkovni model}
+
+Pet tablica: \code{users}, \code{clubs}, \code{lifters}, \code{competitions} i \code{registrations}. Veze 1:N: klub ima korisničke račune i natjecatelje, a natjecanje i natjecatelj imaju prijave.
+
+Baza odbija neispravno stanje i bez aplikacije: \code{UNIQUE} na korisničkom imenu, imenu kluba i na paru natjecatelj\,--\,natjecanje; \code{CHECK} na skupu uloga, spolu, oblicima statusa prijave, nenegativnom zbiru i poretku rokova; strani ključevi \code{NOT NULL} osim \code{users.club\_id}, jer organizator ne pripada klubu.
+
+Shema se mijenja samo migracijama. Tri migracije (\code{001}\,--\,\code{003}) imaju i ispravno vraćanje unatrag. Početne podatke upisuje \code{python -m app.seed}; smije se pokrenuti više puta jer ne stvara ponovno ono što postoji.
+
+\section{Autentikacija i autorizacija}
+
+Prijava, obnova tokena i podatci o prijavljenom korisniku stoje na \code{/auth/login}, \code{/auth/refresh} i \code{/auth/me}. Lozinka se pohranjuje kao bcrypt \emph{hash}, a tajni ključ dolazi iz varijable okoline. Pristupni token vrijedi 15 minuta, \emph{refresh token} 7 dana. Kriva lozinka i nepostojeće korisničko ime vraćaju isti odgovor \code{401}.
+
+Uloge su dvije, \code{admin} i \code{club}. Vlasništvo provjerava backend: klub ne vidi i ne mijenja natjecatelje ni prijave drugoga kluba ni kad pogodi oznaku zapisa.
+
+\section{Krajnje točke}
+
+Dvadeset četiri krajnje točke nad klubovima, natjecateljima, natjecanjima i prijavama. Svi popisi primaju \code{limit} i \code{offset}, zadano 20 zapisa i najviše 100. Unos, izmjena i odgovor imaju odvojene sheme, pa \emph{hash} lozinke ne izlazi iz API-ja, a izmjena dira samo poslana polja. Popis ruta s pokrenutim poslužiteljem stoji na \code{/docs}.
+
+\section{Poslovna pravila}
+
+Faza natjecanja ne pohranjuje se nego se računa iz dvaju rokova pri svakom zahtjevu, u \code{app/core/phases.py}: \code{OPEN} traje do preliminarnog roka, \code{PRELIM\_PASSED} do konačnog, \code{CLOSED} nakon njega. Nova prijava moguća je samo u \code{OPEN}, promjena kategorije te odjava i ponovna prijava u \code{OPEN} i \code{PRELIM\_PASSED}, a čitanje popisa u svim fazama.
+
+Odjava ne briše zapis nego mu mijenja \code{status} u \code{withdrawn}, pa jedinstvenost para natjecatelj\,--\,natjecanje vrijedi i nakon nje, a ponovna prijava je zaseban prijelaz s vlastitim pravilom. Backend uz to odbija kategoriju koja ne odgovara spolu natjecatelja, brisanje natjecatelja koji ima prijave i izmjenu koja bi poremetila poredak rokova.
+
+\section{Pogreške}
+
+Svaki neuspjeh vraća tijelo istoga oblika, s poljima \code{code} i \code{message}; odgovor \code{422} uz to nosi \code{errors} s popisom polja koja nisu prošla provjeru. Domenska iznimka, neuspjela provjera ulaza i iznimka okvira prevode se u taj oblik na jednom mjestu, u rukovateljima iz \code{app/core/errors.py}.
+
+Cjelovit popis svih dvanaest kodova, sa statusnim kodom i značenjem svakoga, stoji u tablici u \code{README.md}. Taj je popis ugovor s frontendom: sučelje grana obradu po \code{code}, a ne po tekstu poruke, pa se poruka smije promijeniti a da klijent to ne osjeti.
+
+\section{Testovi}
+
+\code{pytest} pokreće 108 testova i svi prolaze. Pokriveni su prijava i obnova tokena, uloge, vlasništvo nad zapisom, straničenje, provjera ulaza i poslovna pravila. Pravila koja ovise o roku testiraju se sa zamrznutim vremenom, svaka faza i svaka granica zasebno. Testovi rade nad zasebnom bazom, a tablice se prazne prije svakog testa.
+
+\end{multicols}
+
+\vspace{0.5em}
+{\color{muted}\small Primjer izvještaja za 1. dio projekta; opisana je referentna aplikacija s predavanja.\par}
+
+\end{document}

@@ -9,36 +9,8 @@
 
 \frame{\titlepage}
 
-% ------------------------------
-\begin{frame}{Plan predavanja}
-\begin{enumerate}
-  \item Predmet kolegija i ishodi učenja
-  \item Referentna aplikacija: prijava klubova na natjecanje
-  \item Arhitektura i tehnologije
-  \item Organizacija nastave i vrednovanje
-  \item Radna okolina i način rada
-\end{enumerate}
-
-\vspace{0.6em}
-Kolegij je organiziran oko jedne aplikacije koja se razvija od prve do posljednje nastavne jedinice: podatkovni model, poslovna pravila, korisničko sučelje i postavljanje u produkciju.
-\end{frame}
-
 % ==============================
-\sekcija{Kolegij}{Predmet kolegija, ishodi učenja, pretpostavljeno znanje.}
-
-% ------------------------------
-\begin{frame}{Predmet kolegija}
-Web aplikacija je program kojemu korisnik pristupa preglednikom, a čiji podatci ostaju pohranjeni i nakon što korisnik zatvori karticu. Za to su nam potrebni:
-
-\begin{itemize}
-  \item \textbf{frontend} (klijentski dio): prikaz podataka u pregledniku i unos korisnika
-  \item \textbf{backend} (poslužiteljski dio): provjera identiteta i prava, poslovna pravila, pristup podatcima
-  \item \textbf{baza podataka}: trajna pohrana i ograničenja nad podatcima
-\end{itemize}
-
-\vspace{0.4em}
-Kolegij obrađuje sva tri dijela i sučelje kojim međusobno komuniciraju.
-\end{frame}
+\sekcija{Kolegij}{Ishodi učenja, pretpostavljeno znanje, tehnologije.}
 
 % ------------------------------
 \begin{frame}{Ishodi učenja}
@@ -67,144 +39,8 @@ Nakon položenog kolegija student može:
 \end{frame}
 
 % ==============================
-\sekcija{Referentna aplikacija}{Zadatak, model domene, faze i rokovi, svojstva domene relevantna za kolegij.}
-
-% ------------------------------
-\begin{frame}{Zadatak: aplikacija za prijavu na natjecanje}
-Organizator powerlifting natjecanja prikuplja prijave od klubova. Bez aplikacije prijave stižu e-poštom i tablicama u Excelu, pa organizator ručno provjerava:
-
-\begin{itemize}
-  \item je li prijava stigla prije isteka roka
-  \item prijavljuje li klub natjecatelja koji mu pripada
-  \item je li isti natjecatelj prijavljen dvaput
-  \item odgovara li težinska kategorija spolu i tjelesnoj masi natjecatelja
-\end{itemize}
-
-\vspace{0.4em}
-Svaka od tih provjera je pravilo koje aplikacija treba provoditi umjesto čovjeka. Ista se aplikacija razvija kroz cijeli kolegij i služi kao predložak za studentski projekt.
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Model domene}
-\begin{columns}[T]
-\column{0.5\textwidth}
-\textbf{Entiteti}
-\begin{itemize}
-  \item \textbf{Klub}: prijavljuje natjecatelje
-  \item \textbf{Korisnik}: račun za prijavu, uloga \texttt{admin} ili \texttt{club}; svaki klub ima jedan
-  \item \textbf{Natjecatelj}: pripada točno jednom klubu
-  \item \textbf{Natjecanje}: datum održavanja i dva roka
-  \item \textbf{Prijava}: veza natjecatelja i natjecanja
-\end{itemize}
-
-\column{0.5\textwidth}
-\textbf{Pravila nad modelom}
-\begin{itemize}
-  \item klub vidi i mijenja samo svoje natjecatelje i svoje prijave
-  \item organizator vidi prijave svih klubova
-  \item isti natjecatelj ne može imati dvije aktivne prijave na istom natjecanju
-  \item težinska kategorija bira se iz popisa kategorija saveza IPF
-\end{itemize}
-\end{columns}
-
-\vspace{0.5em}
-{\small Kategorije IPF, muškarci: 59, 66, 74, 83, 93, 105, 120 i 120+ kg; žene: 47, 52, 57, 63, 69, 76, 84 i 84+ kg.}
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Faze natjecanja i rokovi}
-Natjecanje ima dva roka nominacije: \textbf{preliminarni} (\codefile{prelim\_deadline}) i \textbf{finalni} (\codefile{final\_deadline}). Oni dijele vrijeme na tri faze s različitim skupom dopuštenih operacija.
-
-\vspace{0.5em}
-{\small
-\begin{tabular}{@{}llccc@{}}
-  \toprule
-  \textbf{Faza} & \textbf{Vrijeme} & \textbf{Nova prijava} & \textbf{Promjena kat.} & \textbf{Odjava} \\
-  \midrule
-  \texttt{OPEN}           & do preliminarnog roka & da & da & da \\
-  \texttt{PRELIM\_PASSED} & između dvaju rokova   & ne & da & da \\
-  \texttt{CLOSED}         & nakon finalnog roka   & ne & ne & ne \\
-  \bottomrule
-\end{tabular}
-}
-
-\vspace{0.5em}
-Preliminarni rok organizatoru daje popis potreban za raspored vaganja i natjecateljskih skupina; nakon finalnog roka popis se više ne mijenja.
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Radni primjer: četiri zahtjeva istoga kluba}
-Natjecanje se održava 14.03.2027.; preliminarni rok istječe 14.02.2027. u 23:59 (28 dana ranije), finalni 07.03.2027. u 23:59 (7 dana ranije).
-
-\vspace{0.5em}
-{\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}llll@{}}
-  \toprule
-  \textbf{Trenutak zahtjeva} & \textbf{Zahtjev} & \textbf{Faza} & \textbf{Odgovor} \\
-  \midrule
-  10.02.2027. & prijava natjecatelja, kat. 83 kg   & \texttt{OPEN}           & \texttt{201 Created} \\
-  20.02.2027. & promjena kategorije 83 $\to$ 93 kg & \texttt{PRELIM\_PASSED} & \texttt{200 OK} \\
-  20.02.2027. & prijava novog natjecatelja         & \texttt{PRELIM\_PASSED} & \texttt{409 Conflict} \\
-  09.03.2027. & odjava natjecatelja                & \texttt{CLOSED}         & \texttt{409 Conflict} \\
-  \bottomrule
-\end{tabular}
-}
-
-\vspace{0.5em}
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Svojstva domene relevantna za kolegij}
-\begin{itemize}
-  \item postoje dvije uloge, pa se autorizacija provjerava pri svakom zahtjevu
-  \item vlasništvo nad zapisom: klub A ne smije dohvatiti natjecatelja kluba B
-  \item pravila ovisna o vremenu: isti zahtjev prolazi ili ne prolazi ovisno o fazi
-  \item relacije i ograničenja jedinstvenosti, koja provodi baza, a ne aplikacijski kod
-  \item sučelje s tablicama, filtrima i dostupnošću naredbi ovisnom o fazi
-\end{itemize}
-
-\vspace{0.4em}
-\end{frame}
 
 % ==============================
-\sekcija{Arhitektura i tehnologije}{Troslojna arhitektura, podjela odgovornosti, tehnologije, struktura repozitorija.}
-
-% ------------------------------
-\begin{frame}{Troslojna arhitektura}
-\begin{center}
-\begin{tikzpicture}[
-  node distance=6mm and 20mm,
-  box/.style={draw=ink, thick, rounded corners, fill=white, align=center,
-              minimum height=12mm, minimum width=24mm, font=\small, text=textclr},
-  lbl/.style={font=\scriptsize, align=center, text=mutedclr}
-]
-  \node[box] (fe) {Preglednik \\ (SPA)};
-  \node[box, right=of fe] (be) {Poslužitelj \\ (API)};
-  \node[box, right=of be] (db) {Baza \\ (PostgreSQL)};
-
-  \draw[-{Latex}, ink2, thick] ([yshift=3mm]fe.east) -- node[lbl, above] {zahtjev \\ JSON, token} ([yshift=3mm]be.west);
-  \draw[-{Latex}, ink2, thick] ([yshift=-3mm]be.west) -- node[lbl, below] {odgovor \\ JSON, status} ([yshift=-3mm]fe.east);
-  \draw[-{Latex}, ink2, thick] ([yshift=3mm]be.east) -- node[lbl, above] {upit \\ SQL} ([yshift=3mm]db.west);
-  \draw[-{Latex}, ink2, thick] ([yshift=-3mm]db.west) -- node[lbl, below] {zapisi} ([yshift=-3mm]be.east);
-\end{tikzpicture}
-\end{center}
-
-\vspace{0.3em}
-Preglednik ne pristupa bazi izravno. Svaki podatak koji korisnik vidi prošao je kroz \emph{backend}, koji je pritom provjerio tko je korisnik i što smije.
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Podjela odgovornosti}
-\begin{itemize}
-  \item Baza je izvor istine o podatcima; ograničenja zapisana u shemi provode se neovisno o tome koji ih kod pokušava prekršiti.
-  \item Backend je mjesto na kojem se pravilo provodi: prije svake izmjene provjeravaju se identitet, uloga, vlasništvo nad zapisom i faza natjecanja.
-  \item \emph{Frontend} pravila prikazuje, ali ih ne provodi. Onemogućen gumb korisniku štedi uzaludan pokušaj, ali ne sprječava zahtjev poslan mimo sučelja.
-\end{itemize}
-
-\vspace{0.4em}
-Provjera ispravnosti te podjele: zahtjev poslan izravno na API, mimo korisničkog sučelja, mora dobiti isti odgovor kao zahtjev poslan iz preglednika. Ako ga ne dobije, pravilo je zapisano na krivome mjestu.
-\end{frame}
 
 % ------------------------------
 \begin{frame}{Tehnologije}
@@ -220,40 +56,10 @@ Vue 3, Vite i TypeScript \;|\; Vue Router (rute) \;|\; Pinia (stanje) \;|\; Axio
 Docker Compose (baza) \;|\; Git i GitHub Actions (CI) \;|\; uv (Python okolina) \;|\; pytest (testovi) \;|\; ruff (statička analiza) \;|\; Railway ili Render (postavljanje u rad)
 \end{block}
 
-\vspace{0.2em}
-Ovo je jedna moguća kombinacija tehnologija. Ista se načela primjenjuju i uz drukčiji izbor.
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Struktura repozitorija}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Backend}
-\begin{itemize}
-  \item \codefile{routers/}: rute i parametri zahtjeva
-  \item \codefile{schemas/}: Pydantic modeli ulaza i izlaza
-  \item \codefile{models/}: SQLAlchemy tablice
-  \item \codefile{services/}: poslovna pravila
-  \item \codefile{repositories/}: upiti nad bazom
-  \item \codefile{core/}: konfiguracija, autentikacija, pogreške
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{Frontend}
-\begin{itemize}
-  \item \codefile{src/views/}: stranice
-  \item \codefile{src/components/}: komponente sučelja
-  \item \codefile{src/stores/}: spremišta stanja (Pinia)
-  \item \codefile{src/router/}: rute i njihove zaštite
-  \item \codefile{src/api/}: omotač oko HTTP klijenta
-\end{itemize}
-\end{columns}
-
-\vspace{0.2em}
 \end{frame}
 
 % ==============================
-\sekcija{Organizacija nastave}{Raspored predavanja, zahtjevi na studentski projekt, bodovanje, obrana, akademska čestitost.}
+\sekcija{Organizacija nastave}{Raspored predavanja, referentna aplikacija, studentski projekt i njegova tema, bodovanje, akademska čestitost.}
 
 % ------------------------------
 \begin{frame}{Raspored predavanja}
@@ -285,6 +91,20 @@ Ovo je jedna moguća kombinacija tehnologija. Ista se načela primjenjuju i uz d
 \end{frame}
 
 % ------------------------------
+\begin{frame}{Radni primjer: aplikacija za prijavu na natjecanje}
+Kroz ovaj ćemo kolegij graditi sustav prijava klubova na powerlifting natjecanje.
+
+\begin{itemize}
+  \item Klub prijavljuje svoje natjecatelje i vidi samo svoje prijave; organizator vidi prijave svih klubova.
+  \item Natjecanje ima dvije faze prijave. U prvoj se prijave dodaju, mijenjaju i povlače. U drugoj se mogu još mijenjati i povlačiti, ali ne i dodavati. Nakon nje je popis zaključan.
+\end{itemize}
+
+\vspace{0.4em}
+Ista se struktura pojavljuje u mnogim sustavima: korisnik vidi dio podataka, a operacije nad njima ovise o tome u kojem je stanju nadređeni zapis.
+\end{frame}
+
+% ------------------------------------------------------------
+
 \begin{frame}{Studentski projekt}
 Tijekom semestra svaki student izrađuje vlastitu aplikaciju, po uzoru na referentnu, ali u drugoj domeni. Zahtjevi:
 
@@ -298,10 +118,15 @@ Tijekom semestra svaki student izrađuje vlastitu aplikaciju, po uzoru na refere
 
 \vspace{0.4em}
 Predaja je u dva dijela, svaki nosi 40 bodova: prvi obuhvaća backend, drugi cjelovitu aplikaciju postavljenu u rad.
+
+\vspace{0.3em}
+Potpuni popis zahtjeva naveden je na stranici predmeta.
 \end{frame}
 
 % ------------------------------
-\begin{frame}{Primjeri tema projekta}
+\begin{frame}{Tema projekta}
+Neke od mogućih tema projekta su:
+
 \begin{itemize}
   \item rezervacija termina: dvorane, treneri, konzultacije
   \item prijave na događanja: kapacitet, lista čekanja, evidencija dolaska
@@ -311,9 +136,6 @@ Predaja je u dva dijela, svaki nosi 40 bodova: prvi obuhvaća backend, drugi cje
   \item mali oglasnik: oglasi, poruke, spremljeni oglasi
   \item evidencija članstva: članovi, uplate, statusi
 \end{itemize}
-
-\vspace{0.5em}
-Tema mora sadržavati uloge i pravila. Aplikacija koja zapise samo unosi i prikazuje, bez pravila o tome tko što smije i kada, ne zadovoljava zahtjeve projekta.
 \end{frame}
 
 % ------------------------------
@@ -346,22 +168,6 @@ Tema mora sadržavati uloge i pravila. Aplikacija koja zapise samo unosi i prika
 \end{frame}
 
 % ------------------------------
-\begin{frame}{Obrana projekta}
-Obrana se sastoji od prikaza rada aplikacije, pregleda repozitorija i objašnjenja dijelova koda koje odabere nastavnik. Moguća je i manja izmjena uživo: dodavanje polja, migracija te prilagodba modela i sučelja.
-
-\begin{block}{Primjer pitanja na obrani projekta}
-\begin{itemize}
-  \item Na kojem se mjestu provjerava vlasništvo nad zapisom?
-  \item Kako backend odbija izmjenu nakon isteka roka?
-  \item Zašto zahtjev vraća \texttt{401}, a ne \texttt{403}? Zašto \texttt{409}, a ne \texttt{422}?
-  \item Gdje se na frontendu obrađuje odgovor \texttt{401}?
-\end{itemize}
-\end{block}
-
-Ocjenjuje se objašnjenje odluka ugrađenih u kod.
-\end{frame}
-
-% ------------------------------
 \begin{frame}{Akademska čestitost i uporaba AI alata}
 Uporaba AI alata i vanjskih izvora dopuštena je. Uvjet je da student razumije i objasni svaki dio predanoga koda; na obrani se provjerava razumijevanje.
 
@@ -374,119 +180,6 @@ Za svaki preuzeti isječak koda treba znati:
 \end{itemize}
 
 \vspace{0.3em}
-\end{frame}
-
-% ==============================
-\sekcija{Radna okolina}{Potrebni alati, pokretanje projekta, kriteriji kvalitete koda, način rada.}
-
-% ------------------------------
-\begin{frame}{Potrebni alati}
-\begin{itemize}
-  \item Git
-  \item Python 3.11 ili noviji
-  \item uv, za virtualnu okolinu i instalaciju paketa
-  \item Docker Desktop s alatom Docker Compose, za pokretanje baze
-  \item Node.js 18 ili noviji
-  \item uređivač koda po izboru; na predavanjima se koristi VS Code
-\end{itemize}
-
-\vspace{0.5em}
-Okolina se postavlja prije prvoga predavanja s kodom.
-\end{frame}
-
-% ------------------------------
-\begin{frame}[fragile]{Pokretanje projekta: baza i backend}
-\begin{lstlisting}[language=bash]
-# 1) Environment variables
-cp .env.example .env         # PowerShell: Copy-Item .env.example .env
-
-# 2) Database (PostgreSQL in a container)
-docker compose up -d db
-
-# 3) Backend
-cd api
-uv venv
-source .venv/bin/activate    # PowerShell: .venv\Scripts\Activate.ps1
-uv pip install -r requirements.txt
-alembic upgrade head         # apply migrations
-python -m app.seed           # seed data
-uvicorn app.main:app --reload
-\end{lstlisting}
-
-\vspace{0.3em}
-\codefile{.env.example} je u repozitoriju i služi kao popis varijabli; \codefile{.env} s vlastitim vrijednostima ostaje na računalu i ne ulazi u repozitorij.
-\end{frame}
-
-% ------------------------------
-\begin{frame}[fragile]{Pokretanje projekta: frontend i provjera}
-\begin{lstlisting}[language=bash]
-# 4) Frontend
-cd ../web
-npm install
-npm run dev
-\end{lstlisting}
-
-\vspace{0.5em}
-Nakon pokretanja backend odgovara na \texttt{/health}, a opis sučelja stoji na \texttt{/docs}. Sučelje je dostupno na adresi koju ispiše \texttt{npm run dev}.
-
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Kriteriji kvalitete koda}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Backend}
-\begin{itemize}
-  \item validacija svih ulaznih podataka
-  \item jedinstven oblik odgovora s pogreškom
-  \item pravila u sloju \codefile{services/}, a ne u ruti
-  \item test za svako poslovno pravilo
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{Frontend}
-\begin{itemize}
-  \item stanja učitavanja, pogreške i praznog skupa
-  \item zaštita ruta prema ulozi korisnika
-  \item validacija obrazaca prije slanja
-  \item adresa API-ja iz varijable okoline
-\end{itemize}
-\end{columns}
-
-\vspace{0.5em}
-Objema stranama zajedničko je načelo: svako se pravilo zapisuje na jednome mjestu i odatle poziva, umjesto da se ponavlja u svakoj ruti ili komponenti.
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Način rada}
-\begin{itemize}
-  \item Nakon svakoga predavanja: ponoviti korake u vlastitom repozitoriju i usporediti razlike naredbom \kbd{git diff}.
-  \item Kratak i čest rad daje bolji rezultat od dugoga rada neposredno prije roka predaje.
-  \item Postupak pri pogrešci: pročitati poruku, izolirati najmanji primjer koji je izaziva, provjeriti zahtjev i odgovor (statusni kod i tijelo), pa tek onda mijenjati kod.
-  \item Pitanje nastavnom osoblju postavlja se uz konkretan materijal: poruku pogreške te sadržaj zahtjeva i odgovora.
-\end{itemize}
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Sažetak}
-\begin{itemize}
-  \item Web aplikacija ima tri dijela; pravila provodi backend, a baza je izvor istine o podatcima.
-  \item Referentna domena su prijave klubova na natjecanje: dvije uloge, vlasništvo nad zapisom te tri faze određene dvama rokovima.
-  \item Faza određuje ishod zahtjeva: nova prijava prolazi samo u fazi \texttt{OPEN}, promjena kategorije i odjava i u fazi \texttt{PRELIM\_PASSED}, a nakon finalnoga roka nijedna izmjena.
-  \item Studentski projekt nosi 80 od 100 bodova i predaje se u dva dijela, a usmeni ispit preostalih 20.
-  \item Na obrani se ocjenjuje objašnjenje odluka ugrađenih u kod.
-\end{itemize}
-\end{frame}
-
-% ------------------------------
-\begin{frame}{Što slijedi}
-\begin{itemize}
-  \item \textbf{08.10.2026.} Predavanje 1, arhitektura backenda i kostur projekta: struktura repozitorija, baza u kontejneru, prva ruta API-ja.
-  \item \textbf{15.10.2026.} Predavanje 2, modeliranje podataka, ORM i migracije.
-  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
-\end{itemize}
-
-\vspace{0.5em}
 \end{frame}
 
 \end{document}

@@ -483,7 +483,6 @@ Skup se može ograničiti na tri mjesta, a izbor mjesta određuje i tko je obuhv
 % ------------------------------------------------------------
 \begin{frame}[fragile]{Prvo mjesto: tip stupca u bazi}
 \begin{lstlisting}[language=python]
-# app/models/user.py
 role: Mapped[str] = mapped_column(
     Enum("admin", "club", name="user_role"), nullable=False
 )
@@ -516,6 +515,9 @@ __table_args__ = (
 
 \vspace{0.4em}
 Razlika prema prvom mjestu je u obliku, ne u dosegu: \texttt{CHECK} prima proizvoljan izraz, pa istim sredstvom pokriva i uvjete koje popis vrijednosti ne može izraziti. I ovdje promjena popisa traži migraciju.
+
+\vspace{0.3em}
+Ovo je izbor ovoga projekta: stupac je \texttt{String(20)}, a skup vrijednosti provodi \texttt{CHECK}.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -559,21 +561,24 @@ async def get_db():
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Doseg sesije}
-Sesija nije samo veza prema bazi. Ona prikuplja promijenjene objekte i unutar nje teče jedna transakcija, pa je smije koristiti samo jedan zahtjev.
+\begin{frame}{Jedna sesija po zahtjevu}
+Sesija nije samo veza prema bazi. Unutar nje teče jedna transakcija i ona prikuplja sve promjene koje zahtjev napravi.
+
+\vspace{0.4em}
+Zato je dva zahtjeva ne dijele. Kad bi je dijelila:
 
 \begin{itemize}
-  \item Dva zahtjeva nad istom sesijom dijele i transakciju: potvrda jednoga potvrđuje i nedovršene promjene drugoga.
-  \item Poništavanje zbog pogreške u jednom zahtjevu poništilo bi i rad drugoga.
+  \item potvrda jednoga potvrdila bi i nedovršene promjene drugoga
+  \item pogreška u jednome poništila bi i rad drugoga
 \end{itemize}
 
-\vspace{0.5em}
-Zato sesiju otvara ovisnost pri ulasku u rutu i zatvara je pri izlasku.
+\vspace{0.4em}
+Sesiju zato otvara ovisnost \texttt{get\_db} pri ulasku u rutu i zatvara je pri izlasku. Svaki zahtjev dobiva svoju.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Čekanje na bazu}
-Upit prema bazi traje, a proces za to vrijeme nema što raditi. Dva su načina da se to čekanje podnese:
+Upit prema bazi traje, a proces za to vrijeme nema što raditi. Dva su pristupa tom čekanju:
 
 \begin{itemize}
   \item \textbf{sinkrono}: dretva koja je poslala upit čeka odgovor i u tom razdoblju ne poslužuje druge zahtjeve; istodobnost se postiže većim brojem dretvi ili procesa
@@ -587,18 +592,47 @@ Pristup mora biti dosljedan kroz cijeli sloj pristupa bazi: asinkroni kod traži
 U ovom se projektu radi asinkrono, pa su i funkcije koje dodiruju bazu označene s \texttt{async}, a njihovi pozivi s \texttt{await}.
 \end{frame}
 
+% ------------------------------------------------------------
+\begin{frame}{Sinkrono i asinkrono}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}L{2.2cm}L{4.8cm}L{4.8cm}@{}}
+  \toprule
+   & \textbf{sinkrono} & \textbf{asinkrono} \\
+  \midrule
+  kod & bez \texttt{async} i \texttt{await} & svaka funkcija do baze nosi \texttt{async} i \texttt{await} \\
+  istodobnost & jedna dretva po zahtjevu & jedna dretva poslužuje mnogo zahtjeva koji čekaju \\
+  knjižnice & gotovo svaka radi & treba asinkronu inačicu, sinkrona blokira \\
+  cijena & dretva troši memoriju, pa mnogo zahtjeva znači mnogo dretvi & jedan sinkroni poziv zaustavlja sve ostale zahtjeve te dretve \\
+  isplati se & kad je posao kratak ili ga je malo & kad se većinu vremena čeka mreža ili baza \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+\end{frame}
+
 % ============================================================
 \sekcija{Migracije i početni podatci}{Razilaženje modela i baze, sadržaj migracije, naredbe, granice automatskog stvaranja, punjenje baze.}
 
 % ------------------------------------------------------------
-\begin{frame}{Razilaženje modela i baze}
-Dodavanje stupca u model mijenja Python kod. Tablica u bazi ostaje kakva je bila, pa prvi upit koji taj stupac spominje ne prolazi.
+\begin{frame}{Model i tablica se razilaze}
+Model mijenjamo u Python kodu, ali se te promjene ne primjenjuju na bazu same od sebe. Dodamo li stupac u model, tablica ostaje kakva je bila.
 
 \vspace{0.5em}
-Brisanje i ponovno stvaranje tablica rješava to samo dok je baza prazna. Čim u njoj postoje podatci, potreban je zapis koji staru shemu prevodi u novu bez gubitka sadržaja.
+Od tog trenutka model i tablica opisuju različite stvari. Prvi upit koji novi stupac spominje ne prolazi, a pogreška dolazi iz baze, daleko od retka koji je stupac dodao.
 
 \vspace{0.5em}
-Migracija je takav zapis: datoteka u repozitoriju koja opisuje jednu promjenu sheme. To osigurava da:
+Najjednostavnije rješenje je obrisati tablice i stvoriti ih iznova iz modela. To je bezopasno dok je baza prazna. Čim u njoj ima podataka, briše i njih.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Migracija}
+Potreban je zapis koji staru shemu prevodi u novu, bez gubitka sadržaja. Takav se zapis naziva migracija: datoteka u repozitoriju koja opisuje jednu promjenu sheme.
+
+\vspace{0.5em}
+To osigurava da:
 
 \begin{itemize}
   \item svaki član tima izvodi iste promjene istim redoslijedom
@@ -627,6 +661,25 @@ def downgrade() -> None:
 
 \vspace{0.2em}
 \texttt{revision} imenuje ovu promjenu, \texttt{down\_revision} onu prije nje; iz toga slijedi redoslijed. Baza pamti do koje je migracije došla, pa svaka prolazi točno jednom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Kako nastaje migracija}
+Migracija se ne piše od nule nego nastaje iz razlike između modela i baze:
+
+\vspace{0.4em}
+\begin{enumerate}
+  \item U modelu se napravi promjena, primjerice doda stupac.
+  \item \texttt{alembic revision -{}-autogenerate} usporedi modele s trenutnim stanjem baze i razliku zapiše u novu datoteku u \codefile{alembic/versions/}.
+  \item Datoteka se pročita i po potrebi ispravi.
+  \item \texttt{alembic upgrade head} je primjenjuje.
+\end{enumerate}
+
+\vspace{0.4em}
+Treći korak nije formalnost. Usporedba ne pogađa svaku namjeru, pa nastala datoteka zna opisivati nešto drugo od onoga što je autor htio.
+
+\vspace{0.3em}
+Nastala datoteka ulazi u isti commit kao i promjena modela zbog koje je nastala.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -712,12 +765,17 @@ Indeks se dodaje na stupce po kojima se često filtrira, tipično na strane klju
 
 % ------------------------------------------------------------
 \begin{frame}{Početni podatci}
-Za isprobavanje aplikacije potrebni su organizator, klub i račun toga kluba. Migracija ih ne stvara jer ona samo mijenja oblik tablica, a ne sadržaj.
+Migracija mijenja oblik tablica, ne njihov sadržaj. Za isprobavanje su potrebni i zapisi: organizator, klub i račun toga kluba.
 
-\vspace{0.5em}
-Ti se zapisi mogu upisati i ručno, ali tada svaki član tima ima svoje: druge nazive, druge lozinke i druge oznake, pa ono što radi kod jednoga ne radi kod drugoga. Uz to nestaju pri svakom brisanju baze, a baza se briše često, pri isprobavanju migracija i pri prelasku na drugu granu.
+\vspace{0.4em}
+Ručni upis ima dvije mane:
 
-\vspace{0.5em}
+\begin{itemize}
+  \item svaki član tima ima svoje nazive, lozinke i oznake, pa ono što radi kod jednoga ne radi kod drugoga
+  \item zapisi nestaju pri svakom brisanju baze, a baza se briše često: pri isprobavanju migracija i pri prelasku na drugu granu
+\end{itemize}
+
+\vspace{0.4em}
 Zato upis ide naredbom koja se smije pokrenuti bilo koliko puta i svaki put dati isto stanje. Taj se postupak naziva punjenje početnim podatcima (engl. \emph{seeding}).
 \end{frame}
 
@@ -736,10 +794,13 @@ if club is None:
 \end{lstlisting}
 
 \vspace{0.2em}
-Provjera prije upisa čini postupak ponovljivim: drugo pokretanje ne stvara drugi klub i ne pada na ograničenju \texttt{UNIQUE}. \texttt{flush} šalje upis bazi prije potvrde transakcije, da klub dobije \texttt{id} koji korisniku treba kao strani ključ.
+\begin{itemize}
+  \item \textbf{Provjera prije upisa} čini postupak ponovljivim: drugo pokretanje ne stvara drugi klub i ne pada na ograničenju \texttt{UNIQUE}.
+  \item \textbf{\texttt{flush}} šalje upis bazi prije potvrde transakcije, pa klub dobije \texttt{id} koji korisniku treba kao strani ključ.
+\end{itemize}
 
-\vspace{0.3em}
-Punjenje se pokreće naredbom \texttt{python -m app.seed}, i to nakon \texttt{alembic upgrade head}, jer upisuje retke u tablice koje migracija tek stvara.
+\vspace{0.2em}
+Naredba je \texttt{python -m app.seed}, i to nakon \texttt{alembic upgrade head}: punjenje upisuje retke u tablice koje migracija tek stvara.
 \end{frame}
 
 % ------------------------------------------------------------
@@ -751,18 +812,6 @@ Punjenje se pokreće naredbom \texttt{python -m app.seed}, i to nakon \texttt{al
   \item ORM preslikava klasu u tablicu i sastavlja SQL, ali ga ne skriva. Model baze i shema API-ja ostaju razdvojeni.
   \item Migracija je zapis jedne promjene sheme u repozitoriju. Čita se prije pokretanja, jer \texttt{downgrade} ne vraća obrisane podatke.
 \end{itemize}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Što slijedi}
-\begin{itemize}
-  \item \textbf{22.10.2026.} Predavanje 3, autentikacija: pohrana lozinke, prijava, token i njegova provjera pri svakom zahtjevu.
-  \item \textbf{29.10.2026.} Predavanje 4, autorizacija: uloge i vlasništvo nad zapisom.
-  \item \textbf{19.11.2026.} Obrana prvoga dijela projekta.
-\end{itemize}
-
-\vspace{0.5em}
-Do sljedećega predavanja: pokrenuti bazu, primijeniti migracije naredbom \texttt{alembic upgrade head} i potvrditi da u tablicama postoje organizator i demo klub.
 \end{frame}
 
 \end{document}

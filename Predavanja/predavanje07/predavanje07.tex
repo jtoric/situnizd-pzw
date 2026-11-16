@@ -2,8 +2,8 @@
 % !TeX root = predavanje07.tex
 \input{../common/preamble.tex}
 
-\title[Programiranje za web]{Programiranje za web - Predavanje 7 \\ Frontend: arhitektura SPA, router i layout}
-\date{23.11.2026.}
+\title[Predavanje 7: Jednostranična aplikacija]{Programiranje za web \\ Predavanje 7: Arhitektura jednostranične aplikacije}
+\date{26.11.2026.}
 
 \begin{document}
 
@@ -12,550 +12,632 @@
 % ------------------------------------------------------------
 \begin{frame}{Plan predavanja}
 \begin{enumerate}
-  \item Što je SPA i zašto ne radimo MPA
-  \item Vue 3 i Composition API
-  \item Vite: dev server i build pipeline
-  \item Postavljanje projekta (scaffold)
-  \item Vue Router: rute, parametri, nested rute
-  \item Layout i navigacija
-  \item Stilizacija: scoped styles i globalni CSS
-  \item TypeScript: setup i integracija s Vue 3
-  \item Commitovi za ovo predavanje
+  \item Stranica koja se ne učitava ponovno
+  \item Projekt u pregledniku
+  \item Prikaz koji prati podatke
+  \item Usmjeravanje u pregledniku
+  \item Izgled i sastavljanje aplikacije
 \end{enumerate}
 
 \vspace{0.6em}
-Na kraju predavanja: Vue projekt s routingom, layoutom i stubiranim stranicama za admin i club korisnika.
+Dosad je aplikacija primala zahtjeve i vraćala JSON. Ovo predavanje gradi dio koji te zahtjeve šalje i podatke prikazuje čovjeku.
 \end{frame}
 
 % ------------------------------------------------------------
 \begin{frame}{Ishodi učenja}
 Nakon ovog predavanja student može:
+
 \begin{itemize}
-  \item objasniti razliku između SPA i klasične server-rendered aplikacije
-  \item kreirati Vue 3 projekt s Vite-om i TypeScriptom
-  \item definirati rute s parametrima i nested strukturom u Vue Routeru
-  \item implementirati zajednički layout s navigacijom
-  \item organizirati frontend projekt po mapama (views, components, router, stores, api)
-  \item tipizirati props, Pinia store i Axios pozive TypeScriptom
+  \item objasniti što preglednik dobiva i što izvodi kad otvori jednostraničnu aplikaciju
+  \item pokrenuti projekt i objasniti što razvojni poslužitelj radi
+  \item napisati komponentu čiji se prikaz mijenja sam kad se podatak promijeni
+  \item prenijeti podatak komponenti i primiti događaj iz nje
+  \item opisati rute, pročitati parametar iz adrese i prijeći s jedne stranice na drugu bez novog učitavanja
+  \item razdijeliti stilove na one koji pripadaju komponenti i one koje dijeli cijela aplikacija
 \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{SPA vs MPA}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{MPA (Multi-Page Application)}
-\begin{itemize}
-  \item Server generira HTML za svaku stranicu
-  \item Svaki klik = novi HTTP request + full page reload
-  \item Backend i frontend su spojeni (Django templates, Jinja2, PHP)
-  \item Jednostavniji SEO
-\end{itemize}
+\begin{frame}{Domena primjera}
+Backend je gotov. Klub ima račun, prijavljuje svoje natjecatelje na natjecanje i vidi samo svoje prijave, a organizator vidi prijave svih klubova.
 
-\column{0.48\textwidth}
-\textbf{SPA (Single-Page Application)}
-\begin{itemize}
-  \item Browser učita jedan HTML + JS bundle
-  \item Navigacija mijenja DOM bez reloada
-  \item Frontend i backend komuniciraju kroz API (JSON)
-  \item Brži UX nakon inicijalnog loada
-\end{itemize}
-\end{columns}
+\vspace{0.9em}
+Svaka radnja koju klub izvodi već ima svoju adresu i svoj odgovor. Ono čega nema jest način da klub do njih dođe, a da ne sastavlja zahtjeve rukom.
+
+\vspace{0.9em}
+U ovom se predavanju gradi taj dio: program koji se izvodi u pregledniku, zahtjeve šalje umjesto korisnika, a odgovore prikazuje kao popise i obrasce.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Sučelje kojega nema (I)}
+Klub želi vidjeti svoje prijave na natjecanje. Jedini način koji danas postoji jest poslati zahtjev rukom:
+
+\begin{lstlisting}
+GET /competitions/1/registrations?limit=20&offset=0
+Authorization: Bearer <token kluba>
+\end{lstlisting}
+
+\vspace{0.4em}
+\begin{lstlisting}[language=json]
+[{"id": 41, "lifter": {"first_name": "Ivan",
+                       "last_name": "Peric"},
+  "category": "83", "total": 500, "status": "active"}]
+\end{lstlisting}
+
+\vspace{0.4em}
+Odgovor je točan i potpun. Čovjeku koji vodi klub takav odgovor ne koristi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Sučelje kojega nema (II)}
+Da bi klub ovime mogao raditi, netko mora obaviti posao koji JSON ne obavlja:
 
 \vspace{0.6em}
-Mi radimo SPA jer već imamo REST API. Frontend je potpuno odvojen od backenda - može ga razvijati drugi tim.
+\begin{itemize}
+  \itemsep0.5em
+  \item sastaviti zahtjev i dodati mu \emph{token}, umjesto da ga korisnik prepisuje
+  \item podatke složiti u popis koji se čita, s imenima umjesto oznaka
+  \item ponuditi samo one radnje koje su u ovom trenutku dopuštene
+  \item odgovor s pogreškom pokazati uz polje na koje se odnosi
+\end{itemize}
+
+\vspace{0.9em}
+Taj posao obavlja program koji se izvodi u pregledniku. On ne dira bazu i ne provodi pravila; on zahtjeve sastavlja, a odgovore prikazuje.
+\end{frame}
+
+% ============================================================
+\sekcija{Stranica koja se ne učitava ponovno}{Poslužitelj koji vraća stranice i poslužitelj koji vraća podatke, što se dogodi na klik, što taj izbor košta.}
+
+% ------------------------------------------------------------
+\begin{frame}{Poslužitelj koji vraća gotovu stranicu}
+Dugo je svaka stranica nastajala na poslužitelju. Preglednik pošalje zahtjev, poslužitelj iz podataka složi HTML i vrati ga, a preglednik ga prikaže.
+
+\vspace{0.9em}
+Svaki klik koji mijenja prikaz šalje novi zahtjev i vraća novu stranicu. Preglednik odbaci sve što je imao i počne ispočetka.
+
+\vspace{0.9em}
+Prikaz i podatci time nastaju na istom mjestu. Isti program koji čita bazu odlučuje i kako će tablica izgledati.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Kako SPA zapravo radi}
+\begin{frame}{Poslužitelj koji vraća podatke}
+Aplikacija koju gradimo radi drukčije. Poslužitelj vraća JSON i ne zna ništa o izgledu.
+
+\vspace{0.9em}
+Preglednik jednom dohvati stranicu i program koji uz nju dolazi. Od tog trenutka taj program mijenja prikaz, a poslužitelju šalje samo zahtjeve za podatcima.
+
+\vspace{0.9em}
+Takva se aplikacija naziva \textbf{jednostranična} (engl. \emph{single-page application}): stranica se učita jednom, a mijenja se njezin sadržaj.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Dva rasporeda posla}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}L{3.1cm}L{4.1cm}L{4.1cm}@{}}
+  \toprule
+   & \textbf{Stranica s poslužitelja} & \textbf{Jednostranična aplikacija} \\
+  \midrule
+  Poslužitelj vraća & HTML za svaku stranicu & JSON \\
+  Promjena prikaza & novi zahtjev i novo učitavanje & izmjena postojeće stranice \\
+  Tko slaže prikaz & poslužitelj & program u pregledniku \\
+  Veza dvaju dijelova & isti program & API \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Drugi raspored odabiremo jer API već postoji. Isti taj API poslije može posluživati i druge klijente, a da se ne mijenja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što se dogodi na klik}
+Korisnik u popisu klubova klikne na jedan klub.
+
+\vspace{0.6em}
+\begin{itemize}
+  \itemsep0.4em
+  \item Preglednik ne šalje zahtjev za novom stranicom. Klik presreće program koji je već pokrenut.
+  \item Program promijeni adresu u traci preglednika, bez učitavanja.
+  \item Odluči koji prikaz odgovara novoj adresi i zamijeni dio stranice njime.
+  \item Taj prikaz zatraži podatke s API-ja i, dok ih čeka, pokaže da se učitavaju.
+  \item Kad odgovor stigne, podatci se upišu u prikaz.
+\end{itemize}
+
+\vspace{0.6em}
+Zahtjev prema poslužitelju u tom nizu postoji, ali traži podatke, ne stranicu.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Što taj izbor košta}
+Odvojen klijent ima svoju cijenu.
+
+\vspace{0.6em}
+\begin{itemize}
+  \itemsep0.45em
+  \item Prvo učitavanje je sporije, jer preglednik mora preuzeti cijeli program prije nego išta prikaže.
+  \item Pravila koja se tiču prikaza postoje na dvama mjestima: poslužitelj ih provodi, a sučelje ih mora i prikazati.
+  \item Sadržaj nastaje u pregledniku, pa ga tražilice teže čitaju.
+  \item Dva se dijela objavljuju zasebno, pa njihove inačice mogu kratko biti neusklađene.
+\end{itemize}
+
+\vspace{0.6em}
+Zauzvrat se sučelje mijenja bez objave poslužitelja, a isti API poslužuje i druge klijente.
+\end{frame}
+
+% ============================================================
+\sekcija{Projekt u pregledniku}{Čemu služi razvojni poslužitelj, pokretanje projekta, raspored mapa, provjera tipova i zajednički opisi podataka.}
+
+% ------------------------------------------------------------
+\begin{frame}{Program koji preglednik izvodi}
+Preglednik izvodi JavaScript. Izvorni kod koji pišemo nije ono što preglednik dobiva: datoteke su razdijeljene po modulima, a neke su pisane u jeziku koji preglednik ne razumije.
+
+\vspace{0.9em}
+Između izvornog koda i preglednika zato stoji alat. U razvoju poslužuje module onako kako ih preglednik traži i, kad se datoteka promijeni, zamijeni samo nju bez ponovnog učitavanja stranice.
+
+\vspace{0.9em}
+Za objavu isti alat od svih modula složi nekoliko datoteka koje preglednik preuzima odjednom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Pokretanje projekta}
+\begin{lstlisting}[language=bash]
+npm create vue@latest web   <@\kom{odabrati TypeScript, Router i Pinia}@>
+
+cd web
+npm install
+npm run dev                 <@\kom{http://localhost:5173}@>
+\end{lstlisting}
+
+\vspace{0.6em}
+Prva naredba stvara projekt i pita koje dijelove dodati. Druga preuzima knjižnice navedene u \codefile{package.json}.
+
+\vspace{0.6em}
+Treća pokreće razvojni poslužitelj. On poslužuje samo klijentski dio; backend se i dalje pokreće zasebno i sluša na vlastitoj adresi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Raspored mapa}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{3.0cm}L{8.2cm}@{}}
+  \toprule
+  \textbf{Mapa} & \textbf{Što sadrži} \\
+  \midrule
+  \codefile{views} & stranice, jedna po ruti \\
+  \codefile{components} & dijelovi prikaza koje više stranica dijeli \\
+  \codefile{router} & popis ruta i njihovih prikaza \\
+  \codefile{stores} & podatci koje dijeli više prikaza \\
+  \codefile{api} & slanje zahtjeva prema backendu \\
+  \codefile{types} & opisi oblika podataka \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Podjela odgovara onoj na poslužitelju: prikaz, podatci i pristup mreži stoje odvojeno, pa se svaki mijenja za sebe.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Imenovanje}
+\begin{konvencija}
+\begin{itemize}
+  \itemsep0.4em
+  \item Datoteka komponente nosi ime u velikim početnim slovima: \texttt{NavBar.vue}, \texttt{LifterForm.vue}.
+  \item Stranica završava riječju \texttt{View}: \texttt{LoginView.vue}, \texttt{LiftersView.vue}.
+  \item Jedna stranica odgovara jednoj ruti.
+  \item Funkcija koja dijeli logiku među komponentama počinje s \texttt{use}: \texttt{useAuth()}.
+\end{itemize}
+\end{konvencija}
+
+\vspace{0.7em}
+Nijedno od toga alat ne provjerava. Dogovor postoji zato da se po imenu datoteke zna o čemu je riječ, jednako kao i nazivi na poslužitelju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Provjera tipova u klijentskom kodu}
+JavaScript ne provjerava tipove. Polje koje se na poslužitelju zove \texttt{first\_name}, a u pregledniku \texttt{firstName}, ne javlja ništa: vrijednost je \texttt{undefined} i mjesto na kojem se ispisuje ostane prazno.
+
+\vspace{0.9em}
+Pogreška se tada vidi tek u pregledniku, i to onomu tko tu stranicu otvori.
+
+\vspace{0.9em}
+TypeScript je JavaScript s opisima tipova. Opisi se provjeravaju prije pokretanja i iz izvršnog koda nestaju. Naredba \texttt{npm run type-check} provjerava cijeli projekt odjednom.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Zajednički opis podataka}
+Oblik svakog zapisa koji stiže s poslužitelja opisuje se jednom, na jednom mjestu:
+
+\begin{lstlisting}[language=typescript]
+// types/index.ts
+export interface Lifter {
+  id: number
+  first_name: string
+  last_name: string
+  birth_date: string
+  gender: 'M' | 'F'
+}
+\end{lstlisting}
+
+\vspace{0.5em}
+Nazivi i tipovi preslikani su iz sheme odgovora. Kad se shema na poslužitelju promijeni, izmjena ovog opisa pokaže svako mjesto u klijentu koje još računa na staro polje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: pokretanje projekta}
+Radite u praznoj mapi, izvan repozitorija projekta.
+
+\vspace{0.9em}
 \begin{enumerate}
-  \item Browser dohvati \texttt{index.html} - jedini HTML koji server ikad pošalje
-  \item HTML učita JavaScript bundle - entry point je \texttt{src/main.ts}
-  \item JS preuzima renderiranje: kreira DOM, sluša eventove, mijenja prikaz
-  \item Klik na link ne šalje request serveru - JS mijenja URL i renderira novu komponentu
-  \item Podaci dolaze asinkrono kroz API pozive (JSON)
+  \itemsep0.45em
+  \item Stvorite projekt naredbom iz ovog predavanja i odaberite TypeScript, Router i Pinia.
+  \item Pokrenite razvojni poslužitelj i otvorite ponuđenu adresu.
+  \item Otvorite \texttt{src/App.vue} i promijenite tekst koji se prikazuje. Ne osvježavajte stranicu.
+  \item Otvorite alate za razvoj u pregledniku, karticu Mreža, pa osvježite stranicu.
 \end{enumerate}
 
+\vspace{0.9em}
+Koliko je datoteka preglednik preuzeo i koja je od njih HTML? Što se u pregledniku dogodilo u trećem koraku?
+\end{frame}
+
+% ============================================================
+\sekcija{Prikaz koji prati podatke}{Od ručne izmjene stranice do reaktivnosti, komponenta i njezini dijelovi, direktive, prijenos podataka i događaja, izvedene vrijednosti.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Prikaz koji se mijenja rukom}
+Stranica je u pregledniku stablo elemenata (DOM). Bez pomoćnih alata svaka se promjena prikaza piše kao zahvat u to stablo:
+
+\begin{lstlisting}[language=typescript]
+let count = 0
+
+document.getElementById('btn').addEventListener('click', () => {
+  count = count + 1
+  document.getElementById('out').textContent = String(count)
+  document.getElementById('dbl').textContent = String(count * 2)
+})
+\end{lstlisting}
+
 \vspace{0.4em}
-Server nakon inicijalnog loada služi samo kao API. Cijeli UI živi u browseru.
+Vrijednost i prikaz dva su odvojena podatka koja programer mora držati usklađenima. Svako novo mjesto koje tu vrijednost pokazuje dodaje redak koji se može zaboraviti.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Prednosti odvojenog frontenda}
-\begin{tabular}{@{}lp{10cm}@{}}
-  \toprule
-  \textbf{Prednost} & \textbf{Objašnjenje} \\
-  \midrule
-  Nezavisni deploy & Frontend i backend se deployaju zasebno. Promjena boje gumba ne zahtijeva deploy backenda. \\
-  Različiti timovi & Frontend i backend tim rade paralelno. Dogovor je API ugovor (Swagger). \\
-  API-first & Isti backend služi web, mobilnu aplikaciju i integracije. \\
-  Tehnološka sloboda & Frontend može biti Vue, React ili mobilna app - backend ne zna i ne mari. \\
-  \bottomrule
-\end{tabular}
+\begin{frame}{Reaktivnost}
+Vue obrće smjer: program opisuje kako prikaz ovisi o podatcima, a ne što treba promijeniti kad se podatak promijeni.
+
+\vspace{0.9em}
+Pri prvom prikazu Vue bilježi koju vrijednost svaki dio prikaza čita. Kad se ta vrijednost promijeni, Vue zna koje dijelove treba osvježiti i osvježi ih sam.
+
+\vspace{0.9em}
+Posljedica za pisanje koda: mijenja se podatak, nikad prikaz. Mjesta na kojima se podatak pokazuje može biti i deset, a redak koji ga mijenja ostaje jedan.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Reaktivni sustav: koncept}
-Vue koristi \textbf{reaktivni sustav} koji automatski prati zavisnosti između podataka i UI-ja.
+\begin{frame}{Zašto promjena nije skupa}
+Zahvat u stablo elemenata je skup: preglednik nakon njega ponovno računa raspored i iscrtava dio stranice.
 
-\vspace{0.6em}
-\begin{center}
-\texttt{podatak se promijeni $\rightarrow$ Vue detektira $\rightarrow$ DOM se ažurira}
-\end{center}
+\vspace{0.9em}
+Vue zato prikaz prvo složi kao obične objekte u memoriji. Kad se podatak promijeni, složi novu takvu sliku, usporedi je s prethodnom i u stablo upiše samo ono što se razlikuje.
 
-\vspace{0.6em}
+\vspace{0.9em}
+Promjena jednog broja u tablici od tristo redaka tako ne prepisuje tablicu, nego jednu ćeliju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Komponenta}
+Prikaz se dijeli na komponente. Komponenta je jedna datoteka s nastavkom \texttt{.vue} i ima tri dijela:
+
+\vspace{0.7em}
 \begin{itemize}
-  \item Nema ručnog \texttt{document.getElementById().innerHTML = ...}
-  \item Vue interno koristi JavaScript \texttt{Proxy} za praćenje pristupa i promjena
-  \item Kad čitaš varijablu u templateu, Vue zabilježi tu zavisnost
-  \item Kad se varijabla promijeni, Vue zna točno koje dijelove DOM-a treba ažurirati
+  \itemsep0.5em
+  \item \texttt{<script setup>}: podatci i funkcije te komponente
+  \item \texttt{<template>}: kako se ti podatci prikazuju
+  \item \texttt{<style scoped>}: stilovi koji vrijede samo za nju
 \end{itemize}
 
-\vspace{0.4em}
-Ovo je ključna razlika od jQuery/vanilla JS pristupa - ne razmišljate o DOM-u, razmišljate o podacima.
+\vspace{0.9em}
+Komponenta se u drugoj komponenti koristi kao element: \texttt{<LifterForm />}. Sve što joj treba dobiva izvana, a sve što radi javlja prema van.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Virtual DOM}
-Vue ne mijenja stvarni DOM direktno. Koristi \textbf{Virtual DOM} - laganu JavaScript reprezentaciju UI-ja.
-
-\vspace{0.6em}
-\begin{enumerate}
-  \item Komponenta renderira Virtual DOM stablo (JS objekti)
-  \item Kad se podatak promijeni, renderira se novo Virtual DOM stablo
-  \item Vue uspoređuje staro i novo stablo (diffing)
-  \item Samo razlike se primijene na stvarni DOM
-\end{enumerate}
-
-\vspace{0.6em}
-Stvarni DOM je spor - svaka promjena može triggerirati layout recalculation, repaint i reflow. Virtual DOM minimizira broj stvarnih DOM operacija.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vue 3: zašto baš Vue}
-\begin{itemize}
-  \item Manji learning curve od Reacta - template syntax je bliži HTML-u
-  \item Composition API daje fleksibilnost sličnu React Hooksima
-  \item Ekosustav: Vue Router, Pinia, Vite - sve službeno i dobro integrirano
-  \item Odlična dokumentacija na \texttt{vuejs.org}
-\end{itemize}
-
-\vspace{0.6em}
-Vue koristi \textbf{reaktivni sustav} - kad se podatak promijeni, UI se automatski ažurira. Nema ručnog DOM manipuliranja.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Composition API vs Options API}
-Vue 3 nudi dva načina pisanja komponenti. Mi koristimo \textbf{Composition API} jer je fleksibilniji i bolje skalira.
-
-\vspace{0.4em}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Options API}
-\begin{itemize}
-  \item \texttt{data()}, \texttt{methods}, \texttt{computed}, \texttt{watch}
-  \item Logika raspoređena po sekcijama
-  \item Teško za ponovnu upotrebu logike
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{Composition API}
-\begin{itemize}
-  \item \texttt{ref()}, \texttt{computed()}, \texttt{watch()}
-  \item Logika grupirana po značenju
-  \item Composables za dijeljenje logike
-  \item \texttt{<script setup>} sintaksa
-\end{itemize}
-\end{columns}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{ref() vs reactive()}
-\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
-  \toprule
-  & \textbf{ref()} & \textbf{reactive()} \\
-  \midrule
-  Tip & Primitivi i objekti & Samo objekti \\
-  Pristup & \texttt{count.value} u scriptu, \texttt{count} u templateu & Direktno: \texttt{state.count} \\
-  Reassign & Da (\texttt{count.value = 5}) & Ne (gubi reaktivnost) \\
-  Destrukturiranje & Sigurno s \texttt{toRefs()} & Gubi reaktivnost \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Preporuka: koristite \texttt{ref()} za sve. Jednostavniji je, radi s primitivima i objektima, i \texttt{.value} čini eksplicitnim da radite s reaktivnom varijablom.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Životni ciklus komponente}
-Svaka Vue komponenta prolazi kroz definirane faze:
-
-\vspace{0.4em}
-\begin{center}
-\texttt{kreiranje $\rightarrow$ montiranje $\rightarrow$ ažuriranje $\rightarrow$ uništavanje}
-\end{center}
-
-\vspace{0.6em}
-\begin{tabular}{@{}ll@{}}
-  \toprule
-  \textbf{Hook} & \textbf{Kad se poziva} \\
-  \midrule
-  \texttt{onMounted} & Komponenta je renderirana u DOM. API pozivi idu ovdje. \\
-  \texttt{onUpdated} & Reaktivni podatak se promijenio, DOM je ažuriran. \\
-  \texttt{onUnmounted} & Komponenta je uklonjena. Cleanup (intervali, listeneri). \\
-  \texttt{onBeforeUnmount} & Neposredno prije uklanjanja. \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.4em}
-\texttt{onMounted} ćete koristiti najčešće - za dohvat podataka kad se stranica učita.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Template sintaksa: direktive}
-Vue direktive su specijalni atributi koji počinju s \texttt{v-}:
-
-\vspace{0.4em}
-\begin{tabular}{@{}lp{8cm}@{}}
-  \toprule
-  \textbf{Direktiva} & \textbf{Značenje} \\
-  \midrule
-  \texttt{v-if} / \texttt{v-else} & Uvjetno renderiranje - element ne postoji u DOM-u \\
-  \texttt{v-show} & Uvjetno sakrivanje - element postoji ali je \texttt{display: none} \\
-  \texttt{v-for} & Iteracija kroz array ili objekt \\
-  \texttt{v-bind} (\texttt{:}) & Dinamički atribut - \texttt{:class}, \texttt{:href}, \texttt{:disabled} \\
-  \texttt{v-on} (\texttt{@}) & Event listener - \texttt{@click}, \texttt{@submit}, \texttt{@input} \\
-  \texttt{v-model} & Dvosmjerni binding - spaja input s varijablom \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.4em}
-\texttt{v-if} uklanja element iz DOM-a (skuplji toggle, jeftiniji init). \texttt{v-show} ga samo skriva (jeftiniji toggle, skuplji init).
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Props i Emits}
-Parent-child komunikacija u Vueu je \textbf{jednosmjerna}:
-
-\vspace{0.6em}
-\begin{center}
-\texttt{Parent $\xrightarrow{\text{props}}$ Child $\xrightarrow{\text{emit}}$ Parent}
-\end{center}
-
-\vspace{0.6em}
-\begin{itemize}
-  \item \textbf{Props} - podaci teku od parenta prema childu. Child ih nikad ne smije mijenjati.
-  \item \textbf{Emits} - child šalje event parentu kad se nešto dogodi (klik, submit, promjena).
-  \item Parent odlučuje što napraviti s eventom - child ne zna.
-\end{itemize}
-
-\vspace{0.6em}
-\texttt{defineProps()} deklarira koje propse komponenta prima. \texttt{defineEmits()} deklarira koje evente emitira. Oboje su compile-time makroi u \texttt{<script setup>}.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Computed vs Watch}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{computed()}
-\begin{itemize}
-  \item Derivirani podatak iz postojećih
-  \item Kešira se - recalculira samo kad se zavisnosti promijene
-  \item Read-only (uglavnom)
-  \item Primjer: filtrirani popis, ukupna cijena
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{watch()}
-\begin{itemize}
-  \item Reagira na promjenu podatka
-  \item Pokreće side-effect (API poziv, log)
-  \item Ne kešira ništa
-  \item Primjer: dohvat podataka kad se ruta promijeni
-\end{itemize}
-\end{columns}
-
-\vspace{0.6em}
-Ako možeš izraziti nešto kao \texttt{computed}, koristi \texttt{computed}. \texttt{watch} je za situacije kad promjena podatka treba pokrenuti akciju van renderiranja.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Slots: kompozicija komponenti}
-Slots omogućuju parentu da \enquote{ubaci} sadržaj unutar child komponente:
-
-\vspace{0.4em}
-\begin{tabular}{@{}lp{8cm}@{}}
-  \toprule
-  \textbf{Tip slota} & \textbf{Upotreba} \\
-  \midrule
-  Default slot & Jedan blok sadržaja - \texttt{<MyCard>tekst</MyCard>} \\
-  Named slots & Više blokova - \texttt{<template \#header>}, \texttt{<template \#footer>} \\
-  Scoped slots & Child pruža podatke parentu za renderiranje \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Slots su Vue verzija \enquote{composition over inheritance}. Umjesto da child komponenta zna sve o sadržaju koji prikazuje, parent šalje sadržaj, a child ga pozicionira.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Prva Vue komponenta}
+\begin{frame}[fragile]{Prva komponenta}
 \begin{lstlisting}[language=html]
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 
 const count = ref(0)
 const doubled = computed(() => count.value * 2)
-
-function increment() {
-  count.value++
-}
 </script>
 
 <template>
-  <button @click="increment">
-    Klikova: {{ count }} (duplo: {{ doubled }})
+  <button @click="count++">
+    Klikova: {{ count }}, dvostruko: {{ doubled }}
   </button>
 </template>
 \end{lstlisting}
 
-\vspace{0.4em}
-\texttt{ref()} stvara reaktivnu varijablu. U scriptu se pristupa s \texttt{.value}, u templateu direktno.
+\vspace{0.5em}
+Nijedan redak ne dira stablo elemenata. Klik mijenja \texttt{count}, a oba mjesta u predlošku osvježi Vue.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Scaffold projekta s TypeScriptom}
-\begin{lstlisting}[language=bash]
-# Interaktivni wizard - odaberi TypeScript: Yes
-npm create vue@latest web
+\begin{frame}[fragile]{Reaktivna vrijednost}
+\texttt{ref()} pretvara običnu vrijednost u praćenu. Praćena vrijednost nije sam broj nego objekt koji ga drži, pa se u kodu čita i mijenja kroz \texttt{.value}:
 
-cd web
-npm install
+\begin{lstlisting}[language=typescript]
+const count = ref(0)
 
-# Dodaj preostale dependencije
-npm install axios
-
-# Type-check bez bundlanja
-npm run type-check   # vue-tsc --noEmit
-
-# Dev server s hot-reload
-npm run dev    # http://localhost:5173
+count.value = count.value + 1   // u <script setup>
 \end{lstlisting}
 
+\vspace{0.5em}
+U predlošku se \texttt{.value} ne piše; Vue ga dodaje sam. Zbog te je razlike zaboravljen \texttt{.value} u skripti česta pogreška: \texttt{count + 1} nije broj nego spajanje s objektom.
+
+\vspace{0.5em}
+Provjera tipova tu pogrešku prijavi prije pokretanja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Direktive}
+Predložak je HTML uz posebne atribute koji počinju s \texttt{v-}:
+
 \vspace{0.4em}
-Wizard konfigurira \texttt{tsconfig.json}, \texttt{env.d.ts} i Vue Router + Pinia po izboru. Sve \texttt{.vue} datoteke automatski dobivaju \texttt{<script setup lang="ts">}.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{TypeScript u Vue projektu: zašto}
-\begin{itemize}
-  \item \textbf{Greške pri pisanju, ne pri izvršavanju} - TypeScript javlja pogrešan tip prije nego što browser uopće pokrene kod
-  \item \textbf{Autocomplete koji zna kontekst} - IDE prikazuje dostupna polja na API responseu, propse komponente, metode storea
-  \item \textbf{Sigurni refactoring} - preimenuješ interface, TypeScript pokaže svako mjesto koje treba popraviti
-  \item \textbf{Vue 3 je pisan u TypeScriptu} - podrška je ugrađena od početka, nema workaroundova ni zastarjelih tipova
-\end{itemize}
-
-\vspace{0.6em}
-TypeScript ne usporava razvoj na ovom projektu - ubrzava ga jer eliminira cijelu kategoriju runtime bugova (undefined is not a function, pogrešan naziv polja).
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Tipiziranje komponenti: defineProps i defineEmits}
-\begin{lstlisting}[language=typescript]
-// src/components/FormField.vue
-<script setup lang="ts">
-
-// Genericki interface - bez runtime overhead
-defineProps<{
-  label: string
-  error?: string
-  modelValue: string | number
-}>()
-
-defineEmits<{
-  'update:modelValue': [value: string]
-}>()
-
-// Domain objekt - dijeli se s Pinia storeom
-interface Lifter {
-  id: number
-  first_name: string
-  last_name: string
-  gender: 'M' | 'F'
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}L{2.9cm}L{8.3cm}@{}}
+  \toprule
+  \textbf{Direktiva} & \textbf{Značenje} \\
+  \midrule
+  \texttt{v-if}, \texttt{v-else} & element postoji u stablu samo ako uvjet vrijedi \\
+  \texttt{v-show} & element uvijek postoji, ali je skriven \\
+  \texttt{v-for} & jedan element po zapisu iz polja \\
+  \texttt{v-bind}, kraće \texttt{:} & vrijednost atributa dolazi iz podatka \\
+  \texttt{v-on}, kraće \texttt{@} & što se izvodi na događaj \\
+  \texttt{v-model} & unos i podatak prate jedan drugoga \\
+  \bottomrule
+\end{tabular}
 }
-</script>
-\end{lstlisting}
+\end{center}
+
+\vspace{0.5em}
+\texttt{v-if} i \texttt{v-show} nisu isto: prvi element uklanja iz stabla, drugi ga samo skriva. Za sadržaj koji se često prikazuje i skriva jeftiniji je \texttt{v-show}.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Tipiziranje Pinia storea}
-\begin{lstlisting}[language=typescript]
-// src/stores/lifters.ts
-import { defineStore } from 'pinia'
+\begin{frame}[fragile]{Ispis popisa}
+\begin{lstlisting}[language=html]
+<ul>
+  <li v-for="lifter in lifters" :key="lifter.id">
+    {{ lifter.last_name }}, {{ lifter.first_name }}
+  </li>
+</ul>
+\end{lstlisting}
+
+\vspace{0.4em}
+Atribut \texttt{:key} nosi vrijednost po kojoj Vue prepoznaje isti zapis među dvama prikazima popisa.
+
+\vspace{0.4em}
+Bez njega Vue zapise uspoređuje po položaju. Zapis izbrisan s početka popisa pomakne sve ostale, pa se stanje koje pripada jednom retku, primjerice upisani tekst, nađe uz drugi. Oznaka zapisa iz baze za to je prirodan izbor; redni broj u popisu nije, jer se mijenja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Unos korisnika}
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
 import { ref } from 'vue'
+const search = ref('')
+</script>
+
+<template>
+  <input v-model="search" placeholder="Prezime">
+  <p>Trazi se: {{ search }}</p>
+</template>
+\end{lstlisting}
+
+\vspace{0.5em}
+\texttt{v-model} veže polje za unos i podatak u oba smjera: tipkanje mijenja \texttt{search}, a promjena \texttt{search} iz koda mijenja sadržaj polja.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Podatci prema komponenti}
+Komponenta koja se koristi na više mjesta ne zna odakle joj podatci. Prima ih kao vrijednosti koje nazivamo \emph{props}:
+
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
 import type { Lifter } from '@/types'
 
-export const useLifterStore = defineStore('lifters', () => {
-  const lifters = ref<Lifter[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+defineProps<{ lifter: Lifter; editable?: boolean }>()
+</script>
 
-  async function fetchLifters(clubId: number): Promise<void> {
-    loading.value = true
-    // ...
-  }
+<template>
+  <span>{{ lifter.last_name }}</span>
+</template>
+\end{lstlisting}
 
-  return { lifters, loading, error, fetchLifters }
+\vspace{0.5em}
+Opis u šiljastim zagradama ujedno je i opis tipa: pozivatelj koji preda pogrešan oblik dobiva pogrešku pri provjeri tipova.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Događaj prema roditelju}
+Podatci teku samo prema dolje. Komponenta ne mijenja vrijednost koju je dobila, jer bi je roditelj pri sljedećem prikazu prepisao i promjena bi nestala bez poruke.
+
+\begin{lstlisting}[language=html]
+<script setup lang="ts">
+const emit = defineEmits<{ remove: [id: number] }>()
+</script>
+
+<template>
+  <button @click="emit('remove', lifter.id)">Obrisi</button>
+</template>
+\end{lstlisting}
+
+\vspace{0.5em}
+Komponenta javlja što se dogodilo, a roditelj odlučuje što će s tim. Ista se komponenta tako na jednom mjestu može koristiti za brisanje, a na drugom za odjavu prijave.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Izvedena vrijednost}
+Vrijednost koja se može izračunati iz drugih ne pohranjuje se, nego opisuje:
+
+\begin{lstlisting}[language=typescript]
+const lifters = ref<Lifter[]>([])
+const search = ref('')
+
+const filtered = computed(() =>
+  lifters.value.filter(l => l.last_name.startsWith(search.value))
+)
+\end{lstlisting}
+
+\vspace{0.5em}
+\texttt{filtered} se računa pri prvom čitanju, a zatim tek kad se promijeni \texttt{lifters} ili \texttt{search}. Pohranjena bi se kopija popisa morala osvježavati pri svakoj promjeni, a razilazi se čim se jedno osvježavanje zaboravi.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Promatranje promjene}
+Izvedena vrijednost opisuje što nešto jest. Kad promjena treba pokrenuti radnju izvan prikaza, koristi se promatrač:
+
+\begin{lstlisting}[language=typescript]
+watch(clubId, async (noviId) => {
+  lifters.value = await getLifters(noviId)
 })
 \end{lstlisting}
 
-\vspace{0.4em}
-\texttt{useLifterStore()} vraća potpuno tipiziran objekt - autocomplete radi za cijeli store.
+\vspace{0.5em}
+Promatrač se izvodi nakon promjene i ne vraća vrijednost. Dohvat podataka, upis u pohranu preglednika i zapis u dnevnik pripadaju njemu.
+
+\vspace{0.5em}
+Pravilo izbora: ako se nešto može izraziti kao izvedena vrijednost, izražava se tako. Promatrač ostaje za posljedice koje nisu dio prikaza.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Tipiziranje Axios poziva}
+\begin{frame}[fragile]{Vježba: popis i filtar}
+U projektu iz prve vježbe otvorite \texttt{src/App.vue} i upišite u skriptu polje od barem pet natjecatelja:
+
 \begin{lstlisting}[language=typescript]
-// src/api/lifters.ts
-import api from './client'
-import type { Lifter } from '@/types'
-
-export async function getLifters(clubId: number): Promise<Lifter[]> {
-  const { data } = await api.get<Lifter[]>(
-    `/clubs/${clubId}/lifters`
-  )
-  return data   // TypeScript zna: data je Lifter[]
-}
-
-export async function createLifter(
-  clubId: number,
-  body: Omit<Lifter, 'id'>
-): Promise<Lifter> {
-  const { data } = await api.post<Lifter>(
-    `/clubs/${clubId}/lifters`, body
-  )
-  return data
-}
+const lifters = ref([
+  { id: 1, first_name: 'Ivan', last_name: 'Peric' },
+])
 \end{lstlisting}
+
+\vspace{0.25em}
+\begin{enumerate}
+  \itemsep0.15em
+  \item Ispišite ih kao popis, s oznakom retka.
+  \item Dodajte polje za unos vezano uz \texttt{search}.
+  \item Dodajte izvedenu vrijednost koja popis sužava prema upisanom tekstu i ispišite nju.
+  \item Maknite \texttt{:key} iz popisa i pogledajte što preglednik javlja u konzoli.
+\end{enumerate}
+
+\vspace{0.25em}
+Koliko ste puta morali dirati prikaz da bi se popis promijenio?
+\end{frame}
+
+% ============================================================
+\sekcija{Usmjeravanje u pregledniku}{Adresa koja se mijenja bez zahtjeva, popis ruta, parametri, ugniježđene rute i odgođeno učitavanje.}
+
+% ------------------------------------------------------------
+\begin{frame}{Adresa i prikaz}
+Aplikacija ima više stranica: prijava, popis natjecatelja, popis prijava. Svaka od njih mora imati svoju adresu.
+
+\vspace{0.9em}
+Bez adrese korisnik ne može poslati poveznicu na određeni prikaz, osvježavanje vraća aplikaciju na početak, a tipka za povratak unatrag izlazi iz nje.
+
+\vspace{0.9em}
+Zadaća je time dvostruka: adresu mijenjati bez novog učitavanja stranice i iz adrese odrediti koji se prikaz pokazuje. Taj posao obavlja Vue Router.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Centralni types/ folder}
-Interfacei se definiraju jednom, koriste svugdje:
-
-\vspace{0.4em}
-\begin{tabular}{@{}lp{9cm}@{}}
-  \toprule
-  \textbf{File} & \textbf{Sadržaj} \\
-  \midrule
-  \texttt{src/types/index.ts} & \texttt{Lifter}, \texttt{Club}, \texttt{Competition}, \texttt{Registration} \\
-  \texttt{src/types/auth.ts} & \texttt{User}, \texttt{TokenPair}, \texttt{LoginPayload} \\
-  \texttt{src/types/api.ts} & \texttt{PaginatedResponse<T>}, \texttt{ApiError} \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Preslikavanje s Pydantic schemom je 1:1 - isti nazivi polja, isti tipovi. Kad backend promijeni schemu, TypeScript u frontendu odmah pokaže gdje se koristi staro polje. Ovo je prednost API-first pristupa.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{tsconfig: relevantne opcije}
-\begin{tabular}{@{}lp{8cm}@{}}
-  \toprule
-  \textbf{Opcija} & \textbf{Što radi} \\
-  \midrule
-  \texttt{strict: true} & Sve provjere uključene (preporučeno za novi projekt) \\
-  \texttt{paths: \{"@/*": ["./src/*"]\}} & Alias \texttt{@/} za \texttt{src/} - mora biti isti kao u \texttt{vite.config.ts} \\
-  \texttt{include: ["src/**/*"]} & TypeScript gleda samo naš kod, ne \texttt{node\_modules} \\
-  \texttt{vue-tsc} & Type-check \texttt{.vue} datoteka - \texttt{tsc} sam ne razumije Vue SFC \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-\texttt{npm run type-check} pokreće \texttt{vue-tsc --noEmit} - provjerava tipove bez generiranja outputa. Dodajte ga u CI pipeline uz lint i testove.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Vite vs Webpack}
-\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
-  \toprule
-  & \textbf{Webpack} & \textbf{Vite} \\
-  \midrule
-  Dev start & Bundla cijeli projekt prije starta (sporo) & Servira module nativno (instant) \\
-  HMR & Cijeli modul se zamijeni & Samo promijenjeni modul \\
-  Konfiguracija & Kompleksna (\texttt{webpack.config.js}) & Minimalna (\texttt{vite.config.ts}) \\
-  Prod build & Webpack bundler & Rollup bundler \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.6em}
-Vite koristi činjenicu da moderni browseri podržavaju ES modules nativno. U developmentu nema bundlanja - svaki file se servira pojedinačno. Rezultat: dev server se pokrene za sekunde umjesto minuta.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Struktura frontend projekta}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\codefile{web/src/}
-\begin{itemize}
-  \item \codefile{views/} - stranice (jedna po ruti)
-  \item \codefile{components/} - reusable UI dijelovi
-  \item \codefile{router/} - definicija ruta
-  \item \codefile{stores/} - Pinia storeovi
-  \item \codefile{api/} - HTTP client i pozivi
-  \item \codefile{App.vue} - root komponenta
-  \item \codefile{main.ts} - entry point
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{Konvencije:}
-\begin{itemize}
-  \item Views su stranice - \texttt{LoginView.vue}, \texttt{DashboardView.vue}
-  \item Components su dijelovi - \texttt{NavBar.vue}, \texttt{LoadingSpinner.vue}
-  \item Jedan view = jedna ruta
-  \item Store po domeni - \texttt{authStore}, \texttt{lifterStore}
-\end{itemize}
-\end{columns}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Vue Router: osnovna konfiguracija}
+\begin{frame}[fragile]{Popis ruta}
 \begin{lstlisting}[language=typescript]
-// src/router/index.ts
-import { createRouter, createWebHistory } from 'vue-router'
-import LoginView from '@/views/LoginView.vue'
-import DashboardView from '@/views/DashboardView.vue'
-
+// router/index.ts
 const routes = [
   { path: '/login', name: 'login', component: LoginView },
-  {
-    path: '/',
-    name: 'dashboard',
-    component: DashboardView,
-  },
+  { path: '/lifters', name: 'lifters', component: LiftersView },
 ]
 
 const router = createRouter({
   history: createWebHistory(),
   routes,
 })
-
-export default router
 \end{lstlisting}
+
+\vspace{0.5em}
+Ruta je par adrese i prikaza. Ime rute nije obvezno, ali omogućuje da se na rutu upućuje imenom, pa promjena adrese ne traži izmjenu na svakom mjestu koje na nju vodi.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Rute s parametrima i nested rute}
+\begin{frame}[fragile]{Mjesto na kojem se prikaz pojavljuje}
+\begin{lstlisting}[language=html]
+<!-- App.vue -->
+<template>
+  <NavBar />
+  <main class="container">
+    <RouterView />
+  </main>
+</template>
+\end{lstlisting}
+
+\vspace{0.5em}
+\texttt{<RouterView />} je mjesto u koje Vue Router stavlja prikaz koji odgovara trenutnoj adresi.
+
+\vspace{0.5em}
+Sve što stoji izvan njega ostaje na zaslonu pri promjeni adrese. Zato navigacija, zaglavlje i podnožje stoje u \texttt{App.vue}, a ne u svakoj stranici.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Poveznica koja ne učitava stranicu}
+\begin{lstlisting}[language=html]
+<RouterLink to="/lifters">Natjecatelji</RouterLink>
+
+<RouterLink :to="{ name: 'club', params: { clubId: 12 } }">
+  Moj klub
+</RouterLink>
+\end{lstlisting}
+
+\vspace{0.5em}
+\texttt{RouterLink} u stablo upisuje običan \texttt{<a>}, pa se ponaša kao poveznica: ima adresu, otvara se u novoj kartici i preglednik je pamti.
+
+\vspace{0.5em}
+Klik ipak presreće i umjesto novog učitavanja mijenja samo prikaz. Obična bi poveznica na istu adresu radila, ali bi preglednik odbacio pokrenutu aplikaciju i preuzeo je ponovno.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Parametar u adresi}
+Adresa često imenuje zapis. Dio adrese koji se mijenja zapisuje se s dvotočjem:
+
 \begin{lstlisting}[language=typescript]
-// Ruta s parametrom
 { path: '/clubs/:clubId/lifters', name: 'lifters',
   component: LiftersView }
+\end{lstlisting}
 
-// Pristup parametru u komponenti
+\vspace{0.4em}
+\begin{lstlisting}[language=typescript]
+// u komponenti
 const route = useRoute()
-const clubId = route.params.clubId
+const clubId = Number(route.params.clubId)
+\end{lstlisting}
 
-// Nested rute - dijele layout
+\vspace{0.4em}
+Parametar je niz znakova, jer adresa nema tipove. Pretvorba u broj ide odmah, prije nego vrijednost uđe u zahtjev prema API-ju.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Ugniježđene rute}
+Skupina stranica često dijeli isti okvir: isti izbornik, isti naslov, istu provjeru prava.
+
+\begin{lstlisting}[language=typescript]
 {
   path: '/admin',
   component: AdminLayout,
@@ -566,101 +648,118 @@ const clubId = route.params.clubId
 }
 \end{lstlisting}
 
-\vspace{0.4em}
-Nested rute koriste \texttt{<RouterView />} unutar parent komponente za renderiranje child rute.
+\vspace{0.5em}
+\texttt{AdminLayout} i sam sadrži \texttt{<RouterView />}, u koji se stavlja prikaz djeteta. Adresa \texttt{/admin/clubs} tako prikazuje okvir i unutar njega popis klubova.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Hash mode vs History mode}
-Vue Router podržava dva načina upravljanja URL-ovima:
+\begin{frame}[fragile]{Prijelaz iz koda}
+Dio prijelaza ne pokreće korisnik klikom nego sam kod, primjerice nakon uspješne prijave:
 
-\vspace{0.4em}
-\begin{tabular}{@{}lp{5cm}p{5cm}@{}}
-  \toprule
-  & \textbf{Hash mode} & \textbf{History mode} \\
-  \midrule
-  URL & \texttt{app.com/\#/clubs} & \texttt{app.com/clubs} \\
-  Kako radi & Browser ignorira \# dio & HTML5 History API \\
-  Server config & Ne treba & Treba fallback na index.html \\
-  SEO & Lošije (\# se ne indexira) & Bolje \\
-  \bottomrule
-\end{tabular}
+\begin{lstlisting}[language=typescript]
+const router = useRouter()
 
-\vspace{0.6em}
-Mi koristimo \texttt{createWebHistory()} - history mode. URL-ovi izgledaju prirodno, ali server mora sve nepoznate rute preusmjeriti na \texttt{index.html} jer je routing na klijentu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Lazy loading ruta}
-Kad aplikacija naraste, ne želimo učitati sav JavaScript odjednom:
-
-\vspace{0.4em}
-\begin{itemize}
-  \item \textbf{Eager loading}: sve komponente se učitaju pri startu - sporiji inicijalni load
-  \item \textbf{Lazy loading}: komponenta se učita tek kad korisnik navigira na tu rutu
-\end{itemize}
-
-\vspace{0.6em}
-Umjesto \texttt{import AdminView from '@/views/AdminView.vue'} koristimo:
-
-\vspace{0.2em}
-\texttt{component: () => import('@/views/AdminView.vue')}
-
-\vspace{0.6em}
-Vite automatski radi \textbf{code splitting} - svaki lazy-loaded view postaje zasebni JS chunk. Korisnik preuzima samo kod za stranicu koju gleda.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Layout s navigacijom}
-\begin{lstlisting}[language=html]
-<!-- src/App.vue -->
-<script setup lang="ts">
-import NavBar from '@/components/NavBar.vue'
-</script>
-
-<template>
-  <NavBar />
-  <main class="container">
-    <RouterView />
-  </main>
-</template>
+router.push({ name: 'lifters', params: { clubId: 12 } })
+router.replace('/lifters')
 \end{lstlisting}
 
-\vspace{0.4em}
-\texttt{<RouterView />} je placeholder - Vue Router renderira komponentu koja odgovara trenutnoj ruti. Navigacija (\texttt{NavBar}) ostaje fiksna jer je izvan \texttt{<RouterView />}.
+\vspace{0.5em}
+\texttt{push} dodaje adresu u povijest preglednika, pa tipka za povratak vodi natrag. \texttt{replace} zamjenjuje trenutnu adresu i povijest ne raste.
+
+\vspace{0.5em}
+Nakon prijave koristi se \texttt{replace}, jer povratak na obrazac za prijavu prijavljenom korisniku ne znači ništa.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Stilizacija: scoped styles u SFC-u}
-Treći blok svake .vue datoteke je \texttt{<style>}. S atributom \texttt{scoped} stilovi vrijede samo za tu komponentu:
+\begin{frame}{Oblik adrese}
+\vspace{0.3em}
+\begin{center}
+{\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}L{3.0cm}L{3.9cm}L{4.3cm}@{}}
+  \toprule
+   & \textbf{S ljestvicom} & \textbf{Bez ljestvice} \\
+  \midrule
+  Adresa & \texttt{app.hr/\#/lifters} & \texttt{app.hr/lifters} \\
+  Što dobiva poslužitelj & \texttt{/} & \texttt{/lifters} \\
+  Postavke poslužitelja & nisu potrebne & vraća istu stranicu za svaku adresu \\
+  \bottomrule
+\end{tabular}
+}
+\end{center}
+
+\vspace{0.6em}
+Dio adrese iza ljestvice preglednik poslužitelju ne šalje, pa svaka adresa stiže kao korijenska.
+
+\vspace{0.4em}
+Koristimo oblik bez ljestvice, jer adrese tako izgledaju kao i na ostalim stranicama. Cijena je postavka na poslužitelju: adresu koju ne poznaje mora vratiti kao početnu stranicu, inače osvježavanje daje \texttt{404}.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Odgođeno učitavanje}
+Komponenta navedena u ruti ulazi u datoteku koju preglednik preuzima pri pokretanju. Administratorski dio tako preuzima i klub koji ga nikada ne otvori.
+
+\begin{lstlisting}[language=typescript]
+{ path: '/admin',
+  component: () => import('@/views/AdminView.vue') }
+\end{lstlisting}
+
+\vspace{0.5em}
+Kad umjesto komponente u ruti stoji funkcija koja je uvozi, preuzima se tek pri prvom odlasku na tu rutu, a alat za izgradnju je odvaja u zasebnu datoteku.
+
+\vspace{0.5em}
+Prvo učitavanje postaje manje, a prvi odlazak na tu rutu dobiva kratko čekanje.
+\end{frame}
+
+% ------------------------------------------------------------
+\begin{frame}{Vježba: ruta s parametrom}
+Nastavljate u istom projektu.
+
+\vspace{0.8em}
+\begin{enumerate}
+  \itemsep0.4em
+  \item Dodajte rutu \texttt{/clubs/:clubId/lifters} i prikaz koji ispisuje primljenu oznaku kluba.
+  \item Dodajte u navigaciju \texttt{RouterLink} koji vodi na tu rutu s oznakom \texttt{12}.
+  \item Pokraj njega dodajte običnu poveznicu \texttt{<a href="/clubs/12/lifters">} na istu adresu.
+  \item Otvorite karticu Mreža i kliknite jednu pa drugu.
+  \item Nakon obične poveznice vratite se unatrag i usporedite trajanje prijelaza.
+\end{enumerate}
+
+\vspace{0.8em}
+Po čemu se u kartici Mreža razlikuju ta dva klika?
+\end{frame}
+
+% ============================================================
+\sekcija{Izgled i sastavljanje aplikacije}{Stilovi komponente i zajednički stilovi, uski zaslon, spajanje dijelova u pokrenutu aplikaciju, pregled stanja.}
+
+% ------------------------------------------------------------
+\begin{frame}[fragile]{Stilovi koji pripadaju komponenti}
+Treći dio datoteke komponente su stilovi. S oznakom \texttt{scoped} vrijede samo za nju:
 
 \begin{lstlisting}[language=html]
-<!-- src/components/NavBar.vue -->
 <style scoped>
-nav {
-  display: flex;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #ddd;
-}
+nav { display: flex; gap: 1rem; padding: 0.75rem 1rem; }
 .error { color: #b00020; font-size: 0.875rem; }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 \end{lstlisting}
 
-\vspace{0.4em}
-Vue svakoj komponenti doda jedinstveni data-atribut i prepiše selektore - zato \texttt{.error} iz NavBara ne curi u formu. Svaka klasa koju koristite u templateu (\texttt{error}, \texttt{badge-green}, \texttt{btn-danger}) mora biti definirana ovdje ili globalno.
+\vspace{0.5em}
+Vue svakom elementu komponente doda vlastiti atribut i dopiše ga u svaki selektor. Razred \texttt{error} iz navigacije zato ne mijenja izgled poruke u obrascu.
+
+\vspace{0.5em}
+Bez te oznake selektori vrijede za cijelu stranicu, pa dvije komponente s istim nazivom razreda smetaju jedna drugoj.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Globalni stilovi i responsivnost}
+\begin{frame}[fragile]{Zajednički stilovi}
+Ono što dijele sve komponente stoji u jednoj datoteci koju uvozi \texttt{main.ts}:
+
 \begin{lstlisting}[language=html]
-/* src/assets/main.css - importan u main.ts */
+/* assets/main.css */
 :root { --primary: #1f6feb; }
-.container { max-width: 960px;
-             margin: 0 auto; padding: 1rem; }
-.badge-green { background: #d1f7d6;
-               padding: 2px 8px; border-radius: 8px; }
+
+.container { max-width: 960px; margin: 0 auto; padding: 1rem; }
 
 @media (max-width: 600px) {
   .container { padding: 0.5rem; }
@@ -668,103 +767,34 @@ Vue svakoj komponenti doda jedinstveni data-atribut i prepiše selektore - zato 
 }
 \end{lstlisting}
 
-\vspace{0.4em}
-Globalno ide ono što dijele sve komponente: reset, layout klase, badgevi. Scaffold već stvara \codefile{assets/main.css} - proširujete njega. \texttt{@media} breakpoint čini tablice upotrebljivima na mobitelu.
-
-\vspace{0.4em}
-Za projekt je dovoljan vlastiti mali CSS. Komponentne biblioteke (PrimeVue, Vuetify) smijete koristiti, ali ih ne obrađujemo - na obrani morate objasniti i njihov kod.
+\vspace{0.5em}
+Pravilo \texttt{@media} opisuje izgled na uskom zaslonu. Tablica koja na stolnom računalu stane u širinu zaslona na mobitelu u nju ne stane, pa se umjesto prelamanja pomiče vodoravno.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Navigacija: RouterLink}
-\begin{lstlisting}[language=html]
-<!-- src/components/NavBar.vue -->
-<template>
-  <nav>
-    <RouterLink to="/">Dashboard</RouterLink>
-    <RouterLink to="/clubs">Klubovi</RouterLink>
-    <RouterLink :to="`/clubs/${clubId}/lifters`">
-      Natjecatelji
-    </RouterLink>
-    <button @click="logout">Odjava</button>
-  </nav>
-</template>
-\end{lstlisting}
+\begin{frame}{Gotove knjižnice za izgled}
+\begin{konvencija}[Izbor, ne pravilo]
+Za ovaj je projekt dovoljan vlastiti CSS: nekoliko razreda za raspored, poruke i oznake stanja.
 
 \vspace{0.4em}
-\texttt{RouterLink} renderira \texttt{<a>} tag ali presreće klik - umjesto full page reloada, mijenja samo komponentu u \texttt{<RouterView />}.
+Gotove knjižnice komponenata smiju se koristiti, ali se ne obrađuju. Kod koji one donose jednako je dio predanog projekta kao i vlastiti.
+\end{konvencija}
+
+\vspace{0.7em}
+Opseg takve knjižnice lako premaši opseg same aplikacije, pa se na obrani teže razlučuje što je čiji rad.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Programska navigacija}
+\begin{frame}[fragile]{Sastavljanje aplikacije}
+Dijelovi se spajaju na jednom mjestu, prije nego aplikacija počne raditi:
+
 \begin{lstlisting}[language=typescript]
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
-
-// Navigacija po imenu rute
-router.push({ name: 'lifters', params: { clubId: 5 } })
-
-// Navigacija po pathu
-router.push('/login')
-
-// Zamjena (ne dodaje u history)
-router.replace('/dashboard')
-
-// Natrag
-router.back()
-\end{lstlisting}
-
-\vspace{0.4em}
-\texttt{router.push} dodaje u browser history (back button radi). \texttt{router.replace} zamjenjuje trenutni entry - koristi se nakon logina da korisnik ne može ići \enquote{back} na login formu.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Konvencije i alati}
-\textbf{Konvencije imenovanja:}
-
-\vspace{0.2em}
-\begin{tabular}{@{}llp{5.5cm}@{}}
-  \toprule
-  \textbf{Što} & \textbf{Konvencija} & \textbf{Primjer} \\
-  \midrule
-  Komponenta & PascalCase & \texttt{NavBar.vue}, \texttt{LifterForm.vue} \\
-  Props / emiti & camelCase / kebab-case & \texttt{firstName}, \texttt{@item-click} \\
-  Composables & \texttt{use} prefix & \texttt{useAuth()}, \texttt{useLifters()} \\
-  Store & \texttt{use...Store} & \texttt{useAuthStore()} \\
-  \bottomrule
-\end{tabular}
-
-\vspace{0.8em}
-\textbf{Vue DevTools} - browser ekstenzija, obavezni alat za razvoj:
-\begin{itemize}
-  \item \textbf{Components} - stablo komponenti, props i lokalni state
-  \item \textbf{Pinia} - svi storeovi, njihov state, mogućnost uređivanja
-  \item \textbf{Routes} - trenutna ruta, parametri, matched records
-\end{itemize}
-
-\vspace{0.4em}
-Kad nešto ne radi - otvorite Vue DevTools. Vidjet ćete je li komponenta renderirana, imaju li propsi ispravne vrijednosti i je li store ažuriran.
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}{Česte greške početnika u Vueu}
-\begin{enumerate}
-  \item \textbf{Mutiranje propsa} - child mijenja prop direktno. Vue javlja warning, ali podatak se ne ažurira u parentu. Koristiti emit.
-  \item \textbf{Zaboravljen :key u v-for} - bez keya Vue ne može efikasno pratiti elemente. Koristiti \texttt{:key="item.id"}, nikad index.
-  \item \textbf{Reaktivnost na nested objektima} - \texttt{ref({a: {b: 1}})} - promjena \texttt{obj.value.a.b} se detektira jer Vue 3 koristi Proxy, ali zamjena cijelog objekta zahtijeva \texttt{.value = \{...\}}.
-  \item \textbf{Zaboravljen .value} - u \texttt{<script setup>} pristupate \texttt{ref} s \texttt{.value}, u templateu bez njega. Miješanje dovodi do bugova.
-\end{enumerate}
-\end{frame}
-
-% ------------------------------------------------------------
-\begin{frame}[fragile,shrink=5]{Registracija routera i Pinie u main.ts}
-\begin{lstlisting}[language=typescript]
-// src/main.ts
+// main.ts
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import './assets/main.css'
 
 const app = createApp(App)
 app.use(createPinia())
@@ -773,34 +803,40 @@ app.mount('#app')
 \end{lstlisting}
 
 \vspace{0.4em}
-\texttt{app.use()} registrira plugine. Redoslijed je bitan - Pinia prije routera jer route guardovi mogu koristiti storeove.
+\texttt{mount} upisuje aplikaciju u element koji u \texttt{index.html} stoji prazan. Sve što je na zaslonu nastaje odatle.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Commitovi za Predavanje 7}
+\begin{frame}{Pregled stanja aplikacije}
+Kad prikaz nije onakav kakav se očekuje, pitanje je gdje je podatak stao. Na to izravno odgovara proširenje preglednika Vue DevTools:
+
+\vspace{0.7em}
 \begin{itemize}
-  \item \texttt{feat(web): scaffold app layout, router, and navigation shell}
-  \item \texttt{feat(web): add route structure for admin and club areas}
-  \item \texttt{chore(web): add eslint/prettier and basic project conventions}
-  \item \texttt{docs: add frontend structure and component guidelines}
+  \itemsep0.45em
+  \item stablo komponenata, s vrijednostima koje je svaka primila
+  \item trenutna ruta i njezini parametri
+  \item podatci koje dijeli više prikaza, uz mogućnost izmjene
 \end{itemize}
 
-\vspace{0.4em}
+\vspace{0.9em}
+Time se razlučuje je li podatak stigao i nije prikazan ili uopće nije stigao. Prvo je pogreška u prikazu, drugo u zahtjevu.
 \end{frame}
 
 % ------------------------------------------------------------
-\begin{frame}{Što ide sljedeće (Predavanje 8)}
+\begin{frame}{Sažetak}
 \begin{itemize}
-  \item API komunikacija s backendom (Axios/fetch)
-  \item Auth flow: login forma, token storage, refresh
-  \item Route guardovi za zaštitu ruta po roli
-  \item Error handling na frontendu
+  \itemsep0.25em
+  \item Poslužitelj vraća podatke, a prikaz nastaje u pregledniku.
+  \item Prvo je učitavanje sporije, a pravila o prikazu postoje na dvama mjestima.
+  \item Razvojni poslužitelj poslužuje module i mijenja samo promijenjenu datoteku.
+  \item Mape su podijeljene po odgovornosti, kao i na poslužitelju.
+  \item Opisi tipova preslikavaju sheme odgovora i otkrivaju nesklad prije pokretanja.
+  \item Mijenja se podatak, nikad prikaz.
+  \item Komponenta podatke prima izvana, a promjene javlja događajem.
+  \item Vrijednost koja se može izračunati ne pohranjuje se.
+  \item Ruta veže adresu i prikaz, a \texttt{RouterLink} mijenja adresu bez učitavanja.
+  \item Stilovi komponente ostaju u njoj; zajedničko stoji na jednom mjestu.
 \end{itemize}
-
-\vspace{0.8em}
-\begin{center}
-\Large Pitanja?
-\end{center}
 \end{frame}
 
 \end{document}
